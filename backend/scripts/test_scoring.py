@@ -8,9 +8,12 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from datetime import date, timedelta
+
 from app.scoring.engine import (
     UserProfile, DailyCheckin, RecentRuns, RouteCandidate, recommend,
 )
+from app.scoring.personalization import RunRecord
 
 
 CANDIDATE_ROUTES = [
@@ -139,7 +142,133 @@ def check_scoring():
     print("  all scoring checks passed")
 
 
+THURSDAY = date(2026, 10, 1)
+SATURDAY = date(2026, 10, 3)
+
+
+def rec(days_ago, km, route=None, rating=None, soreness=None, pace=6.0, today=THURSDAY, hill=None):
+    """Build a RunRecord on one of the candidate routes."""
+    r = next((c for c in CANDIDATE_ROUTES if c.id == route), None)
+    return RunRecord(
+        run_date=today - timedelta(days=days_ago), distance_km=km, pace_min_km=pace,
+        rating=rating, post_run_soreness=soreness, route_id=route,
+        surface_type=r.surface_type if r else None,
+        hill_m_per_km=hill if hill is not None else ((r.elevation_gain_m / r.distance_km) if r else None),
+        scenic=r.scenic if r else None, is_loop=r.is_loop if r else None,
+    )
+
+
+def recent_from(history, last_7_days_km=20, today=THURSDAY):
+    """RecentRuns the way converters.py builds it from the database."""
+    ratings, last = {}, {}
+    for r in history:
+        if r.route_id and r.rating is not None:
+            ratings.setdefault(r.route_id, []).append(r.rating)
+        if r.route_id:
+            last[r.route_id] = max(last.get(r.route_id, r.run_date), r.run_date)
+    return RecentRuns(
+        last_7_days_km=last_7_days_km, history=history,
+        last_14_days_route_ids=[rid for rid, d in last.items() if (today - d).days <= 14],
+        avg_rating_by_route_id={k: sum(v) / len(v) for k, v in ratings.items()},
+        days_since_last_run_by_route_id={k: (today - d).days for k, d in last.items()},
+    )
+
+
+def check_personalization():
+    print("\n=== Personalization checks (same check-in, different runners) ===")
+    checkin = DailyCheckin(energy_score=6, sleep_hours=7.5, today=THURSDAY)
+    user = INTERMEDIATE
+
+    # 1. taste: trail-lover vs road-lover get different top picks
+    trail_lover = [rec(d, 6, "r6", 5) for d in (5, 12, 20)] + [rec(d, 5, "r1", 2) for d in (8, 15, 25)]
+    road_lover = [rec(d, 6, "r6", 2) for d in (5, 12, 20)] + [rec(d, 5, "r1", 5) for d in (8, 15, 25)]
+    a = recommend(user, checkin, recent_from(trail_lover), CANDIDATE_ROUTES, top_n=6)
+    b = recommend(user, checkin, recent_from(road_lover), CANDIDATE_ROUTES, top_n=6)
+    ra = [x.route.id for x in a]; rb = [x.route.id for x in b]
+    assert ra.index("r6") < ra.index("r1") and rb.index("r1") < rb.index("r6"), (ra, rb)
+    print(f"  taste: trail-lover top = {a[0].route.name}; road-lover top = {b[0].route.name}")
+
+    # 2. recovery: sorer after hilly runs -> flatter routes favored
+    flat = RouteCandidate(id="flat", name="Flat", distance_km=7.0, elevation_gain_m=35,
+                          difficulty="moderate", surface_type="pavement", is_loop=True)
+    hilly = RouteCandidate(id="hilly", name="Hilly", distance_km=7.0, elevation_gain_m=250,
+                           difficulty="moderate", surface_type="pavement", is_loop=True)
+    hill_hist = [rec(4, 8, "r2", soreness=8, hill=35), rec(11, 8, "r2", soreness=7, hill=35),
+                 rec(18, 8, "r2", soreness=8, hill=35),
+                 rec(7, 5, "r1", soreness=2), rec(14, 5, "r1", soreness=3), rec(21, 5, "r1", soreness=2)]
+    fresh = DailyCheckin(energy_score=9, sleep_hours=8.5, sleep_quality=5, today=THURSDAY)
+    plain = recommend(user, fresh, RecentRuns(last_7_days_km=20), [flat, hilly], top_n=2)
+    sore = recommend(user, fresh, recent_from(hill_hist), [flat, hilly], top_n=2)
+    assert plain[0].route.id == "hilly" and sore[0].route.id == "flat", (plain, sore)
+    print(f"  recovery: no history -> Hilly first; sore-after-hills history -> Flat first ({sore[0].reasons})")
+
+    # 3. rhythm: long hard run yesterday -> easier day
+    yesterday_long = [rec(1, 16, pace=5.4), rec(3, 6), rec(6, 7), rec(9, 6)]
+    r = recommend(user, fresh, recent_from(yesterday_long, 29), [flat, hilly], top_n=2)
+    assert r[0].route.id == "flat" and any("yesterday" in x for x in r[0].reasons), r[0].reasons
+    print(f"  rhythm: day after a 16 km run -> {r[0].route.name} first ({r[0].reasons[-1]})")
+
+    # 4. goal: race training on a Saturday aims for a longer run than general fitness
+    short = RouteCandidate(id="short", name="10 km loop", distance_km=10.0, elevation_gain_m=100,
+                           difficulty="hard", surface_type="pavement", is_loop=True)
+    long_ = RouteCandidate(id="long", name="14 km loop", distance_km=14.0, elevation_gain_m=140,
+                           difficulty="hard", surface_type="pavement", is_loop=True)
+    sat = DailyCheckin(energy_score=8, sleep_hours=8, today=SATURDAY)
+    racer = UserProfile(fitness_level="intermediate", weekly_km_avg=36, goal="race_training")
+    thu = recommend(racer, DailyCheckin(energy_score=8, sleep_hours=8, today=THURSDAY),
+                    RecentRuns(last_7_days_km=25), [short, long_], top_n=2)
+    weekend = recommend(racer, sat, RecentRuns(last_7_days_km=25), [short, long_], top_n=2)
+    assert thu[0].route.id == "short" and weekend[0].route.id == "long", (thu, weekend)
+    print(f"  goal: racer on Thursday -> {thu[0].route.name}; on Saturday -> {weekend[0].route.name}")
+
+    # 5. proximity: identical routes, the one near home wins
+    home = UserProfile(fitness_level="intermediate", weekly_km_avg=30, home_lat=34.1271, home_lon=-118.2109)
+    near = RouteCandidate(id="nearhome", name="Near home", distance_km=6, elevation_gain_m=60,
+                          difficulty="moderate", surface_type="pavement", is_loop=True,
+                          start_lat=34.1280, start_lon=-118.2100)
+    far = RouteCandidate(id="farhome", name="Across town", distance_km=6, elevation_gain_m=60,
+                         difficulty="moderate", surface_type="pavement", is_loop=True,
+                         start_lat=34.1950, start_lon=-118.1500)
+    r = recommend(home, checkin, RecentRuns(last_7_days_km=20), [far, near], top_n=2)
+    assert r[0].route.id == "nearhome"
+    print(f"  proximity: {r[0].route.name} ({r[0].breakdown['proximity']}) beats {r[1].route.name} ({r[1].breakdown.get('proximity', 0)})")
+
+    # 6. variety: two near-copies of one loop + a different route -> top 3 isn't two copies first
+    north = RouteCandidate(id="loopN", name="Rose Bowl loop north", distance_km=8.0, elevation_gain_m=96,
+                           difficulty="moderate", surface_type="pavement", is_loop=True,
+                           start_lat=34.1613, start_lon=-118.1676)
+    south = RouteCandidate(id="loopS", name="Rose Bowl loop south", distance_km=8.1, elevation_gain_m=95,
+                           difficulty="moderate", surface_type="pavement", is_loop=True,
+                           start_lat=34.1613, start_lon=-118.1676)
+    other = RouteCandidate(id="arroyo", name="Arroyo trail", distance_km=5.5, elevation_gain_m=66,
+                           difficulty="moderate", surface_type="trail", is_loop=True,
+                           start_lat=34.1400, start_lon=-118.1660)
+    r = recommend(user, checkin, RecentRuns(last_7_days_km=20), [north, south, other], top_n=3)
+    by_base = sorted(r, key=lambda x: -x.base_score)
+    # without variety, the two Rose Bowl copies would be #1 and #2 ...
+    assert {by_base[0].route.id, by_base[1].route.id} == {"loopN", "loopS"}, [(x.route.id, x.base_score) for x in by_base]
+    # ... with it, the Arroyo trail moves up to #2
+    assert r[1].route.id == "arroyo", [x.route.id for x in r]
+    print(f"  variety: {[x.route.name for x in r]} (copy penalized {r[2].breakdown.get('variety')})")
+
+    # 7. injury severity: severe knee injury penalizes pavement more than a mild one
+    def pavement_penalty(sev):
+        u = UserProfile(fitness_level="intermediate", weekly_km_avg=30,
+                        active_injury_body_parts=["left_knee"], injury_severity={"left_knee": sev})
+        return recommend(u, checkin, RecentRuns(last_7_days_km=20), [flat], top_n=1)[0].breakdown["injury"]
+    assert pavement_penalty("severe") < pavement_penalty("mild")
+    print(f"  injury severity: mild {pavement_penalty('mild')} vs severe {pavement_penalty('severe')}")
+
+    # 8. estimated time uses their own pace
+    slow = recommend(user, checkin, RecentRuns(last_7_days_km=20, history=[rec(3, 5, pace=7.5)] * 3), [flat], top_n=1)[0]
+    quick = recommend(user, checkin, RecentRuns(last_7_days_km=20, history=[rec(3, 5, pace=4.8)] * 3), [flat], top_n=1)[0]
+    assert slow.estimated_minutes > quick.estimated_minutes
+    print(f"  pace: same 7 km route ~{slow.estimated_minutes} min for a 7:30/km runner, ~{quick.estimated_minutes} min at 4:48/km")
+    print("  all personalization checks passed")
+
+
 if __name__ == "__main__":
     for title, user, checkin in SCENARIOS:
         print_results(title, run(user, checkin))
     check_scoring()
+    check_personalization()

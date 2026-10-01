@@ -13,6 +13,7 @@ from app.models import User, Checkin, Run, Route, Injury
 from app.scoring.engine import (
     UserProfile, DailyCheckin, RecentRuns, RouteCandidate,
 )
+from app.scoring.personalization import RunRecord
 
 
 def build_user_profile(session: Session, user: User) -> UserProfile:
@@ -26,6 +27,10 @@ def build_user_profile(session: Session, user: User) -> UserProfile:
         fitness_level=user.fitness_level,
         weekly_km_avg=(user.weekly_mileage_avg or 0) * 1.60934,  # signup asks for miles
         active_injury_body_parts=[i.body_part for i in active_injuries],
+        injury_severity={i.body_part: i.severity for i in active_injuries},
+        goal=user.goal or "general_fitness",
+        home_lat=user.latitude,
+        home_lon=user.longitude,
     )
 
 
@@ -40,6 +45,7 @@ def build_daily_checkin(checkin: Checkin) -> DailyCheckin:
         sleep_hours=checkin.sleep_hours,
         sleep_quality=checkin.sleep_quality,
         surface_preference=checkin.surface_preference,
+        willing_to_drive_km=checkin.willing_to_drive_km,
     )
 
 
@@ -76,7 +82,31 @@ def build_recent_runs(session: Session, user_id) -> RecentRuns:
         rid: (date.today() - d).days for rid, d in last_run_date.items()
     }
 
+    # full history joined with route features, for the personalization layer
+    route_ids = {r.route_id for r in all_runs if r.route_id}
+    routes_by_id = {}
+    if route_ids:
+        routes_by_id = {
+            rt.id: rt for rt in session.exec(select(Route).where(Route.id.in_(route_ids))).all()
+        }
+    history = []
+    for r in all_runs:
+        rt = routes_by_id.get(r.route_id)
+        history.append(RunRecord(
+            run_date=r.run_date,
+            distance_km=r.distance_km,
+            pace_min_km=r.pace_min_km,
+            rating=r.rating,
+            post_run_soreness=r.post_run_soreness,
+            route_id=str(r.route_id) if r.route_id else None,
+            surface_type=rt.surface_type if rt else None,
+            hill_m_per_km=(rt.elevation_gain_m / rt.distance_km) if rt and rt.distance_km else None,
+            scenic=rt.scenic if rt else None,
+            is_loop=is_loop_route(rt) if rt else None,
+        ))
+
     return RecentRuns(
+        history=history,
         last_7_days_km=last_7_days_km,
         last_14_days_route_ids=last_14_route_ids,
         avg_rating_by_route_id=avg_rating_by_route_id,
@@ -110,6 +140,19 @@ def is_loop_route(route, threshold_km: float = 0.15) -> bool:
     return distance_km <= threshold_km
 
 
+def route_start(route):
+    """(lat, lon) of the first point, for real Routes and combined routes."""
+    if hasattr(route, "coords"):
+        coords = route.coords
+    else:
+        from geoalchemy2.shape import to_shape
+        coords = list(to_shape(route.gps_path).coords)
+    if not coords:
+        return None, None
+    lon, lat = coords[0][0], coords[0][1]
+    return lat, lon
+
+
 def build_route_candidates(routes: List[Route]) -> List[RouteCandidate]:
     return [
         RouteCandidate(
@@ -121,6 +164,8 @@ def build_route_candidates(routes: List[Route]) -> List[RouteCandidate]:
             surface_type=getattr(r, "surface_type", None) or "unknown",
             scenic=r.scenic,
             is_loop=is_loop_route(r),
+            start_lat=route_start(r)[0],
+            start_lon=route_start(r)[1],
         )
         for r in routes
     ]

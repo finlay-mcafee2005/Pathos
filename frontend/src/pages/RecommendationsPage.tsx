@@ -23,7 +23,7 @@ function MapResizer({ path }: { path: [number, number][] }) {
 }
 
 type Recommendation = {
-  route_id: string;
+  route_id: string | null;
   route_name: string;
   score: number;
   reasons: string[];
@@ -31,6 +31,8 @@ type Recommendation = {
   elevation_gain_m: number;
   difficulty: string;
   surface_type?: string;
+  estimated_minutes?: number;
+  effective_distance_km?: number;
   path: [number, number][];
 };
 
@@ -141,7 +143,10 @@ function RecommendationsPage() {
             )}
 
             <div className="route-stats">
-              <span className="distance">{kmToMiles(rec.distance_km).toFixed(1)} mi</span>
+              <span className="distance">{kmToMiles(rec.effective_distance_km ?? rec.distance_km).toFixed(1)} mi</span>
+              {rec.estimated_minutes != null && (
+                <span className="duration">~{rec.estimated_minutes} min</span>
+              )}
               <span className="elevation">{metersToFeet(rec.elevation_gain_m).toFixed(0)} ft gain</span>
               <span className={`difficulty ${rec.difficulty}`}>{rec.difficulty}</span>
               {rec.surface_type && rec.surface_type !== "unknown" && (

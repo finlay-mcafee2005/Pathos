@@ -14,7 +14,7 @@ from typing import List, Literal, Optional
 from app.models import User, Checkin, Route, Injury, Run, Club, ClubSchedule
 from app.auth import hash_password, verify_password
 
-from app.scoring.engine import recommend, rank_key
+from app.scoring.engine import recommend, diversify
 from app.scoring.converters import (
     build_user_profile, build_daily_checkin,
     build_recent_runs, build_route_candidates,
@@ -91,6 +91,7 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session)):
     results = recommend(user_profile, daily_checkin, recent_runs, candidates)
 
     route_by_id = {str(route.id): route for route in routes}
+    real_route_ids = set(route_by_id)
 
     # If the best result isn't a great distance match (or there's a target
     # distance nothing scored well against), also try combining routes into
@@ -107,15 +108,19 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session)):
             for cr in combined_routes:
                 route_by_id[str(cr.id)] = cr
 
-            merged = results + combined_results
-            merged.sort(key=rank_key)
-            results = merged[:3]
+            results = diversify(results + combined_results, 3)
 
     return [
         {
+            # combined routes are synthetic (not in the route table), so they get
+            # no id - logging a run on one just records distance/pace
+            "route_id": r.route.id if r.route.id in real_route_ids else None,
             "route_name": r.route.name,
             "score": r.score,
             "score_breakdown": r.breakdown,
+            "estimated_minutes": r.estimated_minutes,
+            "run_format": r.run_format,
+            "effective_distance_km": round(r.effective_distance_km, 2),
             "reasons": r.reasons,
             "distance_km": r.route.distance_km,
             "elevation_gain_m": r.route.elevation_gain_m,
