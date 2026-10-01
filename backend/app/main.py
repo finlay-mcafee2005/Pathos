@@ -115,6 +115,7 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session)):
         {
             "route_name": r.route.name,
             "score": r.score,
+            "score_breakdown": r.breakdown,
             "reasons": r.reasons,
             "distance_km": r.route.distance_km,
             "elevation_gain_m": r.route.elevation_gain_m,

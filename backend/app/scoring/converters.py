@@ -24,7 +24,7 @@ def build_user_profile(session: Session, user: User) -> UserProfile:
     ).all()
     return UserProfile(
         fitness_level=user.fitness_level,
-        weekly_mileage_avg=user.weekly_mileage_avg,
+        weekly_km_avg=(user.weekly_mileage_avg or 0) * 1.60934,  # signup asks for miles
         active_injury_body_parts=[i.body_part for i in active_injuries],
     )
 
