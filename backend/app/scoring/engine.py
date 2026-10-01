@@ -6,6 +6,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import List, Optional
 
+from app.scoring.difficulty import classify_difficulty
 from app.scoring.personalization import (
     RunRecord, TasteProfile, RecoveryProfile, RhythmContext,
     build_taste_profile, build_recovery_profile, build_rhythm,
@@ -76,6 +77,7 @@ class ScoredRoute:
     breakdown: dict = field(default_factory=dict)   # component -> points
     base_score: float = 0.0                          # score before the variety adjustment
     estimated_minutes: Optional[float] = None
+    difficulty: str = "moderate"   # of the run as actually run (out-and-back / laps included)
 
 
 DIFFICULTY_RANK = {"easy": 0, "moderate": 1, "hard": 2}
@@ -87,9 +89,9 @@ ACCEPTABLE_DIFFICULTY_CEILING = {
 }
 
 
-def passes_difficulty_gate(route: RouteCandidate, user: UserProfile) -> bool:
+def passes_difficulty_gate(difficulty: str, user: UserProfile) -> bool:
     ceiling = ACCEPTABLE_DIFFICULTY_CEILING.get(user.fitness_level, "easy")
-    return DIFFICULTY_RANK[route.difficulty] <= DIFFICULTY_RANK[ceiling]
+    return DIFFICULTY_RANK[difficulty] <= DIFFICULTY_RANK[ceiling]
 
 
 # ---------------------------------------------------------------------------
@@ -502,6 +504,11 @@ def score_route(
         add("rating", (avg_rating - 3) * W_RATING_PER_STAR,
             "You've rated this route highly before" if avg_rating >= 4 else None)
 
+    # difficulty of the run as actually run: an out-and-back or 3 laps
+    # doubles / triples both the distance and the climbing
+    run_gain = hill * effective_distance
+    run_difficulty = classify_difficulty(effective_distance, run_gain)
+
     # estimated time: their pace, plus ~5 min per 100 m of climbing
     minutes = effective_distance * ctx.pace_min_km + hill * effective_distance * 0.05
 
@@ -520,6 +527,7 @@ def score_route(
         breakdown={k: round(v, 1) for k, v in parts.items()},
         base_score=score,
         estimated_minutes=round(minutes),
+        difficulty=run_difficulty,
     )
 
 NEVER_RUN_DAYS = 10_000
@@ -594,8 +602,9 @@ def recommend(
     top_n: int = 3,
 ) -> List[ScoredRoute]:
     ctx = build_personal_context(user, checkin, recent)
-    eligible = [r for r in candidates if passes_difficulty_gate(r, user)]
-    scored = [score_route(r, user, checkin, recent, ctx) for r in eligible]
+    scored = [score_route(r, user, checkin, recent, ctx) for r in candidates]
+    # gate on the difficulty of the run as it would actually be run
+    scored = [s for s in scored if passes_difficulty_gate(s.difficulty, user)]
     # Always rank every eligible route and return the best top_n, even if
     # none is a great distance match, so the user always sees options.
     return diversify(scored, top_n, surface_requested=bool(checkin.surface_preference))

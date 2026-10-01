@@ -267,8 +267,44 @@ def check_personalization():
     print("  all personalization checks passed")
 
 
+def check_difficulty():
+    from app.scoring.difficulty import classify_difficulty as cd
+    print("\n=== Difficulty checks ===")
+    cases = [
+        ((4.0, 20), "easy"),        # short and flat
+        ((3.0, 200), "hard"),       # short but steep (67 m/km) -> bumped up
+        ((7.0, 150), "moderate"),   # effort 8.5
+        ((8.0, 300), "hard"),       # effort 11
+        ((12.0, 40), "hard"),       # long and flat, effort 12.4
+        ((4.0, 120), "moderate"),   # effort 5.2
+    ]
+    for (km, gain), want in cases:
+        got = cd(km, gain)
+        assert got == want, (km, gain, got, want)
+        print(f"  {km:>4} km, {gain:>3} m climb -> {got}")
+
+    # the engine grades the run as actually run: 3 laps of a 3 km loop is not "easy"
+    loop = RouteCandidate(id="lap", name="3 km loop", distance_km=3.0, elevation_gain_m=30,
+                          difficulty="easy", surface_type="pavement", is_loop=True)
+    r = recommend(INTERMEDIATE, DailyCheckin(energy_score=6, planned_distance_km=9.0, today=THURSDAY),
+                  RecentRuns(last_7_days_km=20), [loop], top_n=1)[0]
+    assert r.run_format == "repeat" and r.difficulty == "moderate", (r.run_format, r.difficulty)
+    print(f"  3 km loop x{r.repeat_count} for a 9 km plan -> {r.difficulty}")
+
+    # beginners are gated on that run difficulty
+    beginner = UserProfile(fitness_level="beginner", weekly_km_avg=12)
+    steep = RouteCandidate(id="steep", name="Steep 3 km", distance_km=3.0, elevation_gain_m=200,
+                           difficulty="easy", surface_type="trail", is_loop=True)
+    r = recommend(beginner, DailyCheckin(energy_score=6, today=THURSDAY),
+                  RecentRuns(last_7_days_km=8), [steep, loop], top_n=2)
+    assert [x.route.id for x in r] == ["lap"], [x.route.id for x in r]
+    print("  beginner: steep 3 km (hard) filtered out, flat loop kept")
+    print("  all difficulty checks passed")
+
+
 if __name__ == "__main__":
     for title, user, checkin in SCENARIOS:
         print_results(title, run(user, checkin))
     check_scoring()
     check_personalization()
+    check_difficulty()

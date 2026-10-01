@@ -18,6 +18,8 @@ from sqlmodel import Session, create_engine
 from geoalchemy2.elements import WKTElement
 
 from app.models import Route
+from osm_surface import classify_surface
+from app.scoring.difficulty import classify_difficulty
 
 DATABASE_URL = "postgresql://postgres:devpassword@localhost:5432/run_recommender"
 OSM_FILE = os.path.expanduser(
@@ -41,38 +43,6 @@ def haversine_m(lon1, lat1, lon2, lat2):
     dlon = radians(lon2 - lon1)
     a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
     return R * 2 * atan2(sqrt(a), sqrt(1 - a))
-
-
-def classify_difficulty(length_m):
-    if length_m < 1000:
-        return "easy"
-    elif length_m < 3000:
-        return "moderate"
-    return "hard"
-
-
-PAVED_SURFACES = {
-    "paved", "asphalt", "concrete", "concrete:plates", "concrete:lanes",
-    "paving_stones", "sett", "cobblestone", "bricks", "metal", "wood",
-}
-UNPAVED_SURFACES = {
-    "unpaved", "dirt", "earth", "ground", "gravel", "fine_gravel", "compacted",
-    "pebblestone", "grass", "sand", "mud", "woodchips", "rock",
-}
-
-
-def classify_surface(highway_tag, surface_tag, footway_tag=None):
-    """Pavement vs. trail. An explicit OSM surface tag wins; when it's missing,
-    fall back on the way type: footways are almost always sidewalks/paved
-    paths, while path/track/bridleway are usually dirt."""
-    if surface_tag in PAVED_SURFACES:
-        return "pavement"
-    if surface_tag in UNPAVED_SURFACES:
-        return "trail"
-    # untagged or unrecognized surface
-    if footway_tag in ("sidewalk", "crossing") or highway_tag == "footway":
-        return "pavement"
-    return "trail"
 
 
 def is_scenic(highway_tag, surface_tag):
@@ -158,7 +128,7 @@ with Session(engine) as session:
                 distance_km=round(w["length_m"] / 1000, 2),
                 elevation_gain_m=0,
                 surface_type=classify_surface(w["highway"], w["surface"], w["footway"]),
-                difficulty=classify_difficulty(w["length_m"]),
+                difficulty=classify_difficulty(w["length_m"] / 1000),  # refined by update_elevation.py
                 scenic=is_scenic(w["highway"], w["surface"]),
                 gps_path=WKTElement(wkt, srid=4326),
             )

@@ -19,6 +19,7 @@ from sqlmodel import Session, create_engine, select
 from geoalchemy2.shape import to_shape
 
 from app.models import Route
+from app.scoring.difficulty import classify_difficulty
 
 DATABASE_URL = "postgresql://postgres:devpassword@localhost:5432/run_recommender"
 # Open-Meteo (Copernicus 90m DEM): free, no key, up to 100 points/request.
@@ -88,6 +89,7 @@ with Session(engine) as session:
             gain = calculate_gain(elevations)
 
             route.elevation_gain_m = round(gain, 1)
+            route.difficulty = classify_difficulty(route.distance_km, route.elevation_gain_m)
             session.add(route)
             session.commit()
 

@@ -9,6 +9,8 @@ from math import radians, sin, cos, sqrt, atan2
 from uuid import uuid4
 from typing import List
 
+from app.scoring.difficulty import classify_difficulty
+
 CONNECT_THRESHOLD_KM = 1.2
 MAX_COMBO_SEARCH_RANGE_KM = 3.0
 MAX_CHAIN_LENGTH = 3
@@ -31,12 +33,6 @@ def path_length_km(coords):
     return total
 
 
-def classify_difficulty(length_km):
-    if length_km < 4:
-        return "easy"
-    elif length_km < 10:
-        return "moderate"
-    return "hard"
 
 
 def get_route_coords(route):
@@ -58,7 +54,7 @@ class CombinedRoute:
         self.coords = [pt for coords in coords_list for pt in coords]
         self.distance_km = round(path_length_km(self.coords), 2)
         self.elevation_gain_m = sum(leg.elevation_gain_m or 0 for leg in legs)
-        self.difficulty = classify_difficulty(self.distance_km)
+        self.difficulty = classify_difficulty(self.distance_km, self.elevation_gain_m)
         surface_types = {leg.surface_type for leg in legs}
         self.surface_type = next(iter(surface_types)) if len(surface_types) == 1 else "mixed"
         self.scenic = any(leg.scenic for leg in legs)

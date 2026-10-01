@@ -36,6 +36,7 @@ from sqlmodel import Session, create_engine
 from geoalchemy2.elements import WKTElement
 
 from app.models import Route
+from app.scoring.difficulty import classify_difficulty
 
 DATABASE_URL = "postgresql://postgres:devpassword@localhost:5432/run_recommender"
 OSRM_URL = "http://localhost:5001"
@@ -133,57 +134,56 @@ def trail_overlap_fraction(session, wkt):
     return min(1.0, float(row[0] or 0))
 
 
-def classify_difficulty(km):
-    if km < 5:
-        return "easy"
-    if km < 10:
-        return "moderate"
-    return "hard"
 
 
-engine = create_engine(DATABASE_URL)
+def main():
+    engine = create_engine(DATABASE_URL)
 
-with Session(engine) as session:
-    # clear loops from a previous run (keep run history, drop stale recommendations)
-    old_ids = "SELECT id FROM route WHERE name LIKE '%road loop%'"
-    session.exec(text(f"DELETE FROM recommendation WHERE route_id IN ({old_ids})"))
-    session.exec(text(f"UPDATE run SET route_id = NULL WHERE route_id IN ({old_ids})"))
-    removed = session.exec(text("DELETE FROM route WHERE name LIKE '%road loop%'")).rowcount
-    session.commit()
-    if removed:
-        print(f"Removed {removed} loops from a previous run.")
-
-    added, skipped = 0, 0
-    for anchor, lat, lon, scenic in ANCHORS:
-        for target in TARGET_DISTANCES_KM:
-            for bearing, direction in DIRECTIONS:
-                label = f"{anchor} road loop - {target} km {direction}"
-                try:
-                    coords, km, err = build_loop(lat, lon, bearing, target)
-                except Exception as e:
-                    print(f"  Skipped '{label}': {e}")
-                    skipped += 1
-                    continue
-                if err > TOLERANCE * 2:
-                    print(f"  Skipped '{label}': best was {km:.1f} km")
-                    skipped += 1
-                    continue
-
-                wkt = to_wkt(coords)
-                overlap = trail_overlap_fraction(session, wkt)
-                surface = "mixed" if overlap > TRAIL_OVERLAP_MIXED else "pavement"
-
-                session.add(Route(
-                    name=label,
-                    distance_km=round(km, 2),
-                    elevation_gain_m=0,          # filled in by update_elevation.py
-                    surface_type=surface,
-                    difficulty=classify_difficulty(km),
-                    scenic=scenic,
-                    gps_path=WKTElement(wkt, srid=4326),
-                ))
-                added += 1
-                print(f"  Added '{label}': {km:.2f} km, {surface} ({overlap:.0%} on trails)")
+    with Session(engine) as session:
+        # clear loops from a previous run (keep run history, drop stale recommendations)
+        old_ids = "SELECT id FROM route WHERE name LIKE '%road loop%'"
+        session.exec(text(f"DELETE FROM recommendation WHERE route_id IN ({old_ids})"))
+        session.exec(text(f"UPDATE run SET route_id = NULL WHERE route_id IN ({old_ids})"))
+        removed = session.exec(text("DELETE FROM route WHERE name LIKE '%road loop%'")).rowcount
         session.commit()
+        if removed:
+            print(f"Removed {removed} loops from a previous run.")
 
-    print(f"Done. Added {added} loops, skipped {skipped}.")
+        added, skipped = 0, 0
+        for anchor, lat, lon, scenic in ANCHORS:
+            for target in TARGET_DISTANCES_KM:
+                for bearing, direction in DIRECTIONS:
+                    label = f"{anchor} road loop - {target} km {direction}"
+                    try:
+                        coords, km, err = build_loop(lat, lon, bearing, target)
+                    except Exception as e:
+                        print(f"  Skipped '{label}': {e}")
+                        skipped += 1
+                        continue
+                    if err > TOLERANCE * 2:
+                        print(f"  Skipped '{label}': best was {km:.1f} km")
+                        skipped += 1
+                        continue
+
+                    wkt = to_wkt(coords)
+                    overlap = trail_overlap_fraction(session, wkt)
+                    surface = "mixed" if overlap > TRAIL_OVERLAP_MIXED else "pavement"
+
+                    session.add(Route(
+                        name=label,
+                        distance_km=round(km, 2),
+                        elevation_gain_m=0,          # filled in by update_elevation.py
+                        surface_type=surface,
+                        difficulty=classify_difficulty(km),  # refined by update_elevation.py
+                        scenic=scenic,
+                        gps_path=WKTElement(wkt, srid=4326),
+                    ))
+                    added += 1
+                    print(f"  Added '{label}': {km:.2f} km, {surface} ({overlap:.0%} on trails)")
+            session.commit()
+
+        print(f"Done. Added {added} loops, skipped {skipped}.")
+
+
+if __name__ == "__main__":
+    main()

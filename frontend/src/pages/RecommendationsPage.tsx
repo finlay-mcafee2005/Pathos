@@ -32,8 +32,34 @@ type Recommendation = {
   difficulty: string;
   surface_type?: string;
   estimated_minutes?: number;
+  score_breakdown?: Record<string, number>;
   effective_distance_km?: number;
   path: [number, number][];
+};
+
+// friendly names for the scoring engine's breakdown keys
+const BREAKDOWN_LABELS: Record<string, string> = {
+  soreness: "Sore muscles vs. surface",
+  injury: "Injury vs. surface",
+  surface_relief: "Surface easier on soreness",
+  soreness_history: "How you've felt after similar runs",
+  scenic: "Scenic (you asked)",
+  surface_pref: "Road / trail (you asked)",
+  adventure: "New route (you asked)",
+  taste_surface: "Surfaces you rate highly",
+  taste_scenic: "You like scenic runs",
+  taste_loop: "You like loops",
+  goal: "Fits your goal",
+  distance: "Distance match",
+  format: "Loop vs. out-and-back",
+  terrain: "Hills vs. how you feel",
+  rhythm: "Recovery day",
+  overload: "Weekly mileage load",
+  footing: "Footing after poor sleep",
+  proximity: "Close to home",
+  novelty: "Haven't run it lately",
+  rating: "Your past rating",
+  variety: "Similar to a route above",
 };
 
 const DIFFICULTY_COLOR: Record<string, string> = {
@@ -57,6 +83,11 @@ function RecommendationsPage() {
   const [photos, setPhotos] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [openReasoning, setOpenReasoning] = useState<Record<number, boolean>>({});
+
+  function toggleReasoning(i: number) {
+    setOpenReasoning((prev) => ({ ...prev, [i]: !prev[i] }));
+  }
 
   async function fetchPhoto(routeName: string) {
     const term = getSearchTerm(routeName);
@@ -187,24 +218,62 @@ function RecommendationsPage() {
               </MapContainer>
             )}
 
-            {rec.reasons.length > 0 && (
-              <ul className="reasons">
-                {rec.reasons.map((reason, j) => (
-                  <li key={j}>{reason}</li>
-                ))}
-              </ul>
-            )}
+            <div className="card-actions">
+              <button
+                className="log-run-button"
+                onClick={() =>
+                  navigate("/log-run", {
+                    state: { routeId: rec.route_id, routeName: rec.route_name },
+                  })
+                }
+              >
+                Log this run
+              </button>
+              <button
+                className="reasoning-toggle"
+                aria-expanded={!!openReasoning[i]}
+                onClick={() => toggleReasoning(i)}
+              >
+                {openReasoning[i] ? "Hide reasoning" : "Show reasoning"}
+                <span className={`chevron ${openReasoning[i] ? "open" : ""}`}>▾</span>
+              </button>
+            </div>
 
-            <button
-              className="log-run-button"
-              onClick={() =>
-                navigate("/log-run", {
-                  state: { routeId: rec.route_id, routeName: rec.route_name },
-                })
-              }
-            >
-              Log this run
-            </button>
+            {openReasoning[i] && (
+              <div className="reasoning-panel">
+                {rec.reasons.length > 0 && (
+                  <ul className="reasons">
+                    {rec.reasons.map((reason, j) => (
+                      <li key={j}>{reason}</li>
+                    ))}
+                  </ul>
+                )}
+
+                {rec.score_breakdown && Object.keys(rec.score_breakdown).length > 0 && (
+                  <div className="breakdown">
+                    <div className="breakdown-row base">
+                      <span>Starting score</span>
+                      <span className="pts">100</span>
+                    </div>
+                    {Object.entries(rec.score_breakdown)
+                      .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+                      .map(([key, pts]) => (
+                        <div className="breakdown-row" key={key}>
+                          <span>{BREAKDOWN_LABELS[key] ?? key}</span>
+                          <span className={`pts ${pts >= 0 ? "plus" : "minus"}`}>
+                            {pts >= 0 ? "+" : "−"}
+                            {Math.abs(pts).toFixed(1)}
+                          </span>
+                        </div>
+                      ))}
+                    <div className="breakdown-row total">
+                      <span>Total</span>
+                      <span className="pts">{rec.score.toFixed(1)}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ))}
       </div>

@@ -20,6 +20,7 @@ from sqlmodel import Session, create_engine
 from geoalchemy2.elements import WKTElement
 
 from app.models import Route
+from app.scoring.difficulty import classify_difficulty
 
 DATABASE_URL = "postgresql://postgres:devpassword@localhost:5432/run_recommender"
 engine = create_engine(DATABASE_URL)
@@ -52,12 +53,6 @@ def path_length_km(coords):
     return total
 
 
-def classify_difficulty(length_km):
-    if length_km < 4:
-        return "easy"
-    elif length_km < 10:
-        return "moderate"
-    return "hard"
 
 
 # Overpass QL query: find route relations (hiking/foot) within the bbox,
@@ -132,7 +127,7 @@ with Session(engine) as session:
                 distance_km=round(length_km, 2),
                 elevation_gain_m=0,  # filled in later by update_elevation.py
                 surface_type="trail",
-                difficulty=classify_difficulty(length_km),
+                difficulty=classify_difficulty(length_km),  # refined by update_elevation.py
                 scenic=True,
                 gps_path=WKTElement(wkt, srid=4326),
             )
