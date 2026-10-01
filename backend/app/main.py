@@ -1,3 +1,4 @@
+import re
 from uuid import UUID
 from datetime import date
 import json
@@ -39,6 +40,31 @@ MAX_DISTANCE_KM = 15  # only consider routes within this radius of the user's ho
 def get_session():
     with Session(engine) as session:
         yield session
+
+
+GENERATED_SUFFIX = re.compile(r"\s+-\s+\d+(\.\d+)?\s*km\s+(north|south|east|west)$", re.IGNORECASE)
+GENERATED_KIND = [
+    (" trail out-and-back", " Out-and-Back"),
+    (" trail loop", " Trail Loop"),
+    (" road loop", " Loop"),
+]
+
+
+def display_name(name: str) -> str:
+    """Friendly card title. Generated routes are stored as e.g.
+    'Occidental College road loop - 8 km south' (the scripts rely on that
+    pattern to find and replace their own routes), but the card already
+    shows distance and surface, so show 'Occidental College Loop'.
+    Combined routes ('A + B') are cleaned part by part."""
+    parts = []
+    for part in name.split(" + "):
+        part = GENERATED_SUFFIX.sub("", part)
+        for old, new in GENERATED_KIND:
+            if part.endswith(old):
+                part = part[: -len(old)] + new
+                break
+        parts.append(part)
+    return " + ".join(parts)
 
 
 @app.get("/recommendations/{user_id}")
@@ -116,7 +142,7 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session)):
             # combined routes are synthetic (not in the route table), so they get
             # no id - logging a run on one just records distance/pace
             "route_id": r.route.id if r.route.id in real_route_ids else None,
-            "route_name": r.route.name,
+            "route_name": display_name(r.route.name),
             "score": r.score,
             "score_breakdown": r.breakdown,
             "estimated_minutes": r.estimated_minutes,
