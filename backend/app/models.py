@@ -27,12 +27,20 @@ from sqlalchemy import Column
 
 class User(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
+    full_name: str
     email: str = Field(unique=True, index=True)
+    phone_number: Optional[str] = None
+    date_of_birth: Optional[date] = None
     hashed_password: str
 
-    # "beginner" | "intermediate" | "advanced"
     fitness_level: str = Field(default="beginner")
     weekly_mileage_avg: float = Field(default=0.0)
+
+    address: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    goal: str = Field(default="general_fitness")
+    club_id: Optional[UUID] = Field(default=None, foreign_key="club.id")
 
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -40,8 +48,6 @@ class User(SQLModel, table=True):
     checkins: List["Checkin"] = Relationship(back_populates="user")
     injuries: List["Injury"] = Relationship(back_populates="user")
     recommendations: List["Recommendation"] = Relationship(back_populates="user")
-
-
 # ---------------------------------------------------------------------------
 # Injury (longer-lived than a daily checkin's soreness score)
 # ---------------------------------------------------------------------------
@@ -67,14 +73,21 @@ class Checkin(SQLModel, table=True):
     user_id: UUID = Field(foreign_key="user.id", index=True)
 
     checkin_date: date = Field(index=True)
-    soreness_score: int = Field(ge=0, le=10)   # 0 = none, 10 = severe
-    energy_score: int = Field(ge=0, le=10)     # 0 = exhausted, 10 = great
+    energy_score: int = Field(ge=0, le=10)  # 0 = low mental energy, 10 = high
+
     sleep_hours: Optional[float] = None
-    mood_tag: Optional[str] = None             # e.g. "stressed", "motivated"
+    sleep_quality: Optional[int] = Field(default=None, ge=1, le=5)  # 1 = poor, 5 = great
+
+    sore_body_parts: str = Field(default="[]")  # JSON-encoded list of strings
+    planned_distance_km: Optional[float] = None
+    wants_adventure: bool = Field(default=False)
+    wants_scenic: bool = Field(default=False)
+    surface_preference: Optional[str] = None  # "trail" | "road" | None = no preference
+    mood_note: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    willing_to_drive_km: Optional[float] = None
 
     user: User = Relationship(back_populates="checkins")
-
-
 # ---------------------------------------------------------------------------
 # Route (the thing being recommended)
 # ---------------------------------------------------------------------------
@@ -145,9 +158,9 @@ class Club(SQLModel, table=True):
     location: str
     pace_range: str           # e.g. "8:00-9:30 min/mi"
     experience_level: str     # "beginner" | "intermediate" | "advanced" | "all"
+    join_code: Optional[str] = Field(default=None, unique=True, index=True)
 
     schedules: List["ClubSchedule"] = Relationship(back_populates="club")
-
 
 class ClubSchedule(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
@@ -157,3 +170,4 @@ class ClubSchedule(SQLModel, table=True):
     meetup_time: str          # store as string ("18:30") to keep it simple
 
     club: Club = Relationship(back_populates="schedules")
+

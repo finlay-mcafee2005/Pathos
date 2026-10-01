@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+.env
+
+# OSRM / OSM data (1.4 GB - too large for GitHub; regenerate locally, see README)
+osrm-data/
+
+# Node
+node_modules/
+dist/
+
+# macOS
+.DS_Store
