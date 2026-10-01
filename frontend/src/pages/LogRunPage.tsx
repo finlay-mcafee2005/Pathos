@@ -25,15 +25,22 @@ function LogRunPage() {
       setError("No user found. Please log in again.");
       return;
     }
-    if (!distance || !paceMinutes) {
-      setError("Please enter distance and pace.");
-      return;
-    }
-
     const distanceMi = parseFloat(distanceMiles) || 0;
     const totalTimeMin = (parseFloat(totalMinutes) || 0) + (parseFloat(totalSeconds) || 0) / 60;
+    if (distanceMi <= 0 || totalTimeMin <= 0) {
+      setError("Please enter your distance and total time.");
+      return;
+    }
     const distanceKmValue = distanceMi * 1.60934;
-    const paceMinKm = distanceKmValue > 0 ? totalTimeMin / distanceKmValue : 0;
+    const paceMinKm = totalTimeMin / distanceKmValue;
+    // 2:30-15:00 min/km covers sprinting to walking; anything else is a typo
+    if (paceMinKm < 2.5 || paceMinKm > 15) {
+      const perMile = paceMinKm * 1.60934;
+      setError(
+        `That works out to ${Math.floor(perMile)}:${String(Math.round((perMile % 1) * 60)).padStart(2, "0")} per mile - double-check the distance and time.`
+      );
+      return;
+    }
 
     setLoading(true);
     setError(null);

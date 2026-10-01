@@ -192,7 +192,8 @@ def build_rhythm(history: List[RunRecord], today: date, typical_km: float) -> Rh
     ctx = RhythmContext()
     if not history:
         return ctx
-    paces = [r.pace_min_km for r in history if r.pace_min_km]
+    # ignore impossible paces (typos, unit mix-ups) so one bad log can't skew estimates
+    paces = [r.pace_min_km for r in history if r.pace_min_km and 2.5 <= r.pace_min_km <= 15]
     ctx.median_pace = median(paces) if paces else None
     recent = sorted((r for r in history if (today - r.run_date).days <= 28),
                     key=lambda r: r.run_date, reverse=True)[:10]
@@ -210,7 +211,8 @@ def build_rhythm(history: List[RunRecord], today: date, typical_km: float) -> Rh
 
     hard = (
         last.distance_km >= 1.3 * typical_km
-        or (last.pace_min_km and ctx.median_pace and last.pace_min_km < 0.95 * ctx.median_pace)
+        or (last.pace_min_km and ctx.median_pace and 2.5 <= last.pace_min_km
+            and last.pace_min_km < 0.95 * ctx.median_pace)
         or (last.post_run_soreness or 0) >= 6
     )
     if ctx.days_since_last_run <= 1 and hard:
