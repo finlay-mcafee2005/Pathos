@@ -544,10 +544,10 @@ def rank_key(s: ScoredRoute):
     )
 
 
-def similarity(a: ScoredRoute, b: ScoredRoute) -> float:
+def similarity(a: ScoredRoute, b: ScoredRoute, count_surface: bool = True) -> float:
     """0 (nothing alike) .. 1 (basically the same run)."""
     sim = 0.0
-    if a.route.surface_type == b.route.surface_type:
+    if count_surface and a.route.surface_type == b.route.surface_type:
         sim += 0.35
     da, db = a.effective_distance_km, b.effective_distance_km
     if max(da, db) > 0 and abs(da - db) <= 0.15 * max(da, db):
@@ -559,18 +559,20 @@ def similarity(a: ScoredRoute, b: ScoredRoute) -> float:
     return sim
 
 
-def diversify(scored: List[ScoredRoute], top_n: int) -> List[ScoredRoute]:
+def diversify(scored: List[ScoredRoute], top_n: int,
+              surface_requested: bool = False) -> List[ScoredRoute]:
     """Greedy pick (maximal marginal relevance): each next pick is the best
     remaining route after a penalty for resembling routes already picked.
     Stops the top 3 from being e.g. the same loop run north vs. south.
     Uses base_score, so re-running it (main.py merges real + combined
-    routes) never stacks penalties."""
+    routes) never stacks penalties. When the runner asked for a surface,
+    sharing that surface isn't counted as "too similar"."""
     pool = sorted(scored, key=lambda s: (-s.base_score,) + rank_key(s)[1:])
     picked: List[ScoredRoute] = []
     while pool and len(picked) < top_n:
         best = None
         for s in pool:
-            sim = max((similarity(s, p) for p in picked), default=0.0)
+            sim = max((similarity(s, p, not surface_requested) for p in picked), default=0.0)
             adjusted = s.base_score - W_VARIETY * sim
             key = (-round(adjusted, 1),) + rank_key(s)[1:]
             if best is None or key < best[0]:
@@ -596,4 +598,4 @@ def recommend(
     scored = [score_route(r, user, checkin, recent, ctx) for r in eligible]
     # Always rank every eligible route and return the best top_n, even if
     # none is a great distance match, so the user always sees options.
-    return diversify(scored, top_n)
+    return diversify(scored, top_n, surface_requested=bool(checkin.surface_preference))

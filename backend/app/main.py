@@ -108,7 +108,8 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session)):
             for cr in combined_routes:
                 route_by_id[str(cr.id)] = cr
 
-            results = diversify(results + combined_results, 3)
+            results = diversify(results + combined_results, 3,
+                                surface_requested=bool(checkin.surface_preference))
 
     return [
         {
