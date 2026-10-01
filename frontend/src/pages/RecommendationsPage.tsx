@@ -150,8 +150,8 @@ function RecommendationsPage() {
               <span className="elevation">{metersToFeet(rec.elevation_gain_m).toFixed(0)} ft gain</span>
               <span className={`difficulty ${rec.difficulty}`}>{rec.difficulty}</span>
               {rec.surface_type && rec.surface_type !== "unknown" && (
-                <span className="surface">
-                  {({ pavement: "road", trail: "trail", track: "track", mixed: "mixed" } as Record<string, string>)[rec.surface_type] ?? rec.surface_type}
+                <span className={`surface ${rec.surface_type}`}>
+                  {({ pavement: "Road", trail: "Trail", track: "Track", mixed: "Mixed" } as Record<string, string>)[rec.surface_type] ?? rec.surface_type}
                 </span>
               )}
             </div>

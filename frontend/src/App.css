@@ -209,6 +209,33 @@ body {
   background: color-mix(in srgb, #DC2626 10%, transparent);
 }
 
+.route-stats .duration {
+  color: #2563EB;
+  border-color: #2563EB;
+  background: color-mix(in srgb, #2563EB 10%, transparent);
+  font-weight: 700;
+}
+
+/* surface: earthy brown for trail, slate for road, so they don't clash
+   with the green / amber / red difficulty colors */
+.route-stats .surface {
+  font-weight: 700;
+  --surface-color: #78716C;
+  color: var(--surface-color);
+  border-color: var(--surface-color);
+  background: color-mix(in srgb, var(--surface-color) 10%, transparent);
+}
+.route-stats .surface.trail    { --surface-color: #8B5A2B; }
+.route-stats .surface.pavement { --surface-color: #475569; }
+.route-stats .surface.track    { --surface-color: #DB2777; }
+.route-stats .surface.mixed    { --surface-color: #78716C; }
+
+[data-theme="dark"] .route-stats .surface.trail    { --surface-color: #D4A373; }
+[data-theme="dark"] .route-stats .surface.pavement { --surface-color: #94A3B8; }
+[data-theme="dark"] .route-stats .surface.track    { --surface-color: #F472B6; }
+[data-theme="dark"] .route-stats .surface.mixed    { --surface-color: #A8A29E; }
+[data-theme="dark"] .route-stats .duration         { color: #60A5FA; border-color: #60A5FA; }
+
 .route-map-large {
   width: 100%;
   height: 240px;
