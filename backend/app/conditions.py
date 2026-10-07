@@ -24,6 +24,7 @@ CACHE_TTL_S = 30 * 60
 
 # when the runner says they're heading out
 RUN_TIME_HOURS = {"morning": 7, "midday": 12, "evening": 18}
+RUN_TIME_ENDS = {"morning": 11, "midday": 15, "evening": 22}   # same cutoffs the check-in uses
 
 _cache: dict = {}
 
@@ -40,6 +41,9 @@ class Conditions:
     rain_last_48h_mm: float = 0.0
     sunset: Optional[str] = None             # local ISO time
     minutes_until_sunset: Optional[float] = None   # from the start of the run; negative = already dark
+    is_tomorrow: bool = False                # the run time has passed today, so this is tomorrow's forecast
+    now_temp_f: Optional[float] = None       # right now, for reference
+    now_feels_like_f: Optional[float] = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -64,14 +68,19 @@ def _local_now(utc_offset_seconds: int) -> datetime:
 
 
 def target_hour(run_time: str, local_now: datetime) -> datetime:
-    """The local hour the run will happen. 'now' = this hour; a named time
-    later today, or tomorrow if that time has already passed."""
-    if run_time not in RUN_TIME_HOURS:
+    """The local hour the run will happen. 'now' = this hour; 'morning' etc.
+    = later today (or tomorrow if that time has already passed);
+    'tomorrow_morning' etc. = tomorrow."""
+    run_time = run_time or "now"
+    tomorrow = run_time.startswith("tomorrow_")
+    base = run_time.removeprefix("tomorrow_")
+    if base not in RUN_TIME_HOURS:
         return local_now.replace(minute=0, second=0, microsecond=0)
-    t = local_now.replace(hour=RUN_TIME_HOURS[run_time], minute=0, second=0, microsecond=0)
-    if t < local_now - timedelta(hours=1):
-        t += timedelta(days=1)
-    return t
+    this_hour = local_now.replace(minute=0, second=0, microsecond=0)
+    t = this_hour.replace(hour=RUN_TIME_HOURS[base])
+    if tomorrow or local_now.hour >= RUN_TIME_ENDS[base]:
+        return t + timedelta(days=1)          # tomorrow, or today's window is over
+    return max(t, this_hour)                  # still in (or before) today's window
 
 
 def _value_at(hourly: dict, key: str, iso: str):
@@ -92,6 +101,10 @@ def parse_conditions(forecast: dict, air: Optional[dict], run_time: str,
     hourly = forecast["hourly"]
 
     cond = Conditions(target_time=iso, run_time=run_time or "now")
+    cond.is_tomorrow = t.date() > now.date()
+    now_iso = now.strftime("%Y-%m-%dT%H:00")
+    cond.now_temp_f = _value_at(hourly, "temperature_2m", now_iso)
+    cond.now_feels_like_f = _value_at(hourly, "apparent_temperature", now_iso)
     cond.temp_f = _value_at(hourly, "temperature_2m", iso)
     cond.feels_like_f = _value_at(hourly, "apparent_temperature", iso)
     cond.uv_index = _value_at(hourly, "uv_index", iso)

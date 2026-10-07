@@ -13,7 +13,8 @@ type Props = {
   compact?: boolean;
 };
 
-function RouteExportButtons({ routeId, name, loadPath, format, repeatCount, surface, compact = false }: Props) {
+// eslint-disable-next-line react-refresh/only-export-components
+export function useRouteActions({ routeId, name, loadPath, format, repeatCount, surface }: Omit<Props, "compact">) {
   const navigate = useNavigate();
   const [busy, setBusy] = useState<"gpx" | "maps" | "follow" | null>(null);
 
@@ -49,6 +50,11 @@ function RouteExportButtons({ routeId, name, loadPath, format, repeatCount, surf
     }
   }
 
+  return { busy, handleFollow, handleGpx, handleMaps };
+}
+
+function RouteExportButtons({ compact = false, ...props }: Props) {
+  const { busy, handleFollow, handleGpx, handleMaps } = useRouteActions(props);
   return (
     <div className={`route-export ${compact ? "compact" : ""}`}>
       <button type="button" className="route-export-btn follow" onClick={handleFollow} disabled={busy !== null}

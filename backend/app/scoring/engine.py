@@ -39,6 +39,8 @@ class DailyCheckin:
     run_time: Optional[str] = None            # "now" | "morning" | "midday" | "evening"
     available_minutes: Optional[float] = None # time they have; used when no planned distance
     conditions: Optional[object] = None       # app.conditions.Conditions, or None if unavailable
+    mood: Optional[str] = None                # "stressed" | "flat" | "good" | "restless" | "low"
+    run_intent: Optional[str] = None          # "easy" | "workout" | "long" | "explore"
 
 
 @dataclass
@@ -200,6 +202,10 @@ W_TASTE_SURFACE = 8           # x surface affinity (~ -2..+2), capped at +/-10
 W_TASTE_SCENIC = 2
 W_TASTE_LOOP = 1.5
 W_VARIETY = 10                # max penalty for a pick nearly identical to one above it
+
+# mood and run intent: explicit, so they sit near the other check-in choices
+W_MOOD = 8
+W_INTENT = 10
 
 # conditions (weather, air, daylight). Safety-type signals, so they can
 # outweigh preferences when things get bad, but stay small on normal days.
@@ -572,6 +578,53 @@ def score_route(
             else:
                 add("daylight", -W_DARK_ROAD * dark)
 
+    # --- 10. mood and what the run is for ----------------------------------
+    never_run = days_since is None
+    familiar = days_since is not None and days_since <= 60
+    liked = avg_rating is not None and avg_rating >= 4
+    hilly = hill >= 20
+    soft = surface in ("trail", "mixed")
+    home_km = None
+    if None not in (user.home_lat, user.home_lon, route.start_lat, route.start_lon):
+        home_km = haversine_km(user.home_lat, user.home_lon, route.start_lat, route.start_lon)
+
+    mood = checkin.mood
+    if mood == "stressed":
+        pts = (0.6 if route.scenic else 0) + (0.4 if soft else 0) - (0.6 if route.difficulty == "hard" else 0)
+        add("mood", W_MOOD * pts,
+            "Scenic and away from traffic - good for clearing your head" if pts >= 0.6 else None)
+    elif mood == "flat":
+        pts = (0.5 if route.scenic else 0) + (0.4 if never_run or (days_since or 0) > 30 else 0) \
+            - (0.5 if route.difficulty == "hard" else 0)
+        add("mood", W_MOOD * pts, "Something a little different to get you going" if pts >= 0.5 else None)
+    elif mood == "good":
+        add("mood", W_MOOD * (0.4 if hilly else 0))
+    elif mood == "restless":
+        pts = (0.6 if never_run or (days_since or 0) > 30 else 0) + (0.5 if hilly else 0)
+        add("mood", W_MOOD * pts, "New ground and some climbing for a restless day" if pts >= 0.6 else None)
+    elif mood == "low":
+        # comfort over novelty: familiar and well-liked counts double, new ground counts against
+        pts = (1.0 if familiar else 0) + (0.5 if liked else 0) \
+            + (0.5 if home_km is not None and home_km < 2 else 0) \
+            - (0.4 if never_run else 0) - (1.5 if route.difficulty == "hard" else 0)
+        add("mood", W_MOOD * pts, "Familiar and close to home for a low day" if pts >= 1.0 else None)
+
+    intent = checkin.run_intent
+    if intent == "easy":
+        # any climbing counts against an easy day, flat counts for it
+        flat = clamp(1 - hill / FLAT_HILL_M_PER_KM)
+        add("intent", W_INTENT * (0.8 * flat - clamp((hill - 5) / 20)) - (4 if route.difficulty == "hard" else 0),
+            "Flat and easy, like you wanted" if hill < 8 else None)
+    elif intent == "workout":
+        even = surface in ("pavement", "track")
+        add("intent", W_INTENT * (0.8 if even else -0.6),
+            "Even footing for a workout" if even else None)
+    elif intent == "long":
+        add("intent", W_INTENT * (0.3 if route.scenic else 0))
+    elif intent == "explore":
+        add("intent", W_INTENT * (1.2 if never_run else 0.5 if (days_since or 0) > 60 else -0.3),
+            "A route you've never run" if never_run else None)
+
     # difficulty of the run as actually run: an out-and-back or 3 laps
     # doubles / triples both the distance and the climbing
     run_gain = hill * effective_distance
@@ -670,6 +723,13 @@ def recommend(
     top_n: int = 3,
 ) -> List[ScoredRoute]:
     ctx = build_personal_context(user, checkin, recent)
+    # what the run is for shifts the target length when they didn't set one
+    if checkin.run_intent == "long":
+        ctx = replace(ctx, long_run_factor=max(1.5, ctx.long_run_factor), long_run_reason="Longer route for your long run")
+    elif checkin.run_intent == "easy":
+        ctx = replace(ctx, long_run_factor=0.8, long_run_reason=None)
+    elif checkin.run_intent == "workout":
+        ctx = replace(ctx, long_run_factor=1.0, long_run_reason=None)
     # "I have 40 minutes" -> a distance target at their usual pace (with a
     # little slack for stoplights and warm-up)
     if not checkin.planned_distance_km and checkin.available_minutes:

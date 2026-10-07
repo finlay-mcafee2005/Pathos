@@ -88,6 +88,8 @@ class Checkin(SQLModel, table=True):
     willing_to_drive_km: Optional[float] = None
     run_time: Optional[str] = None             # "now" | "morning" | "midday" | "evening"
     available_minutes: Optional[float] = None
+    mood: Optional[str] = None                 # "stressed" | "flat" | "good" | "restless" | "low"
+    run_intent: Optional[str] = None           # "easy" | "workout" | "long" | "explore"
 
     user: User = Relationship(back_populates="checkins")
 # ---------------------------------------------------------------------------

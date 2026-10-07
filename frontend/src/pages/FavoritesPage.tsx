@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { API_URL, kmToMiles, metersToFeet, SURFACE_LABELS } from "../utils/format";
-import RouteSketch from "../components/RouteSketch";
-import RouteExportButtons from "../components/RouteExportButtons";
+import { MapContainer, TileLayer, Polyline, CircleMarker, useMap } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
+import L from "leaflet";
+import { useRouteActions } from "../components/RouteExportButtons";
 
 type Favorite = {
   route_id: string;
@@ -15,6 +17,74 @@ type Favorite = {
   times_run: number;
   path?: [number, number][];
 };
+
+// fit the whole route into the small map once it has its size
+function FitRoute({ path }: { path: [number, number][] }) {
+  const map = useMap();
+  useEffect(() => {
+    const t = setTimeout(() => {
+      map.invalidateSize();
+      map.fitBounds(L.latLngBounds(path), { padding: [28, 28] });
+    }, 50);
+    return () => clearTimeout(t);
+  }, [map, path]);
+  return null;
+}
+
+function FavActions({ fav, loadPath, onLog }: {
+  fav: Favorite;
+  loadPath: () => Promise<[number, number][]>;
+  onLog: () => void;
+}) {
+  const { busy, handleFollow, handleGpx, handleMaps } = useRouteActions({
+    routeId: fav.route_id,
+    name: fav.route_name,
+    loadPath,
+    surface: fav.surface_type,
+  });
+  return (
+    <div className="fav-actions-v2">
+      <div className="fav-main">
+        <button className="rec-btn primary" onClick={handleFollow} disabled={busy !== null}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M8 5.5v13a1 1 0 001.5.86l10.5-6.5a1 1 0 000-1.72L9.5 4.64A1 1 0 008 5.5z" />
+          </svg>
+          {busy === "follow" ? "Loading..." : "Start route"}
+        </button>
+        <button className="rec-btn secondary" onClick={onLog}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M5 12.5l4.5 4.5L19 7.5" />
+          </svg>
+          Log run
+        </button>
+      </div>
+      <div className="fav-take">
+        <button className="rec-tile" onClick={handleGpx} disabled={busy !== null}>
+          <span className="rec-tile-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
+            </svg>
+          </span>
+          <span className="rec-tile-text">
+            <strong>{busy === "gpx" ? "Preparing..." : "GPX file"}</strong>
+            <small>For your watch</small>
+          </span>
+        </button>
+        <button className="rec-tile" onClick={handleMaps} disabled={busy !== null}>
+          <span className="rec-tile-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 11l18-8-8 18-2-8-8-2z" />
+            </svg>
+          </span>
+          <span className="rec-tile-text">
+            <strong>{busy === "maps" ? "Opening..." : "Directions"}</strong>
+            <small>To the start</small>
+          </span>
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function FavoritesPage() {
   const navigate = useNavigate();
@@ -89,7 +159,30 @@ function FavoritesPage() {
           return (
             <article key={fav.route_id} className="fav-card">
               <div className="fav-art">
-                <RouteSketch path={fav.path ?? []} />
+                {fav.path && fav.path.length > 1 ? (
+                  <MapContainer
+                    center={fav.path[0]}
+                    zoom={14}
+                    className="fav-map"
+                    zoomControl={false}
+                    attributionControl={false}
+                    dragging={false}
+                    scrollWheelZoom={false}
+                    doubleClickZoom={false}
+                    touchZoom={false}
+                    keyboard={false}
+                    boxZoom={false}
+                  >
+                    <FitRoute path={fav.path} />
+                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                    <Polyline positions={fav.path} pathOptions={{ color: "#FFFFFF", weight: 8, opacity: 0.95 }} />
+                    <Polyline positions={fav.path} pathOptions={{ color: "#2563EB", weight: 4, opacity: 1 }} />
+                    <CircleMarker center={fav.path[0]} radius={6}
+                      pathOptions={{ color: "#FFFFFF", weight: 3, fillColor: "#1D4ED8", fillOpacity: 1 }} />
+                  </MapContainer>
+                ) : (
+                  <div className="fav-map fav-map-empty" />
+                )}
                 <button
                   className="fav-heart"
                   aria-label="Remove from favorites"
@@ -127,15 +220,8 @@ function FavoritesPage() {
                   </div>
                 </div>
 
-                <div className="fav-actions">
-                <button
-                  className="rec-primary fav-log"
-                  onClick={() => navigate("/log-run", { state: { routeId: fav.route_id, routeName: fav.route_name } })}
-                >
-                  Log this run
-                </button>
-                <RouteExportButtons routeId={fav.route_id} name={fav.route_name} loadPath={() => loadFullPath(fav)} surface={fav.surface_type} compact />
-                </div>
+                <FavActions fav={fav} loadPath={() => loadFullPath(fav)} onLog={() =>
+                  navigate("/log-run", { state: { routeId: fav.route_id, routeName: fav.route_name } })} />
               </div>
             </article>
           );

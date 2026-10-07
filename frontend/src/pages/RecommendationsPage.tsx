@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { MapContainer, TileLayer, Polyline, CircleMarker, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import RouteExportButtons from "../components/RouteExportButtons";
+import { useRouteActions } from "../components/RouteExportButtons";
 import { type GroupMatch, formatMeetTime, sessionTitle } from "./GroupsPage";
 
 function MapResizer({ path }: { path: [number, number][] }) {
@@ -69,6 +69,8 @@ const FACTOR_LABELS: Record<string, [string, string]> = {
   wind: ["Sheltered from the wind", "Strong wind on an exposed route"],
   mud: ["Dry trail conditions", "Trails may be muddy after recent rain"],
   daylight: ["Plenty of daylight", "You'd finish around or after sunset"],
+  mood: ["Suits how you're feeling", "Not what you need in this mood"],
+  intent: ["Fits the kind of run you wanted", "Not great for the kind of run you wanted"],
 };
 
 type Conditions = {
@@ -81,6 +83,9 @@ type Conditions = {
   rain_last_48h_mm: number;
   sunset: string | null;
   minutes_until_sunset: number | null;
+  is_tomorrow?: boolean;
+  now_temp_f?: number | null;
+  now_feels_like_f?: number | null;
 };
 
 function aqiLabel(aqi: number): string {
@@ -131,6 +136,8 @@ const HEADLINE_CLAUSES: Record<string, string> = {
   rhythm: "it's gentle enough for a recovery day",
   soreness_history: "you usually bounce back well from runs like this",
   overload: "it keeps your weekly mileage in check",
+  mood: "it suits how you're feeling today",
+  intent: "it fits the kind of run you wanted",
 };
 
 function buildHeadline(breakdown: Record<string, number> | undefined, fallback?: string): string | null {
@@ -163,6 +170,86 @@ function kmToMiles(km: number): number {
 
 function metersToFeet(m: number): number {
   return m * 3.28084;
+}
+
+// Card actions, grouped by purpose: run it / log it / save it, then take it with you
+function RecActions({ rec, saved, onSave, onLog }: {
+  rec: Recommendation;
+  saved: boolean;
+  onSave: () => void;
+  onLog: () => void;
+}) {
+  const { busy, handleFollow, handleGpx, handleMaps } = useRouteActions({
+    routeId: rec.route_id,
+    name: rec.route_name,
+    loadPath: () => rec.path,
+    format: rec.run_format,
+    repeatCount: rec.repeat_count,
+    surface: rec.surface_type,
+  });
+  const hasPath = rec.path.length > 1;
+  return (
+    <div className="rec-actions-v2">
+      <div className="rec-main-actions">
+        {hasPath && (
+          <button className="rec-btn primary" onClick={handleFollow} disabled={busy !== null}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M8 5.5v13a1 1 0 001.5.86l10.5-6.5a1 1 0 000-1.72L9.5 4.64A1 1 0 008 5.5z" />
+            </svg>
+            {busy === "follow" ? "Loading..." : "Start route"}
+          </button>
+        )}
+        <button className="rec-btn secondary" onClick={onLog}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M5 12.5l4.5 4.5L19 7.5" />
+          </svg>
+          Log this run
+        </button>
+        {rec.route_id && (
+          <button
+            className={`rec-btn ghost ${saved ? "saved" : ""}`}
+            aria-pressed={saved}
+            onClick={onSave}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill={saved ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 20s-7-4.4-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.6-7 10-7 10z" />
+            </svg>
+            {saved ? "Saved" : "Save"}
+          </button>
+        )}
+      </div>
+
+      {hasPath && (
+        <div className="rec-take">
+          <span className="rec-take-label">Take it with you</span>
+          <div className="rec-take-tiles">
+            <button className="rec-tile" onClick={handleGpx} disabled={busy !== null}>
+              <span className="rec-tile-icon" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
+                </svg>
+              </span>
+              <span className="rec-tile-text">
+                <strong>{busy === "gpx" ? "Preparing..." : "GPX file"}</strong>
+                <small>For your watch or running app</small>
+              </span>
+            </button>
+            <button className="rec-tile" onClick={handleMaps} disabled={busy !== null}>
+              <span className="rec-tile-icon" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 11l18-8-8 18-2-8-8-2z" />
+                </svg>
+              </span>
+              <span className="rec-tile-text">
+                <strong>{busy === "maps" ? "Opening..." : "Directions"}</strong>
+                <small>Get to the start in Google Maps</small>
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function RecommendationsPage() {
@@ -288,11 +375,23 @@ function RecommendationsPage() {
 
       {conditions && count > 0 && (() => {
         const feels = conditions.feels_like_f ?? conditions.temp_f;
-        const when = { now: "Right now", morning: "This morning", midday: "Midday", evening: "This evening" }[conditions.run_time] ?? "Today";
+        const rt = conditions.run_time.replace("tomorrow_", "");
+        const base = { now: "Right now", morning: "morning", midday: "midday", evening: "evening" }[rt] ?? "today";
+        const when = conditions.run_time === "now"
+          ? "Right now"
+          : conditions.is_tomorrow
+            ? `Tomorrow ${base}`
+            : `This ${base}`;
+        const nowFeels = conditions.now_feels_like_f ?? conditions.now_temp_f;
         return (
           <section className="conditions">
             <div className="conditions-head">
-              <span className="conditions-when">{when} near home</span>
+              <span className="conditions-when">
+                {when} near home
+                {conditions.run_time !== "now" && nowFeels != null && (
+                  <span className="conditions-now"> · {Math.round(nowFeels)}°F right now</span>
+                )}
+              </span>
               <p>{conditionsVerdict(conditions)}</p>
             </div>
             <div className="conditions-chips">
@@ -406,45 +505,22 @@ function RecommendationsPage() {
                   </div>
                 </div>
 
-                <div className="rec-actions">
-                  <button
-                    className="rec-primary"
-                    onClick={() => navigate("/log-run", { state: { routeId: rec.route_id, routeName: rec.route_name } })}
-                  >
-                    Log this run
-                  </button>
-                  {rec.route_id && (
-                    <button
-                      className={`rec-icon-btn ${saved ? "saved" : ""}`}
-                      aria-pressed={saved}
-                      aria-label={saved ? "Remove from favorites" : "Save to favorites"}
-                      title={saved ? "Saved" : "Save route"}
-                      onClick={() => toggleFavorite(rec.route_id!)}
-                    >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill={saved ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
-                        <path d="M12 20s-7-4.4-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.6-7 10-7 10z" />
-                      </svg>
-                    </button>
-                  )}
-                  {rec.path.length > 1 && (
-                    <RouteExportButtons
-                      routeId={rec.route_id}
-                      name={rec.route_name}
-                      loadPath={() => rec.path}
-                      format={rec.run_format}
-                      repeatCount={rec.repeat_count}
-                      surface={rec.surface_type}
-                    />
-                  )}
-                  <button
-                    className="rec-why-toggle"
-                    aria-expanded={!!openReasoning[i]}
-                    onClick={() => toggleReasoning(i)}
-                  >
-                    Why this route
-                    <span className={`chevron ${openReasoning[i] ? "open" : ""}`}>▾</span>
-                  </button>
-                </div>
+                <RecActions
+                  rec={rec}
+                  saved={saved}
+                  onSave={() => rec.route_id && toggleFavorite(rec.route_id)}
+                  onLog={() => navigate("/log-run", { state: { routeId: rec.route_id, routeName: rec.route_name } })}
+                />
+
+                <button
+                  className={`rec-why-row ${openReasoning[i] ? "open" : ""}`}
+                  aria-expanded={!!openReasoning[i]}
+                  onClick={() => toggleReasoning(i)}
+                >
+                  <span>Why this route</span>
+                  <span className="rec-why-hint">{openReasoning[i] ? "Hide" : "See what went into the pick"}</span>
+                  <span className={`chevron ${openReasoning[i] ? "open" : ""}`}>▾</span>
+                </button>
 
                 {openReasoning[i] && (() => {
                   const factors = Object.entries(rec.score_breakdown ?? {}).filter(([, pts]) => Math.abs(pts) >= 0.5);

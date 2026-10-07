@@ -48,6 +48,8 @@ def build_daily_checkin(checkin: Checkin) -> DailyCheckin:
         willing_to_drive_km=checkin.willing_to_drive_km,
         run_time=getattr(checkin, "run_time", None),
         available_minutes=getattr(checkin, "available_minutes", None),
+        mood=getattr(checkin, "mood", None),
+        run_intent=getattr(checkin, "run_intent", None),
     )
 
 

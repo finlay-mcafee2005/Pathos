@@ -29,11 +29,27 @@ const ENERGY_WORDS = ["Running on empty", "Running on empty", "Running on empty"
 const SLEEP_WORDS = ["", "Restless", "Light", "Okay", "Solid", "Deep"];
 const DISTANCE_CHIPS = [2, 3, 4, 5, 6, 8, 10];
 const MINUTE_CHIPS = [20, 30, 45, 60, 90];
-const RUN_TIMES: { value: "now" | "morning" | "midday" | "evening"; label: string; phrase: string }[] = [
-  { value: "now", label: "Now", phrase: "" },
-  { value: "morning", label: "Morning", phrase: " in the morning" },
-  { value: "midday", label: "Midday", phrase: " around midday" },
-  { value: "evening", label: "Evening", phrase: " this evening" },
+type Mood = "stressed" | "flat" | "good" | "restless" | "low";
+type Intent = "easy" | "workout" | "long" | "explore";
+// low on the left to good on the right, matching the energy scale above
+const MOODS: { value: Mood; label: string; hint: string }[] = [
+  { value: "low", label: "Low", hint: "Keep it gentle" },
+  { value: "flat", label: "Flat", hint: "Low motivation" },
+  { value: "restless", label: "Restless", hint: "Itching to go" },
+  { value: "stressed", label: "Stressed", hint: "Need to clear my head" },
+  { value: "good", label: "Good", hint: "Feeling like myself" },
+];
+const INTENTS: { value: Intent; label: string; hint: string }[] = [
+  { value: "easy", label: "Easy", hint: "Recovery pace" },
+  { value: "workout", label: "Workout", hint: "Speed or tempo" },
+  { value: "long", label: "Long run", hint: "Go the distance" },
+  { value: "explore", label: "Explore", hint: "Somewhere new" },
+];
+const RUN_TIMES: { value: "now" | "morning" | "midday" | "evening"; label: string; phrase: string; when: string }[] = [
+  { value: "now", label: "Now", phrase: "", when: "Next hour" },
+  { value: "morning", label: "Morning", phrase: " this morning", when: "Around 7 am" },
+  { value: "midday", label: "Midday", phrase: " around midday", when: "Around noon" },
+  { value: "evening", label: "Evening", phrase: " this evening", when: "Around 6 pm" },
 ];
 const DRIVE_CHIPS: { label: string; value: string }[] = [
   { label: "Near home", value: "" },
@@ -55,9 +71,25 @@ function CheckinPage() {
   const [wantsAdventure, setWantsAdventure] = useState(false);
   const [wantsScenic, setWantsScenic] = useState(false);
   const [surfacePreference, setSurfacePreference] = useState<"" | "trail" | "road">("");
-  const [runTime, setRunTime] = useState<"now" | "morning" | "midday" | "evening">("now");
+  type Slot = "now" | "morning" | "midday" | "evening";
+  const [runDay, setRunDay] = useState<"today" | "tomorrow">("today");
+  const [runSlot, setRunSlot] = useState<Slot>("now");
+  const runTime = runDay === "tomorrow" ? `tomorrow_${runSlot}` : runSlot;
+  function timePassed(slot: Slot): boolean {
+    const h = new Date().getHours();
+    return (slot === "morning" && h >= 11) || (slot === "midday" && h >= 15) || (slot === "evening" && h >= 22);
+  }
+  function pickDay(d: "today" | "tomorrow") {
+    setRunDay(d);
+    if (d === "tomorrow" && runSlot === "now") setRunSlot("morning");
+    if (d === "today" && timePassed(runSlot)) setRunSlot("now");
+  }
   const [availableMinutes, setAvailableMinutes] = useState("");
   const [moodNote, setMoodNote] = useState("");
+  const [mood, setMood] = useState<Mood | null>(null);
+  const [runIntent, setRunIntent] = useState<Intent | null>(null);
+  const [lengthMode, setLengthMode] = useState<"miles" | "minutes">("miles");
+  const [showNote, setShowNote] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -123,6 +155,8 @@ function CheckinPage() {
           run_time: runTime,
           available_minutes: !plannedDistance && availableMinutes ? parseFloat(availableMinutes) : null,
           mood_note: moodNote.trim() || null,
+          mood,
+          run_intent: runIntent,
         }),
       });
       if (!response.ok) throw new Error(`Server responded with ${response.status}`);
@@ -135,9 +169,11 @@ function CheckinPage() {
   }
 
   const hours = parseFloat(sleepHours);
+  const hoursWord = Number.isNaN(hours)
+    ? "Tap + or −"
+    : hours >= 8 ? "A full night" : hours >= 7 ? "Solid night" : hours >= 6 ? "A bit short" : "Short night";
   function bumpSleep(delta: number) {
-    const base = Number.isNaN(hours) ? 7 : hours;
-    const next = Math.min(14, Math.max(0, base + delta));
+    const next = Number.isNaN(hours) ? 7 : Math.min(14, Math.max(0, hours + delta));
     setSleepHours(String(next));
   }
   const today = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
@@ -155,19 +191,25 @@ function CheckinPage() {
       : soreNames.length <= 2
         ? `a sore ${soreNames.join(" and ")}`
         : `${soreNames.length} sore spots`;
-  const feelSentence = `${energyPhrase}, ${sleepPhrase}, ${sorePhrase}.`;
+  const moodPhrase = mood ? { good: ", feeling good", stressed: ", a bit stressed", restless: ", restless", flat: ", feeling flat", low: ", feeling low" }[mood] : "";
+  const feelSentence = `${energyPhrase}${moodPhrase}, ${sleepPhrase}, ${sorePhrase}.`;
 
   const extras: string[] = [];
   if (soreNames.length > 0) extras.push("goes easy on the sore spots");
   if (wantsScenic) extras.push("has a view");
   if (wantsAdventure) extras.push("is somewhere new");
   const surfaceWord = surfacePreference === "trail" ? " of trail" : surfacePreference === "road" ? " of road" : "";
+  const intentWord = runIntent ? { easy: "easy ", workout: "workout ", long: "long ", explore: "" }[runIntent] : "";
   const what = plannedDistance
-    ? `${plannedDistance} miles${surfaceWord}`
+    ? `${plannedDistance} miles${surfaceWord}${runIntent === "easy" ? ", nice and flat" : runIntent === "workout" ? " with even footing" : ""}`
+    : runIntent && !availableMinutes
+      ? `a ${intentWord}${surfacePreference || ""} run`.replace("  ", " ").replace(" run", runIntent === "explore" ? " run somewhere new" : " run").replace(/^a easy/, "an easy")
     : availableMinutes
       ? `a ${availableMinutes}-minute ${surfacePreference || ""} run`.replace("  ", " ")
       : `a ${surfacePreference || ""} run`.replace("  ", " ");
-  const whenPhrase = RUN_TIMES.find((t) => t.value === runTime)?.phrase ?? "";
+  const whenPhrase = runDay === "tomorrow"
+    ? ` tomorrow ${runSlot === "midday" ? "around midday" : runSlot}`
+    : RUN_TIMES.find((t) => t.value === runSlot)?.phrase ?? "";
   const where = willingToDrive ? ` within a ${willingToDrive}-minute drive` : " close to home";
   const planSentence =
     `We'll look for ${what}${where}${whenPhrase}` +
@@ -187,9 +229,9 @@ function CheckinPage() {
           {/* 01 Energy */}
           <li className="ci-step">
             <span className="ci-marker">01</span>
-            <section className="ci-card">
+            <section className="ci-card ci-energy-card" style={{ ["--e" as string]: energy / 10 } as React.CSSProperties}>
               <div className="ci-card-head">
-                <h2>Energy</h2>
+                <h2><span className="ci-badge energy" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L4.5 13.5H11L10 22l8.5-11.5H12L13 2z" /></svg></span>Energy</h2>
                 <span className="ci-readout">
                   <span className="ci-big">{energy}</span>
                   <span className="ci-word">{ENERGY_WORDS[energy]}</span>
@@ -204,7 +246,7 @@ function CheckinPage() {
                     aria-checked={energy === i}
                     aria-label={`Energy ${i}`}
                     className={`ci-energy-seg ${i <= energy ? "on" : ""} ${energy === i ? "current" : ""}`}
-                    style={{ height: `${28 + i * 4}px` }}
+                    style={{ height: `${28 + i * 4}px`, ["--i" as string]: i / 10 } as React.CSSProperties}
                     onClick={() => setEnergy(i)}
                   />
                 ))}
@@ -212,6 +254,26 @@ function CheckinPage() {
               <div className="ci-ends">
                 <span>Drained</span>
                 <span>Electric</span>
+              </div>
+
+              <div className="ci-mood">
+                <span className="ci-field-label">And your head?</span>
+                <div className="ci-mood-row" role="radiogroup" aria-label="Mood">
+                  {MOODS.map((m) => (
+                    <button
+                      key={m.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={mood === m.value}
+                      className={`ci-mood-opt mood-${m.value} ${mood === m.value ? "on" : ""}`}
+                      onClick={() => setMood(mood === m.value ? null : m.value)}
+                    >
+                      <span className="ci-mood-dot" aria-hidden="true" />
+                      <strong>{m.label}</strong>
+                      <small>{m.hint}</small>
+                    </button>
+                  ))}
+                </div>
               </div>
             </section>
           </li>
@@ -221,18 +283,23 @@ function CheckinPage() {
             <span className="ci-marker">02</span>
             <section className="ci-card">
               <div className="ci-card-head">
-                <h2>Sleep</h2>
+                <h2><span className="ci-badge sleep" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z" /></svg></span>Sleep</h2>
               </div>
               <div className="ci-sleep">
+                <div className="ci-sleep-panel">
+                <span className="ci-panel-label">Hours</span>
                 <div className="ci-stepper">
                   <button type="button" onClick={() => bumpSleep(-0.5)} aria-label="Less sleep">−</button>
                   <div className="ci-stepper-value">
-                    <span className="ci-big">{Number.isNaN(hours) ? "–" : hours}</span>
-                    <span className="ci-unit">hours</span>
+                    <span className={`ci-big ${Number.isNaN(hours) ? "placeholder" : ""}`}>{Number.isNaN(hours) ? 7 : hours}</span>
+
                   </div>
                   <button type="button" onClick={() => bumpSleep(0.5)} aria-label="More sleep">+</button>
                 </div>
-                <div className="ci-moons-wrap">
+                <span className="ci-word">{hoursWord}</span>
+                </div>
+                <div className="ci-sleep-panel">
+                  <span className="ci-panel-label">Quality</span>
                   <div className="ci-moons" role="radiogroup" aria-label="Sleep quality from 1 to 5">
                     {Array.from({ length: 5 }, (_, i) => (
                       <button
@@ -267,7 +334,7 @@ function CheckinPage() {
             <span className="ci-marker">03</span>
             <section className="ci-card">
               <div className="ci-card-head">
-                <h2>Anything sore?</h2>
+                <h2><span className="ci-badge body" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="5" r="2" /><path d="M12 8v6M8 10l4 2 4-2M10 21l2-7 2 7" /></svg></span>Anything sore?</h2>
                 <button
                   type="button"
                   className={`ci-chip ${soreParts.length === 0 ? "on" : ""}`}
@@ -300,144 +367,206 @@ function CheckinPage() {
             <span className="ci-marker">04</span>
             <section className="ci-card">
               <div className="ci-card-head">
-                <h2>Today's run</h2>
+                <h2><span className="ci-badge run" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 16c2-.5 3.5-2 5.5-2s3 1.5 5 1.5S18 14 20 14M4 20h16" /><path d="M7 14V9l4-3 3 3h3" /></svg></span>Today's run</h2>
               </div>
 
-              <div className="ci-field">
-                <span className="ci-field-label">When are you heading out?</span>
-                <div className="ci-segmented">
-                  {RUN_TIMES.map((t) => (
+              {/* group 1: the run itself */}
+              <div className="ci-group">
+                <span className="ci-group-label">The run</span>
+                <div className="ci-intents" role="radiogroup" aria-label="What this run is for">
+                  {INTENTS.map((t) => (
                     <button
                       key={t.value}
                       type="button"
-                      className={runTime === t.value ? "on" : ""}
-                      onClick={() => setRunTime(t.value)}
+                      role="radio"
+                      aria-checked={runIntent === t.value}
+                      className={`ci-intent ${runIntent === t.value ? "on" : ""}`}
+                      onClick={() => {
+                        const next = runIntent === t.value ? null : t.value;
+                        setRunIntent(next);
+                        setWantsAdventure(next === "explore");
+                      }}
                     >
-                      {t.label}
+                      <strong>{t.label}</strong>
+                      <small>{t.hint}</small>
                     </button>
                   ))}
                 </div>
-                <span className="ci-field-help">Pathos checks the heat, air quality and daylight for then.</span>
+
+                <div className="ci-length">
+                  <div className="ci-length-head">
+                    <span className="ci-field-label">{lengthMode === "miles" ? "How far?" : "How long?"}</span>
+                    <div className="ci-mini-switch" role="tablist" aria-label="Distance or time">
+                      <button type="button" role="tab" aria-selected={lengthMode === "miles"}
+                        className={lengthMode === "miles" ? "on" : ""}
+                        onClick={() => { setLengthMode("miles"); setAvailableMinutes(""); }}>
+                        Miles
+                      </button>
+                      <button type="button" role="tab" aria-selected={lengthMode === "minutes"}
+                        className={lengthMode === "minutes" ? "on" : ""}
+                        onClick={() => { setLengthMode("minutes"); setPlannedDistance(""); }}>
+                        Minutes
+                      </button>
+                    </div>
+                  </div>
+                  <div className="ci-chips">
+                    {lengthMode === "miles" ? (
+                      <>
+                        {DISTANCE_CHIPS.map((d) => (
+                          <button
+                            key={d}
+                            type="button"
+                            className={`ci-chip ${plannedDistance === String(d) ? "on" : ""}`}
+                            onClick={() => setPlannedDistance(plannedDistance === String(d) ? "" : String(d))}
+                          >
+                            {d}
+                          </button>
+                        ))}
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          className="ci-chip-input"
+                          placeholder="Other"
+                          aria-label="Other distance in miles"
+                          value={DISTANCE_CHIPS.map(String).includes(plannedDistance) ? "" : plannedDistance}
+                          onChange={(e) => setPlannedDistance(e.target.value)}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        {MINUTE_CHIPS.map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            className={`ci-chip ${availableMinutes === String(m) ? "on" : ""}`}
+                            onClick={() => setAvailableMinutes(availableMinutes === String(m) ? "" : String(m))}
+                          >
+                            {m}
+                          </button>
+                        ))}
+                        <input
+                          type="number"
+                          min="5"
+                          step="5"
+                          className="ci-chip-input"
+                          placeholder="Other"
+                          aria-label="Other time in minutes"
+                          value={MINUTE_CHIPS.map(String).includes(availableMinutes) ? "" : availableMinutes}
+                          onChange={(e) => setAvailableMinutes(e.target.value)}
+                        />
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
 
-              <div className="ci-field">
-                <span className="ci-field-label">How far?</span>
-                <div className="ci-chips">
-                  {DISTANCE_CHIPS.map((d) => (
-                    <button
-                      key={d}
-                      type="button"
-                      className={`ci-chip ${plannedDistance === String(d) ? "on" : ""}`}
-                      onClick={() => {
-                        setPlannedDistance(plannedDistance === String(d) ? "" : String(d));
-                        setAvailableMinutes("");
-                      }}
-                    >
-                      {d} mi
-                    </button>
-                  ))}
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    className="ci-chip-input"
-                    placeholder="Other"
-                    value={DISTANCE_CHIPS.map(String).includes(plannedDistance) ? "" : plannedDistance}
-                    onChange={(e) => {
-                      setPlannedDistance(e.target.value);
-                      setAvailableMinutes("");
-                    }}
+              {/* group 2: logistics, as settings rows */}
+              <div className="ci-group">
+                <span className="ci-group-label">Details</span>
+                <div className="ci-rows">
+                  <div className="ci-row ci-row-stack">
+                    <div className="ci-row-top">
+                      <span className="ci-row-label">When</span>
+                      <div className="ci-mini-switch" role="tablist" aria-label="Day">
+                        {(["today", "tomorrow"] as const).map((d) => (
+                          <button
+                            key={d}
+                            type="button"
+                            role="tab"
+                            aria-selected={runDay === d}
+                            className={runDay === d ? "on" : ""}
+                            onClick={() => pickDay(d)}
+                          >
+                            {d === "today" ? "Today" : "Tomorrow"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="ci-times">
+                      {RUN_TIMES.filter((t) => runDay === "today" || t.value !== "now").map((t) => {
+                        const passed = runDay === "today" && timePassed(t.value);
+                        return (
+                          <button
+                            key={t.value}
+                            type="button"
+                            disabled={passed}
+                            className={`ci-time ${runSlot === t.value ? "on" : ""}`}
+                            onClick={() => setRunSlot(t.value)}
+                            title={passed ? "Already passed today" : undefined}
+                          >
+                            <strong>{t.label}</strong>
+                            <small>{t.when}</small>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="ci-row">
+                    <span className="ci-row-label">Drive</span>
+                    <div className="ci-segmented compact">
+                      {DRIVE_CHIPS.map((c) => (
+                        <button
+                          key={c.label}
+                          type="button"
+                          className={willingToDrive === c.value ? "on" : ""}
+                          onClick={() => setWillingToDrive(c.value)}
+                        >
+                          {c.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="ci-row">
+                    <span className="ci-row-label">Surface</span>
+                    <div className="ci-segmented compact">
+                      {([["", "Either"], ["road", "Road"], ["trail", "Trail"]] as const).map(([v, label]) => (
+                        <button
+                          key={label}
+                          type="button"
+                          className={surfacePreference === v ? "on" : ""}
+                          onClick={() => setSurfacePreference(v)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <label className="ci-row ci-row-toggle">
+                    <span className="ci-row-label">
+                      Make it scenic
+                      <small>Views over speed today</small>
+                    </span>
+                    <span className={`ci-switch ${wantsScenic ? "on" : ""}`}>
+                      <input
+                        type="checkbox"
+                        checked={wantsScenic}
+                        onChange={(e) => setWantsScenic(e.target.checked)}
+                      />
+                      <span aria-hidden="true" />
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              {/* note: tucked away until wanted */}
+              {showNote || moodNote ? (
+                <label className="ci-note">
+                  <span className="ci-field-label">Anything else on your mind?</span>
+                  <textarea
+                    rows={2}
+                    maxLength={280}
+                    value={moodNote}
+                    onChange={(e) => setMoodNote(e.target.value)}
+                    placeholder="Stressful day, want to clear my head..."
+                    autoFocus={!moodNote}
                   />
-                </div>
-                <span className="ci-field-help ci-or">or, how much time do you have?</span>
-                <div className="ci-chips">
-                  {MINUTE_CHIPS.map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      className={`ci-chip ${availableMinutes === String(m) ? "on" : ""}`}
-                      onClick={() => {
-                        setAvailableMinutes(availableMinutes === String(m) ? "" : String(m));
-                        setPlannedDistance("");
-                      }}
-                    >
-                      {m} min
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="ci-field">
-                <span className="ci-field-label">Willing to drive?</span>
-                <div className="ci-segmented">
-                  {DRIVE_CHIPS.map((c) => (
-                    <button
-                      key={c.label}
-                      type="button"
-                      className={willingToDrive === c.value ? "on" : ""}
-                      onClick={() => setWillingToDrive(c.value)}
-                    >
-                      {c.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="ci-field">
-                <span className="ci-field-label">Road or trail?</span>
-                <div className="ci-segmented">
-                  {([["", "Either"], ["road", "Road"], ["trail", "Trail"]] as const).map(([v, label]) => (
-                    <button
-                      key={label}
-                      type="button"
-                      className={surfacePreference === v ? "on" : ""}
-                      onClick={() => setSurfacePreference(v)}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="ci-vibes">
-                <button
-                  type="button"
-                  aria-pressed={wantsAdventure}
-                  className={`ci-vibe ${wantsAdventure ? "on" : ""}`}
-                  onClick={() => setWantsAdventure(!wantsAdventure)}
-                >
-                  <span className="ci-vibe-icon">🧭</span>
-                  <span>
-                    <strong>Something new</strong>
-                    <small>Explore a route you haven't run</small>
-                  </span>
+                </label>
+              ) : (
+                <button type="button" className="ci-add-note" onClick={() => setShowNote(true)}>
+                  + Add a note
                 </button>
-                <button
-                  type="button"
-                  aria-pressed={wantsScenic}
-                  className={`ci-vibe ${wantsScenic ? "on" : ""}`}
-                  onClick={() => setWantsScenic(!wantsScenic)}
-                >
-                  <span className="ci-vibe-icon">🌄</span>
-                  <span>
-                    <strong>Make it scenic</strong>
-                    <small>Views over speed today</small>
-                  </span>
-                </button>
-              </div>
-
-              <label className="ci-field ci-note">
-                <span className="ci-field-label">
-                  Anything else on your mind? <span className="ci-optional">optional</span>
-                </span>
-                <textarea
-                  rows={2}
-                  maxLength={280}
-                  value={moodNote}
-                  onChange={(e) => setMoodNote(e.target.value)}
-                  placeholder="Stressful day, want to clear my head..."
-                />
-              </label>
+              )}
             </section>
           </li>
 

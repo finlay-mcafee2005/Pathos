@@ -48,6 +48,8 @@ def add_new_columns():
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS run_time VARCHAR"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS available_minutes FLOAT"))
+        conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS mood VARCHAR"))
+        conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS run_intent VARCHAR"))
         conn.execute(text("ALTER TABLE club ADD COLUMN IF NOT EXISTS latitude FLOAT"))
         conn.execute(text("ALTER TABLE club ADD COLUMN IF NOT EXISTS longitude FLOAT"))
         conn.execute(text("ALTER TABLE clubschedule ADD COLUMN IF NOT EXISTS distance_mi FLOAT"))
@@ -296,8 +298,11 @@ class CheckinRequest(BaseModel):
     mood_note: Optional[str] = None
     planned_distance_miles: Optional[float] = None
     willing_to_drive_miles: Optional[float] = None
-    run_time: Optional[Literal["now", "morning", "midday", "evening"]] = None
+    run_time: Optional[Literal["now", "morning", "midday", "evening",
+                               "tomorrow_morning", "tomorrow_midday", "tomorrow_evening"]] = None
     available_minutes: Optional[float] = None
+    mood: Optional[Literal["stressed", "flat", "good", "restless", "low"]] = None
+    run_intent: Optional[Literal["easy", "workout", "long", "explore"]] = None
 
 
 @app.post("/checkins")
@@ -317,6 +322,8 @@ def create_checkin(payload: CheckinRequest, session: Session = Depends(get_sessi
         mood_note=(payload.mood_note or "").strip() or None,
         run_time=payload.run_time,
         available_minutes=payload.available_minutes,
+        mood=payload.mood,
+        run_intent=payload.run_intent,
     )
     session.add(checkin)
     session.commit()

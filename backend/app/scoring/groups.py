@@ -181,11 +181,13 @@ def score_session(s: GroupSession, runner: RunnerToday, starts_at: datetime, now
     is_today = starts_at.date() == now.date()
     if is_today and runner.checked_in_today:
         rt = runner.run_time or "now"
+        if rt.startswith("tomorrow_"):
+            rt = "never"          # running tomorrow, so no session today is "when you planned"
         hour = starts_at.hour + starts_at.minute / 60
         if rt == "now":
             in_window = 0 <= (starts_at - now).total_seconds() / 3600 <= 2
         else:
-            a, b = RUN_TIME_WINDOWS.get(rt, (0, 24))
+            a, b = RUN_TIME_WINDOWS.get(rt, (0, 0))
             in_window = a <= hour < b
         if in_window:
             fit += 10
