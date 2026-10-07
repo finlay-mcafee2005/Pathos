@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import ThemeToggle from "../components/ThemeToggle";
 
 const MUSCLE_GROUPS = [
   // Front view
@@ -26,6 +25,23 @@ const MUSCLE_GROUPS = [
   { id: "right_calf", label: "Right calf", view: "back", path: "M 124 264 Q 130 290 122 318 Q 120 325 115 328 L 109 328 Q 108 325 110 318 Q 109 290 110 264 Q 117 261 124 264 Z" },
 ];
 
+const ENERGY_WORDS = ["Running on empty", "Running on empty", "Running on empty", "A bit flat", "A bit flat", "Steady", "Steady", "Feeling good", "Feeling good", "Fired up", "Fired up"];
+const SLEEP_WORDS = ["", "Restless", "Light", "Okay", "Solid", "Deep"];
+const DISTANCE_CHIPS = [2, 3, 4, 5, 6, 8, 10];
+const MINUTE_CHIPS = [20, 30, 45, 60, 90];
+const RUN_TIMES: { value: "now" | "morning" | "midday" | "evening"; label: string; phrase: string }[] = [
+  { value: "now", label: "Now", phrase: "" },
+  { value: "morning", label: "Morning", phrase: " in the morning" },
+  { value: "midday", label: "Midday", phrase: " around midday" },
+  { value: "evening", label: "Evening", phrase: " this evening" },
+];
+const DRIVE_CHIPS: { label: string; value: string }[] = [
+  { label: "Near home", value: "" },
+  { label: "15 min", value: "15" },
+  { label: "30 min", value: "30" },
+  { label: "45 min", value: "45" },
+];
+
 function CheckinPage() {
   const navigate = useNavigate();
   const userId = localStorage.getItem("user_id");
@@ -39,6 +55,9 @@ function CheckinPage() {
   const [wantsAdventure, setWantsAdventure] = useState(false);
   const [wantsScenic, setWantsScenic] = useState(false);
   const [surfacePreference, setSurfacePreference] = useState<"" | "trail" | "road">("");
+  const [runTime, setRunTime] = useState<"now" | "morning" | "midday" | "evening">("now");
+  const [availableMinutes, setAvailableMinutes] = useState("");
+  const [moodNote, setMoodNote] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -101,6 +120,9 @@ function CheckinPage() {
           wants_adventure: wantsAdventure,
           wants_scenic: wantsScenic,
           surface_preference: surfacePreference || null,
+          run_time: runTime,
+          available_minutes: !plannedDistance && availableMinutes ? parseFloat(availableMinutes) : null,
+          mood_note: moodNote.trim() || null,
         }),
       });
       if (!response.ok) throw new Error(`Server responded with ${response.status}`);
@@ -112,192 +134,349 @@ function CheckinPage() {
     }
   }
 
+  const hours = parseFloat(sleepHours);
+  function bumpSleep(delta: number) {
+    const base = Number.isNaN(hours) ? 7 : hours;
+    const next = Math.min(14, Math.max(0, base + delta));
+    setSleepHours(String(next));
+  }
+  const today = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+
+  // turn the answers into two plain sentences for the finish card
+  const energyPhrase =
+    energy <= 2 ? "Low energy" : energy <= 4 ? "A little flat" : energy <= 6 ? "Steady energy" : energy <= 8 ? "Good energy" : "Fired up";
+  const sleepPhrase = Number.isNaN(hours)
+    ? `${SLEEP_WORDS[sleepQuality].toLowerCase()} sleep`
+    : `${hours}h of ${SLEEP_WORDS[sleepQuality].toLowerCase()} sleep`;
+  const soreNames = soreParts.map((id) => MUSCLE_GROUPS.find((m) => m.id === id)?.label.toLowerCase() ?? id);
+  const sorePhrase =
+    soreNames.length === 0
+      ? "nothing sore"
+      : soreNames.length <= 2
+        ? `a sore ${soreNames.join(" and ")}`
+        : `${soreNames.length} sore spots`;
+  const feelSentence = `${energyPhrase}, ${sleepPhrase}, ${sorePhrase}.`;
+
+  const extras: string[] = [];
+  if (soreNames.length > 0) extras.push("goes easy on the sore spots");
+  if (wantsScenic) extras.push("has a view");
+  if (wantsAdventure) extras.push("is somewhere new");
+  const surfaceWord = surfacePreference === "trail" ? " of trail" : surfacePreference === "road" ? " of road" : "";
+  const what = plannedDistance
+    ? `${plannedDistance} miles${surfaceWord}`
+    : availableMinutes
+      ? `a ${availableMinutes}-minute ${surfacePreference || ""} run`.replace("  ", " ")
+      : `a ${surfacePreference || ""} run`.replace("  ", " ");
+  const whenPhrase = RUN_TIMES.find((t) => t.value === runTime)?.phrase ?? "";
+  const where = willingToDrive ? ` within a ${willingToDrive}-minute drive` : " close to home";
+  const planSentence =
+    `We'll look for ${what}${where}${whenPhrase}` +
+    (extras.length ? ` that ${extras.length > 1 ? extras.slice(0, -1).join(", ") + " and " + extras[extras.length - 1] : extras[0]}` : "") +
+    ".";
+
   return (
-    <div className="app">
-      <ThemeToggle />
-      <header className="header">
-        <h1>Daily check-in</h1>
+    <div className="app checkin-page">
+      <header className="ci-intro">
+        <span className="ci-eyebrow">Daily check-in · {today}</span>
+        <h1>How's the body today?</h1>
+        <p>Four quick questions. Pathos picks the route to match.</p>
       </header>
 
-      <form className="form" onSubmit={handleSubmit}>
-        <section className="form-section">
-          <h2>
-            <span className="form-section-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" fill="currentColor" />
-              </svg>
-            </span>
-            Mental energy
-          </h2>
-          <label>
-            <div className="scale-header">
-              <span>Energy level</span>
-              <span className="slider-value-badge">{energy}</span>
-            </div>
-            <div className="energy-bars">
-              {Array.from({ length: 10 }, (_, i) => (
-                <div key={i} className={`energy-bar ${i < energy ? "filled" : ""}`} />
-              ))}
-            </div>
-            <div className="scale-endpoints">
-              <span>Low</span>
-              <span>High</span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="10"
-              value={energy}
-              onChange={(e) => setEnergy(parseInt(e.target.value))}
-            />
-          </label>
-        </section>
-
-        <section className="form-section">
-          <h2>
-            <span className="form-section-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <rect x="2" y="10" width="20" height="8" rx="2" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-                <path d="M4 10V7a2 2 0 012-2h12a2 2 0 012 2v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </span>
-            Sleep last night
-          </h2>
-          <label>
-            Hours of sleep
-            <input
-              type="number"
-              step="0.5"
-              min="0"
-              value={sleepHours}
-              onChange={(e) => setSleepHours(e.target.value)}
-            />
-          </label>
-          <label>
-            <div className="scale-header">
-              <span>Sleep quality</span>
-              <span className="slider-value-badge">{sleepQuality}/5</span>
-            </div>
-            <div className="quality-moons">
-              {Array.from({ length: 5 }, (_, i) => (
-                <svg
-                  key={i}
-                  width="30"
-                  height="30"
-                  viewBox="0 0 24 24"
-                  className={`quality-moon ${i < sleepQuality ? "filled" : ""}`}
-                >
-                  <path
-                    d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"
-                    fill={i < sleepQuality ? "currentColor" : "none"}
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinejoin="round"
+      <form onSubmit={handleSubmit}>
+        <ol className="ci-steps">
+          {/* 01 Energy */}
+          <li className="ci-step">
+            <span className="ci-marker">01</span>
+            <section className="ci-card">
+              <div className="ci-card-head">
+                <h2>Energy</h2>
+                <span className="ci-readout">
+                  <span className="ci-big">{energy}</span>
+                  <span className="ci-word">{ENERGY_WORDS[energy]}</span>
+                </span>
+              </div>
+              <div className="ci-energy" role="radiogroup" aria-label="Energy level from 0 to 10">
+                {Array.from({ length: 11 }, (_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    role="radio"
+                    aria-checked={energy === i}
+                    aria-label={`Energy ${i}`}
+                    className={`ci-energy-seg ${i <= energy ? "on" : ""} ${energy === i ? "current" : ""}`}
+                    style={{ height: `${28 + i * 4}px` }}
+                    onClick={() => setEnergy(i)}
                   />
-                </svg>
-              ))}
-            </div>
-            <div className="scale-endpoints">
-              <span>Poor</span>
-              <span>Great</span>
-            </div>
-            <input
-              type="range"
-              min="1"
-              max="5"
-              value={sleepQuality}
-              onChange={(e) => setSleepQuality(parseInt(e.target.value))}
-            />
-          </label>
-        </section>
+                ))}
+              </div>
+              <div className="ci-ends">
+                <span>Drained</span>
+                <span>Electric</span>
+              </div>
+            </section>
+          </li>
 
-        <section className="form-section">
-          <h2>
-            <span className="form-section-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="2" />
-                <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          {/* 02 Sleep */}
+          <li className="ci-step">
+            <span className="ci-marker">02</span>
+            <section className="ci-card">
+              <div className="ci-card-head">
+                <h2>Sleep</h2>
+              </div>
+              <div className="ci-sleep">
+                <div className="ci-stepper">
+                  <button type="button" onClick={() => bumpSleep(-0.5)} aria-label="Less sleep">−</button>
+                  <div className="ci-stepper-value">
+                    <span className="ci-big">{Number.isNaN(hours) ? "–" : hours}</span>
+                    <span className="ci-unit">hours</span>
+                  </div>
+                  <button type="button" onClick={() => bumpSleep(0.5)} aria-label="More sleep">+</button>
+                </div>
+                <div className="ci-moons-wrap">
+                  <div className="ci-moons" role="radiogroup" aria-label="Sleep quality from 1 to 5">
+                    {Array.from({ length: 5 }, (_, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        role="radio"
+                        aria-checked={sleepQuality === i + 1}
+                        aria-label={`Sleep quality ${i + 1}`}
+                        className={`ci-moon ${i < sleepQuality ? "on" : ""}`}
+                        onClick={() => setSleepQuality(i + 1)}
+                      >
+                        <svg width="28" height="28" viewBox="0 0 24 24">
+                          <path
+                            d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"
+                            fill={i < sleepQuality ? "currentColor" : "none"}
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
+                    ))}
+                  </div>
+                  <span className="ci-word">{SLEEP_WORDS[sleepQuality]} sleep</span>
+                </div>
+              </div>
+            </section>
+          </li>
+
+          {/* 03 Body */}
+          <li className="ci-step">
+            <span className="ci-marker">03</span>
+            <section className="ci-card">
+              <div className="ci-card-head">
+                <h2>Anything sore?</h2>
+                <button
+                  type="button"
+                  className={`ci-chip ${soreParts.length === 0 ? "on" : ""}`}
+                  onClick={() => setSoreParts([])}
+                >
+                  Feeling fresh
+                </button>
+              </div>
+              <p className="ci-hint">Tap the muscles that are talking to you today.</p>
+              <svg viewBox="0 -20 400 370" className="body-map-dual">
+                <text x="130" y="10" textAnchor="middle" className="body-view-label">Front</text>
+                <text x="310" y="10" textAnchor="middle" className="body-view-label">Back</text>
+                <SilhouetteBody view="front" offsetX={30} />
+                <SilhouetteBody view="back" offsetX={210} />
+              </svg>
+              {soreParts.length > 0 && (
+                <div className="ci-sore-list">
+                  {soreParts.map((id) => (
+                    <button key={id} type="button" className="ci-chip on removable" onClick={() => toggleBodyPart(id)}>
+                      {MUSCLE_GROUPS.find((p) => p.id === id)?.label} ✕
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
+          </li>
+
+          {/* 04 Today's run */}
+          <li className="ci-step">
+            <span className="ci-marker">04</span>
+            <section className="ci-card">
+              <div className="ci-card-head">
+                <h2>Today's run</h2>
+              </div>
+
+              <div className="ci-field">
+                <span className="ci-field-label">When are you heading out?</span>
+                <div className="ci-segmented">
+                  {RUN_TIMES.map((t) => (
+                    <button
+                      key={t.value}
+                      type="button"
+                      className={runTime === t.value ? "on" : ""}
+                      onClick={() => setRunTime(t.value)}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+                <span className="ci-field-help">Pathos checks the heat, air quality and daylight for then.</span>
+              </div>
+
+              <div className="ci-field">
+                <span className="ci-field-label">How far?</span>
+                <div className="ci-chips">
+                  {DISTANCE_CHIPS.map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      className={`ci-chip ${plannedDistance === String(d) ? "on" : ""}`}
+                      onClick={() => {
+                        setPlannedDistance(plannedDistance === String(d) ? "" : String(d));
+                        setAvailableMinutes("");
+                      }}
+                    >
+                      {d} mi
+                    </button>
+                  ))}
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    className="ci-chip-input"
+                    placeholder="Other"
+                    value={DISTANCE_CHIPS.map(String).includes(plannedDistance) ? "" : plannedDistance}
+                    onChange={(e) => {
+                      setPlannedDistance(e.target.value);
+                      setAvailableMinutes("");
+                    }}
+                  />
+                </div>
+                <span className="ci-field-help ci-or">or, how much time do you have?</span>
+                <div className="ci-chips">
+                  {MINUTE_CHIPS.map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      className={`ci-chip ${availableMinutes === String(m) ? "on" : ""}`}
+                      onClick={() => {
+                        setAvailableMinutes(availableMinutes === String(m) ? "" : String(m));
+                        setPlannedDistance("");
+                      }}
+                    >
+                      {m} min
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="ci-field">
+                <span className="ci-field-label">Willing to drive?</span>
+                <div className="ci-segmented">
+                  {DRIVE_CHIPS.map((c) => (
+                    <button
+                      key={c.label}
+                      type="button"
+                      className={willingToDrive === c.value ? "on" : ""}
+                      onClick={() => setWillingToDrive(c.value)}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="ci-field">
+                <span className="ci-field-label">Road or trail?</span>
+                <div className="ci-segmented">
+                  {([["", "Either"], ["road", "Road"], ["trail", "Trail"]] as const).map(([v, label]) => (
+                    <button
+                      key={label}
+                      type="button"
+                      className={surfacePreference === v ? "on" : ""}
+                      onClick={() => setSurfacePreference(v)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="ci-vibes">
+                <button
+                  type="button"
+                  aria-pressed={wantsAdventure}
+                  className={`ci-vibe ${wantsAdventure ? "on" : ""}`}
+                  onClick={() => setWantsAdventure(!wantsAdventure)}
+                >
+                  <span className="ci-vibe-icon">🧭</span>
+                  <span>
+                    <strong>Something new</strong>
+                    <small>Explore a route you haven't run</small>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={wantsScenic}
+                  className={`ci-vibe ${wantsScenic ? "on" : ""}`}
+                  onClick={() => setWantsScenic(!wantsScenic)}
+                >
+                  <span className="ci-vibe-icon">🌄</span>
+                  <span>
+                    <strong>Make it scenic</strong>
+                    <small>Views over speed today</small>
+                  </span>
+                </button>
+              </div>
+
+              <label className="ci-field ci-note">
+                <span className="ci-field-label">
+                  Anything else on your mind? <span className="ci-optional">optional</span>
+                </span>
+                <textarea
+                  rows={2}
+                  maxLength={280}
+                  value={moodNote}
+                  onChange={(e) => setMoodNote(e.target.value)}
+                  placeholder="Stressful day, want to clear my head..."
+                />
+              </label>
+            </section>
+          </li>
+
+          {/* Finish line */}
+          <li className="ci-step">
+            <span className="ci-marker ci-marker-finish" aria-hidden="true">
+              {/* checkered finish flag */}
+              <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+                <defs>
+                  <clipPath id="finishFlag">
+                    <path d="M6 4c3-1.6 5.5 1.4 8.5 0S19 3.2 20 4v9c-1 -0.8-2.5-1.6-5.5 0S9 13.4 6 15z" />
+                  </clipPath>
+                </defs>
+                <path d="M6 4c3-1.6 5.5 1.4 8.5 0S19 3.2 20 4v9c-1 -0.8-2.5-1.6-5.5 0S9 13.4 6 15z" fill="#fff" />
+                <g clipPath="url(#finishFlag)" fill="#1D4ED8" opacity="0.85">
+                  <rect x="6" y="1" width="3.5" height="3.6" />
+                  <rect x="13" y="1" width="3.5" height="3.6" />
+                  <rect x="9.5" y="4.6" width="3.5" height="3.6" />
+                  <rect x="16.5" y="4.6" width="3.5" height="3.6" />
+                  <rect x="6" y="8.2" width="3.5" height="3.6" />
+                  <rect x="13" y="8.2" width="3.5" height="3.6" />
+                  <rect x="9.5" y="11.8" width="3.5" height="3.6" />
+                  <rect x="16.5" y="11.8" width="3.5" height="3.6" />
+                </g>
+                <path d="M6 3v18" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" />
               </svg>
             </span>
-            Where are you sore?
-          </h2>
-          <p className="hint">Tap any muscle areas that feel sore today.</p>
-          <svg viewBox="0 -20 400 370" className="body-map-dual">
-  <text x="130" y="10" textAnchor="middle" className="body-view-label">Front</text>
-  <text x="310" y="10" textAnchor="middle" className="body-view-label">Back</text>
-  <SilhouetteBody view="front" offsetX={30} />
-  <SilhouetteBody view="back" offsetX={210} />
-</svg>
-          {soreParts.length > 0 && (
-            <p className="selected-parts">
-              Selected: {soreParts.map((id) => MUSCLE_GROUPS.find((p) => p.id === id)?.label).join(", ")}
-            </p>
-          )}
-        </section>
-
-        <section className="form-section">
-          <h2>
-            <span className="form-section-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path d="M13 4l-3 8h4l-2 8 7-11h-4l2-5z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" fill="none" />
-                <circle cx="6" cy="18" r="2" stroke="currentColor" strokeWidth="2" />
-              </svg>
-            </span>
-            Today's run
-          </h2>
-          <label>
-            How many miles are you thinking of running?
-            <input
-              type="number"
-              min="0"
-              value={plannedDistance}
-              onChange={(e) => setPlannedDistance(e.target.value)}
-            />
-          </label>
-          <label>
-            How long are you willing to drive to a trailhead? (minutes, optional)
-            <input
-              type="number"
-              min="0"
-              value={willingToDrive}
-              onChange={(e) => setWillingToDrive(e.target.value)}
-              placeholder="Leave blank for routes near home"
-            />
-          </label>
-          <label className="checkbox-row">
-            <span>Want to try something new today?</span>
-            <input
-              type="checkbox"
-              checked={wantsAdventure}
-              onChange={(e) => setWantsAdventure(e.target.checked)}
-            />
-          </label>
-          <label className="checkbox-row">
-            <span>Prefer something scenic today?</span>
-            <input
-              type="checkbox"
-              checked={wantsScenic}
-              onChange={(e) => setWantsScenic(e.target.checked)}
-            />
-          </label>
-          <label>
-            Road or trail today?
-            <select
-              value={surfacePreference}
-              onChange={(e) => setSurfacePreference(e.target.value as "" | "trail" | "road")}
-            >
-              <option value="">No preference</option>
-              <option value="road">Road</option>
-              <option value="trail">Trail</option>
-            </select>
-          </label>
-        </section>
-
-        {error && <p className="error">Error: {error}</p>}
-
-        <button type="submit" disabled={loading}>
-          {loading ? "Submitting..." : "Get my recommendations"}
-        </button>
+            <section className="ci-finish">
+              <span className="ci-finish-label">Today's read</span>
+              <p className="ci-finish-feel">{feelSentence}</p>
+              <p className="ci-finish-plan">{planSentence}</p>
+              {error && <p className="ci-finish-error">{error}</p>}
+              <button type="submit" disabled={loading}>
+                {loading ? "Finding routes..." : "Find my routes"}
+                <span aria-hidden="true">→</span>
+              </button>
+            </section>
+          </li>
+        </ol>
       </form>
     </div>
   );

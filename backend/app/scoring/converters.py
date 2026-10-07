@@ -46,6 +46,8 @@ def build_daily_checkin(checkin: Checkin) -> DailyCheckin:
         sleep_quality=checkin.sleep_quality,
         surface_preference=checkin.surface_preference,
         willing_to_drive_km=checkin.willing_to_drive_km,
+        run_time=getattr(checkin, "run_time", None),
+        available_minutes=getattr(checkin, "available_minutes", None),
     )
 
 

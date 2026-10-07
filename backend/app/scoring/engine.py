@@ -36,6 +36,9 @@ class DailyCheckin:
     surface_preference: Optional[str] = None  # "trail" | "road" | None (no preference)
     willing_to_drive_km: Optional[float] = None
     today: Optional[date] = None              # defaults to date.today(); set in tests
+    run_time: Optional[str] = None            # "now" | "morning" | "midday" | "evening"
+    available_minutes: Optional[float] = None # time they have; used when no planned distance
+    conditions: Optional[object] = None       # app.conditions.Conditions, or None if unavailable
 
 
 @dataclass
@@ -197,6 +200,23 @@ W_TASTE_SURFACE = 8           # x surface affinity (~ -2..+2), capped at +/-10
 W_TASTE_SCENIC = 2
 W_TASTE_LOOP = 1.5
 W_VARIETY = 10                # max penalty for a pick nearly identical to one above it
+
+# conditions (weather, air, daylight). Safety-type signals, so they can
+# outweigh preferences when things get bad, but stay small on normal days.
+HEAT_START_F = 78             # "feels like" temperature where heat starts to count
+HEAT_SEVERE_F = 95
+W_HEAT_MAX = 20               # long, hilly run in severe heat
+W_UV = 4                      # long exposed run at very high UV
+UV_HIGH = 8
+WIND_STRONG_MPH = 20
+W_WIND = 6                    # hilly / exposed route in strong wind
+AQI_START = 100               # "unhealthy for sensitive groups"
+AQI_SEVERE = 200
+W_AIR_MAX = 25
+RAIN_MUDDY_MM = 5             # rain in the last 48h that leaves trails muddy
+W_MUD = 15
+W_DARK_TRAIL = 20             # finishing an unlit trail after sunset
+W_DARK_ROAD = 6
 
 FITNESS_HILL_FACTOR = {"beginner": 0.6, "intermediate": 1.0, "advanced": 1.4}
 DEFAULT_TYPICAL_RUN_KM = {"beginner": 4.0, "intermediate": 7.0, "advanced": 10.0}
@@ -504,6 +524,54 @@ def score_route(
         add("rating", (avg_rating - 3) * W_RATING_PER_STAR,
             "You've rated this route highly before" if avg_rating >= 4 else None)
 
+    # --- 9. conditions: heat, air quality, wind, mud, daylight -------------
+    cond = checkin.conditions
+    if cond is not None:
+        run_minutes = effective_distance * ctx.pace_min_km + hill * effective_distance * 0.05
+        length = clamp(run_minutes / 90)          # 0 for a short jog, 1 at 90+ minutes
+        steepness = clamp(hill / 40)              # climbing works harder in heat
+
+        feels = getattr(cond, "feels_like_f", None)
+        if feels is None:
+            feels = getattr(cond, "temp_f", None)
+        if feels is not None and feels > HEAT_START_F:
+            heat = clamp((feels - HEAT_START_F) / (HEAT_SEVERE_F - HEAT_START_F))
+            pts = -W_HEAT_MAX * heat * (0.3 + 0.7 * length) * (1 + 0.5 * steepness) / 1.5
+            reason = None
+            if pts <= -4:
+                reason = (f"It'll feel like {feels:.0f}°F - shorter and flatter is the smart call"
+                          if heat < 1 else f"Dangerous heat ({feels:.0f}°F) - keep it short, or go early")
+            add("heat", pts, reason)
+
+        uv = getattr(cond, "uv_index", None)
+        if uv is not None and uv >= UV_HIGH and run_minutes > 45:
+            add("heat", -W_UV * clamp((run_minutes - 45) / 45))
+
+        wind = getattr(cond, "wind_mph", None)
+        if wind is not None and wind >= WIND_STRONG_MPH and (hill >= 20 or surface == "trail"):
+            add("wind", -W_WIND * clamp((wind - WIND_STRONG_MPH) / 15 + 0.3),
+                f"Windy ({wind:.0f} mph) - exposed ridges will be rough" if wind >= 25 else None)
+
+        aqi = getattr(cond, "us_aqi", None)
+        if aqi is not None and aqi > AQI_START:
+            bad = clamp((aqi - AQI_START) / (AQI_SEVERE - AQI_START))
+            pts = -W_AIR_MAX * bad * (0.35 + 0.65 * clamp(run_minutes / 60))
+            add("air", pts,
+                f"Air quality is poor (AQI {aqi:.0f}) - keep it short and easy" if pts <= -3 else None)
+
+        rain = getattr(cond, "rain_last_48h_mm", 0) or 0
+        if rain >= RAIN_MUDDY_MM and surface in ("trail", "mixed"):
+            add("mud", -W_MUD * (1.0 if surface == "trail" else 0.5),
+                "Recent rain - trails may be muddy and slick")
+
+        until_sunset = getattr(cond, "minutes_until_sunset", None)
+        if until_sunset is not None and run_minutes > until_sunset - 10:
+            dark = clamp((run_minutes - until_sunset + 10) / 30)
+            if surface in ("trail", "mixed"):
+                add("daylight", -W_DARK_TRAIL * dark, "You'd finish after sunset - unlit trails are risky")
+            else:
+                add("daylight", -W_DARK_ROAD * dark)
+
     # difficulty of the run as actually run: an out-and-back or 3 laps
     # doubles / triples both the distance and the climbing
     run_gain = hill * effective_distance
@@ -602,6 +670,11 @@ def recommend(
     top_n: int = 3,
 ) -> List[ScoredRoute]:
     ctx = build_personal_context(user, checkin, recent)
+    # "I have 40 minutes" -> a distance target at their usual pace (with a
+    # little slack for stoplights and warm-up)
+    if not checkin.planned_distance_km and checkin.available_minutes:
+        checkin = replace(checkin, planned_distance_km=round(
+            checkin.available_minutes * 0.9 / ctx.pace_min_km, 2))
     scored = [score_route(r, user, checkin, recent, ctx) for r in candidates]
     # gate on the difficulty of the run as it would actually be run
     scored = [s for s in scored if passes_difficulty_gate(s.difficulty, user)]

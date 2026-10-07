@@ -18,7 +18,7 @@ from uuid import UUID, uuid4
 
 from sqlmodel import SQLModel, Field, Relationship
 from geoalchemy2 import Geometry
-from sqlalchemy import Column
+from sqlalchemy import Column, UniqueConstraint
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +86,8 @@ class Checkin(SQLModel, table=True):
     mood_note: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     willing_to_drive_km: Optional[float] = None
+    run_time: Optional[str] = None             # "now" | "morning" | "midday" | "evening"
+    available_minutes: Optional[float] = None
 
     user: User = Relationship(back_populates="checkins")
 # ---------------------------------------------------------------------------
@@ -125,6 +127,12 @@ class Run(SQLModel, table=True):
     pace_min_km: float
     rating: Optional[int] = Field(default=None, ge=1, le=5)
     post_run_soreness: Optional[int] = Field(default=None, ge=0, le=10)
+    # filled in when imported from a watch file
+    duration_s: Optional[float] = None
+    elevation_gain_m: Optional[float] = None
+    avg_heart_rate: Optional[float] = None
+    max_heart_rate: Optional[float] = None
+    source: Optional[str] = None          # "manual" | "gpx" | "tcx" | "fit" | "follow"
 
     user: User = Relationship(back_populates="runs")
     route: Optional[Route] = Relationship(back_populates="runs")
@@ -159,6 +167,11 @@ class Club(SQLModel, table=True):
     pace_range: str           # e.g. "8:00-9:30 min/mi"
     experience_level: str     # "beginner" | "intermediate" | "advanced" | "all"
     join_code: Optional[str] = Field(default=None, unique=True, index=True)
+    latitude: Optional[float] = None      # where the group usually meets
+    longitude: Optional[float] = None
+    source_url: Optional[str] = None      # where the schedule came from
+    verified_on: Optional[date] = None    # when we last checked it
+    notes: Optional[str] = None           # caveats (fees, varying times, ...)
 
     schedules: List["ClubSchedule"] = Relationship(back_populates="club")
 
@@ -168,6 +181,22 @@ class ClubSchedule(SQLModel, table=True):
 
     day_of_week: str          # "monday", "tuesday", ...
     meetup_time: str          # store as string ("18:30") to keep it simple
+    distance_mi: Optional[float] = None   # typical distance for this session
+    run_type: Optional[str] = None        # "easy" | "long" | "workout" | "social"
+    surface: Optional[str] = None         # "road" | "trail" | "mixed"
 
     club: Club = Relationship(back_populates="schedules")
+
+
+# ---------------------------------------------------------------------------
+# FavoriteRoute (routes a user has saved from their recommendations)
+# ---------------------------------------------------------------------------
+
+class FavoriteRoute(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("user_id", "route_id", name="uq_favorite_user_route"),)
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    user_id: UUID = Field(foreign_key="user.id", index=True)
+    route_id: UUID = Field(foreign_key="route.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 

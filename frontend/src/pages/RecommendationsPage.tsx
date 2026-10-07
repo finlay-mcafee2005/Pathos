@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { MapContainer, TileLayer, Polyline, CircleMarker, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import ThemeToggle from "../components/ThemeToggle";
+import RouteExportButtons from "../components/RouteExportButtons";
+import { type GroupMatch, formatMeetTime, sessionTitle } from "./GroupsPage";
 
 function MapResizer({ path }: { path: [number, number][] }) {
   const map = useMap();
@@ -34,38 +35,126 @@ type Recommendation = {
   estimated_minutes?: number;
   score_breakdown?: Record<string, number>;
   effective_distance_km?: number;
+  run_format?: string;
+  repeat_count?: number;
   path: [number, number][];
 };
 
-// friendly names for the scoring engine's breakdown keys
-const BREAKDOWN_LABELS: Record<string, string> = {
-  soreness: "Sore muscles vs. surface",
-  injury: "Injury vs. surface",
-  surface_relief: "Surface easier on soreness",
-  soreness_history: "How you've felt after similar runs",
-  scenic: "Scenic (you asked)",
-  surface_pref: "Road / trail (you asked)",
-  adventure: "New route (you asked)",
-  taste_surface: "Surfaces you rate highly",
-  taste_scenic: "You like scenic runs",
-  taste_loop: "You like loops",
-  goal: "Fits your goal",
-  distance: "Distance match",
-  format: "Loop vs. out-and-back",
-  terrain: "Hills vs. how you feel",
-  rhythm: "Recovery day",
-  overload: "Weekly mileage load",
-  footing: "Footing after poor sleep",
-  proximity: "Close to home",
-  novelty: "Haven't run it lately",
-  rating: "Your past rating",
-  variety: "Similar to a route above",
+// Plain-language explanation for each scoring factor.
+// [when it raised the score, when it lowered the score]
+const FACTOR_LABELS: Record<string, [string, string]> = {
+  soreness: ["Easy on your sore muscles", "This surface is hard on a sore muscle"],
+  injury: ["Easy on your injury", "This surface could aggravate your injury"],
+  surface_relief: ["Softer surface for your sore muscles", "Surface is rough on sore muscles"],
+  soreness_history: ["You usually recover well from runs like this", "You've been sorer after runs like this"],
+  scenic: ["Scenic, like you asked", "Not very scenic"],
+  surface_pref: ["The surface you asked for", "Not the surface you asked for"],
+  adventure: ["Somewhere new, like you asked", "You've run it recently"],
+  taste_surface: ["A surface you usually rate highly", "A surface you usually rate low"],
+  taste_scenic: ["You tend to love scenic runs", "Scenic runs don't usually rate well for you"],
+  taste_loop: ["You tend to enjoy loops", "You usually prefer point-to-point runs"],
+  goal: ["Fits your training goal", "Doesn't fit your training goal"],
+  distance: ["Right around the distance you want", "Longer or shorter than you want"],
+  format: ["Simple to run at this distance", "Takes an out-and-back or extra laps to hit your distance"],
+  terrain: ["Right amount of climbing for your energy", "Hillier or flatter than your energy calls for"],
+  rhythm: ["Easy enough for a recovery day", "A bit much for a recovery day"],
+  overload: ["Fits your weekly mileage", "Your weekly mileage is already high"],
+  footing: ["Even footing after a short night", "Uneven trail after a short night's sleep"],
+  proximity: ["Easy to get to from home", "A trek from home"],
+  novelty: ["You haven't run it in a while", "You ran it recently"],
+  rating: ["You've rated it well before", "You haven't rated it well before"],
+  variety: ["Different from the routes above", "Similar to a route ranked above"],
+  heat: ["Cool enough to run comfortably", "Hot out, and this one is long or hilly"],
+  air: ["Clean air today", "Poor air quality for a run this long"],
+  wind: ["Sheltered from the wind", "Strong wind on an exposed route"],
+  mud: ["Dry trail conditions", "Trails may be muddy after recent rain"],
+  daylight: ["Plenty of daylight", "You'd finish around or after sunset"],
 };
 
-const DIFFICULTY_COLOR: Record<string, string> = {
-  easy: "#4A7C59",
-  moderate: "#C1642F",
-  hard: "#8B2E2E",
+type Conditions = {
+  run_time: string;
+  temp_f: number | null;
+  feels_like_f: number | null;
+  uv_index: number | null;
+  wind_mph: number | null;
+  us_aqi: number | null;
+  rain_last_48h_mm: number;
+  sunset: string | null;
+  minutes_until_sunset: number | null;
+};
+
+function aqiLabel(aqi: number): string {
+  if (aqi <= 50) return "Good";
+  if (aqi <= 100) return "Moderate";
+  if (aqi <= 150) return "Unhealthy for some";
+  if (aqi <= 200) return "Unhealthy";
+  return "Very unhealthy";
+}
+
+function formatClockTime(iso: string): string {
+  const [, time] = iso.split("T");
+  const [h, m] = time.split(":").map(Number);
+  const hour12 = ((h + 11) % 12) + 1;
+  return `${hour12}:${String(m).padStart(2, "0")} ${h < 12 ? "am" : "pm"}`;
+}
+
+// one short sentence about how conditions are shaping today's picks
+function conditionsVerdict(c: Conditions): string {
+  const feels = c.feels_like_f ?? c.temp_f;
+  const notes: string[] = [];
+  if (feels != null && feels >= 95) notes.push("dangerously hot");
+  else if (feels != null && feels >= 85) notes.push("hot");
+  if (c.us_aqi != null && c.us_aqi > 100) notes.push("hazy");
+  if (c.rain_last_48h_mm >= 5) notes.push("muddy on the trails");
+  if (c.minutes_until_sunset != null && c.minutes_until_sunset < 75) notes.push("losing daylight");
+  if (c.wind_mph != null && c.wind_mph >= 20) notes.push("windy");
+  if (notes.length === 0) return "Good running conditions. Nothing to work around today.";
+  const list = notes.length > 1 ? `${notes.slice(0, -1).join(", ")} and ${notes[notes.length - 1]}` : notes[0];
+  return `${list.charAt(0).toUpperCase() + list.slice(1)}, so Pathos is favoring routes that work around it.`;
+}
+
+// Clause for each factor, used to build a one-line headline from a route's top strengths
+const HEADLINE_CLAUSES: Record<string, string> = {
+  novelty: "you haven't run it in a while",
+  proximity: "it starts right near home",
+  terrain: "the climbing suits your energy today",
+  distance: "it lands right on the distance you want",
+  scenic: "it has the views you asked for",
+  surface_pref: "it's on the surface you wanted",
+  surface_relief: "the softer surface spares your sore muscles",
+  adventure: "it's somewhere new, like you wanted",
+  rating: "you've loved it before",
+  taste_surface: "it's on your favorite kind of surface",
+  taste_scenic: "it's scenic, and you love scenic runs",
+  taste_loop: "it's a loop, your favorite format",
+  goal: "it fits your training goal",
+  rhythm: "it's gentle enough for a recovery day",
+  soreness_history: "you usually bounce back well from runs like this",
+  overload: "it keeps your weekly mileage in check",
+};
+
+function buildHeadline(breakdown: Record<string, number> | undefined, fallback?: string): string | null {
+  const top = Object.entries(breakdown ?? {})
+    .filter(([key, pts]) => pts >= 2 && HEADLINE_CLAUSES[key])
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .map(([key]) => HEADLINE_CLAUSES[key]);
+  if (top.length === 0) return fallback ?? null;
+  const sentence = top.length === 2 ? `${top[0]}, and ${top[1]}` : top[0];
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1) + ".";
+}
+
+function factorLabel(key: string, pts: number): string {
+  const pair = FACTOR_LABELS[key];
+  if (!pair) return key.replace(/_/g, " ");
+  return pts >= 0 ? pair[0] : pair[1];
+}
+
+const SURFACE_LABELS: Record<string, string> = {
+  pavement: "Road",
+  trail: "Trail",
+  track: "Track",
+  mixed: "Mixed",
 };
 
 function kmToMiles(km: number): number {
@@ -80,55 +169,77 @@ function RecommendationsPage() {
   const navigate = useNavigate();
   const userId = localStorage.getItem("user_id");
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
-  const [photos, setPhotos] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openReasoning, setOpenReasoning] = useState<Record<number, boolean>>({});
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
+  const [conditions, setConditions] = useState<Conditions | null>(null);
+  const [groupToday, setGroupToday] = useState<GroupMatch | null>(null);
+
+  // load saved routes so the Save buttons show the right state
+  useEffect(() => {
+    if (!userId) return;
+    fetch(`http://127.0.0.1:8000/favorites/${userId}`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((favs: { route_id: string }[]) => setFavoriteIds(new Set(favs.map((f) => f.route_id))))
+      .catch(() => {});
+  }, [userId]);
+
+  // fetch straight away, since you usually land here right after checking in
+  useEffect(() => {
+    fetchRecommendations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function toggleFavorite(routeId: string) {
+    const isSaved = favoriteIds.has(routeId);
+    const res = isSaved
+      ? await fetch(`http://127.0.0.1:8000/favorites/${userId}/${routeId}`, { method: "DELETE" })
+      : await fetch("http://127.0.0.1:8000/favorites", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: userId, route_id: routeId }),
+        });
+    if (!res.ok) return;
+    setFavoriteIds((prev) => {
+      const next = new Set(prev);
+      if (isSaved) next.delete(routeId);
+      else next.add(routeId);
+      return next;
+    });
+  }
 
   function toggleReasoning(i: number) {
     setOpenReasoning((prev) => ({ ...prev, [i]: !prev[i] }));
   }
 
-  async function fetchPhoto(routeName: string) {
-    const term = getSearchTerm(routeName);
-    if (!term) return;
-    try {
-      const searchRes = await fetch(
-        `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(term + " California")}&format=json&origin=*&srlimit=1`
-      );
-      if (!searchRes.ok) return;
-      const searchData = await searchRes.json();
-      const bestTitle = searchData?.query?.search?.[0]?.title;
-      if (!bestTitle) return;
-
-      const summaryRes = await fetch(
-        `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(bestTitle)}`
-      );
-      if (!summaryRes.ok) return;
-      const summaryData = await summaryRes.json();
-      if (summaryData.thumbnail?.source && summaryData.thumbnail.width > 200) {
-        setPhotos((prev) => ({ ...prev, [routeName]: summaryData.thumbnail.source }));
-      }
-    } catch {
-      // no photo available, fine to skip silently
-    }
-  }
-
   async function fetchRecommendations() {
     if (!userId) {
-      setError("No user found. Please sign up again.");
+      setError("No user found. Please log in again.");
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(
-        `http://127.0.0.1:8000/recommendations/${userId}`
-      );
-      if (!response.ok) throw new Error(`Server responded with ${response.status}`);
+      const response = await fetch(`http://127.0.0.1:8000/recommendations/${userId}`);
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        if (response.status === 404 && body?.detail === "No checkin for today") {
+          throw new Error("checkin");
+        }
+        throw new Error(body?.detail ?? `Server responded with ${response.status}`);
+      }
       const data = await response.json();
       setRecommendations(data);
-      data.forEach((rec: Recommendation) => fetchPhoto(rec.route_name));
+      fetch(`http://127.0.0.1:8000/conditions/${userId}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then(setConditions)
+        .catch(() => setConditions(null));
+      fetch(`http://127.0.0.1:8000/groups/${userId}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((g) => setGroupToday(g?.today ?? null))
+        .catch(() => setGroupToday(null));
+      setOpenReasoning({});
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -136,152 +247,268 @@ function RecommendationsPage() {
     }
   }
 
+  const today = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  const count = recommendations.length;
+
   return (
-    <div className="app">
-      <ThemeToggle />
-      <header className="header">
-        <h1>Today's routes</h1>
-        <button onClick={fetchRecommendations} disabled={loading}>
-          {loading ? "Scoring routes..." : "Get today's recommendations"}
+    <div className="app recs-page">
+      <header className="recs-intro">
+        <div>
+          <span className="ci-eyebrow">Today's routes · {today}</span>
+          <h1>
+            {count > 0
+              ? <>{count === 1 ? "One route" : `${["", "One", "Two", "Three", "Four", "Five"][count] ?? count} routes`} picked for how you feel.</>
+              : "Your routes for today."}
+          </h1>
+          <p>Ranked by how well each one fits your check-in. Open "Why this route" to see the reasoning.</p>
+        </div>
+        <button className="recs-refresh" onClick={fetchRecommendations} disabled={loading}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={loading ? "spin" : ""}>
+            <path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7" />
+          </svg>
+          {loading ? "Scoring..." : "Refresh"}
         </button>
-        {error && <p className="error">Error: {error}</p>}
       </header>
 
-      <div className="route-list">
-        {recommendations.map((rec, i) => (
-          <div
-            key={i}
-            className="route-card"
-            style={{ borderLeftColor: DIFFICULTY_COLOR[rec.difficulty] ?? "#999" }}
-          >
-            <div className="route-card-header">
-              <span className="route-card-icon">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                  <path d="M12 21s-7-6.5-7-11.5A7 7 0 0112 2a7 7 0 017 7.5C19 14.5 12 21 12 21z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-                  <circle cx="12" cy="9.5" r="2.5" stroke="currentColor" strokeWidth="2" />
-                </svg>
-              </span>
-              <h2>{rec.route_name}</h2>
-              <span className="score">{rec.score.toFixed(0)}</span>
+      {loading && count === 0 && (
+        <div className="recs-loading">
+          <span className="recs-loading-trail" />
+          <p>Reading your check-in and scoring routes...</p>
+        </div>
+      )}
+
+      {error === "checkin" && (
+        <div className="recs-empty">
+          <h2>Check in first</h2>
+          <p>Pathos picks routes based on how you feel today, so start with a quick check-in.</p>
+          <button className="logged-primary" onClick={() => navigate("/checkin")}>Start today's check-in</button>
+        </div>
+      )}
+      {error && error !== "checkin" && <p className="error">Error: {error}</p>}
+
+      {conditions && count > 0 && (() => {
+        const feels = conditions.feels_like_f ?? conditions.temp_f;
+        const when = { now: "Right now", morning: "This morning", midday: "Midday", evening: "This evening" }[conditions.run_time] ?? "Today";
+        return (
+          <section className="conditions">
+            <div className="conditions-head">
+              <span className="conditions-when">{when} near home</span>
+              <p>{conditionsVerdict(conditions)}</p>
             </div>
-
-            {photos[rec.route_name] && (
-              <img
-                src={photos[rec.route_name]}
-                alt={rec.route_name}
-                className="route-photo"
-              />
-            )}
-
-            <div className="route-stats">
-              <span className="distance">{kmToMiles(rec.effective_distance_km ?? rec.distance_km).toFixed(1)} mi</span>
-              {rec.estimated_minutes != null && (
-                <span className="duration">~{rec.estimated_minutes} min</span>
+            <div className="conditions-chips">
+              {feels != null && (
+                <span className={`cond-chip ${feels >= 85 ? "warn" : ""}`}>
+                  <b>{Math.round(feels)}°F</b> feels like
+                </span>
               )}
-              <span className="elevation">{metersToFeet(rec.elevation_gain_m).toFixed(0)} ft gain</span>
-              <span className={`difficulty ${rec.difficulty}`}>{rec.difficulty}</span>
-              {rec.surface_type && rec.surface_type !== "unknown" && (
-                <span className={`surface ${rec.surface_type}`}>
-                  {({ pavement: "Road", trail: "Trail", track: "Track", mixed: "Mixed" } as Record<string, string>)[rec.surface_type] ?? rec.surface_type}
+              {conditions.us_aqi != null && (
+                <span className={`cond-chip ${conditions.us_aqi > 100 ? "warn" : ""}`}>
+                  <b>AQI {Math.round(conditions.us_aqi)}</b> {aqiLabel(conditions.us_aqi)}
+                </span>
+              )}
+              {conditions.uv_index != null && conditions.uv_index >= 6 && (
+                <span className={`cond-chip ${conditions.uv_index >= 8 ? "warn" : ""}`}>
+                  <b>UV {Math.round(conditions.uv_index)}</b> {conditions.uv_index >= 8 ? "very high" : "high"}
+                </span>
+              )}
+              {conditions.wind_mph != null && conditions.wind_mph >= 12 && (
+                <span className={`cond-chip ${conditions.wind_mph >= 20 ? "warn" : ""}`}>
+                  <b>{Math.round(conditions.wind_mph)} mph</b> wind
+                </span>
+              )}
+              {conditions.rain_last_48h_mm >= 1 && (
+                <span className={`cond-chip ${conditions.rain_last_48h_mm >= 5 ? "warn" : ""}`}>
+                  <b>{conditions.rain_last_48h_mm} mm</b> rain, last 48h
+                </span>
+              )}
+              {conditions.sunset && (
+                <span className={`cond-chip ${conditions.minutes_until_sunset != null && conditions.minutes_until_sunset < 75 ? "warn" : ""}`}>
+                  <b>{formatClockTime(conditions.sunset)}</b> sunset
                 </span>
               )}
             </div>
+          </section>
+        );
+      })()}
 
-            {rec.path.length > 1 && (
-              <MapContainer
-                center={rec.path[Math.floor(rec.path.length / 2)]}
-                zoom={15}
-                scrollWheelZoom={false}
-                attributionControl={false}
-                className="route-map-large"
-              >
-                <MapResizer path={rec.path} />
-                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                <Polyline
-                  positions={rec.path}
-                  pathOptions={{ color: "#FFFFFF", weight: 7, opacity: 0.6 }}
-                />
-                <Polyline
-                  positions={rec.path}
-                  pathOptions={{ color: "#C1642F", weight: 4, opacity: 1 }}
-                />
-                <CircleMarker
-                  center={rec.path[0]}
-                  radius={6}
-                  pathOptions={{ color: "#4A7C59", fillColor: "#4A7C59", fillOpacity: 1 }}
-                />
-                <CircleMarker
-                  center={rec.path[rec.path.length - 1]}
-                  radius={6}
-                  pathOptions={{ color: "#8B2E2E", fillColor: "#8B2E2E", fillOpacity: 1 }}
-                />
-              </MapContainer>
-            )}
-
-            <div className="card-actions">
-              <button
-                className="log-run-button"
-                onClick={() =>
-                  navigate("/log-run", {
-                    state: { routeId: rec.route_id, routeName: rec.route_name },
-                  })
-                }
-              >
-                Log this run
-              </button>
-              <button
-                className="reasoning-toggle"
-                aria-expanded={!!openReasoning[i]}
-                onClick={() => toggleReasoning(i)}
-              >
-                {openReasoning[i] ? "Hide reasoning" : "Show reasoning"}
-                <span className={`chevron ${openReasoning[i] ? "open" : ""}`}>▾</span>
-              </button>
-            </div>
-
-            {openReasoning[i] && (
-              <div className="reasoning-panel">
-                {rec.reasons.length > 0 && (
-                  <ul className="reasons">
-                    {rec.reasons.map((reason, j) => (
-                      <li key={j}>{reason}</li>
-                    ))}
-                  </ul>
+      <div className="recs-list">
+        {recommendations.map((rec, i) => {
+          const miles = kmToMiles(rec.effective_distance_km ?? rec.distance_km);
+          const surface = rec.surface_type && rec.surface_type !== "unknown" ? SURFACE_LABELS[rec.surface_type] ?? rec.surface_type : null;
+          const saved = rec.route_id ? favoriteIds.has(rec.route_id) : false;
+          const headline = buildHeadline(rec.score_breakdown, rec.reasons[0]);
+          return (
+            <article key={i} className={`rec-card ${i === 0 ? "top" : ""}`}>
+              <div className="rec-map-wrap">
+                {rec.path.length > 1 && (
+                  <MapContainer
+                    center={rec.path[Math.floor(rec.path.length / 2)]}
+                    zoom={15}
+                    scrollWheelZoom={false}
+                    zoomControl={false}
+                    attributionControl={false}
+                    className="rec-map"
+                  >
+                    <MapResizer path={rec.path} />
+                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                    <Polyline positions={rec.path} pathOptions={{ color: "#FFFFFF", weight: 9, opacity: 0.9 }} />
+                    <Polyline positions={rec.path} pathOptions={{ color: "#2563EB", weight: 4.5, opacity: 1 }} />
+                    <CircleMarker
+                      center={rec.path[0]}
+                      radius={7}
+                      pathOptions={{ color: "#FFFFFF", weight: 3, fillColor: "#1D4ED8", fillOpacity: 1 }}
+                    />
+                    <CircleMarker
+                      center={rec.path[rec.path.length - 1]}
+                      radius={5}
+                      pathOptions={{ color: "#1D4ED8", weight: 3, fillColor: "#FFFFFF", fillOpacity: 1 }}
+                    />
+                  </MapContainer>
                 )}
-
-                {rec.score_breakdown && Object.keys(rec.score_breakdown).length > 0 && (
-                  <div className="breakdown">
-                    <div className="breakdown-row base">
-                      <span>Starting score</span>
-                      <span className="pts">100</span>
-                    </div>
-                    {Object.entries(rec.score_breakdown)
-                      .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
-                      .map(([key, pts]) => (
-                        <div className="breakdown-row" key={key}>
-                          <span>{BREAKDOWN_LABELS[key] ?? key}</span>
-                          <span className={`pts ${pts >= 0 ? "plus" : "minus"}`}>
-                            {pts >= 0 ? "+" : "−"}
-                            {Math.abs(pts).toFixed(1)}
-                          </span>
-                        </div>
-                      ))}
-                    <div className="breakdown-row total">
-                      <span>Total</span>
-                      <span className="pts">{rec.score.toFixed(1)}</span>
-                    </div>
-                  </div>
-                )}
+                <span className="rec-rank">{String(i + 1).padStart(2, "0")}</span>
+                {i === 0 && <span className="rec-best">Best match today</span>}
               </div>
-            )}
-          </div>
-        ))}
+
+              <div className="rec-body">
+                <div className="rec-title-row">
+                  <h2>{rec.route_name}</h2>
+                  <span className="rec-match" title="Fit score from your check-in">
+                    <span className="rec-match-num">{rec.score.toFixed(0)}</span>
+                    <span className="rec-match-label">fit</span>
+                  </span>
+                </div>
+
+                {headline && <p className="rec-why">{headline}</p>}
+
+                <div className="rec-splits">
+                  <div>
+                    <span className="rec-split-value">{miles.toFixed(1)}<small>mi</small></span>
+                    <span className="rec-split-label">Distance</span>
+                  </div>
+                  {rec.estimated_minutes != null && (
+                    <div>
+                      <span className="rec-split-value">{rec.estimated_minutes}<small>min</small></span>
+                      <span className="rec-split-label">Est. time</span>
+                    </div>
+                  )}
+                  <div>
+                    <span className="rec-split-value">{metersToFeet(rec.elevation_gain_m).toFixed(0)}<small>ft</small></span>
+                    <span className="rec-split-label">Climb</span>
+                  </div>
+                  <div>
+                    <span className={`rec-difficulty ${rec.difficulty}`}>
+                      <span className="rec-difficulty-bars" aria-hidden="true">
+                        <i /><i /><i />
+                      </span>
+                      {rec.difficulty}
+                    </span>
+                    <span className="rec-split-label">{surface ?? "Effort"}</span>
+                  </div>
+                </div>
+
+                <div className="rec-actions">
+                  <button
+                    className="rec-primary"
+                    onClick={() => navigate("/log-run", { state: { routeId: rec.route_id, routeName: rec.route_name } })}
+                  >
+                    Log this run
+                  </button>
+                  {rec.route_id && (
+                    <button
+                      className={`rec-icon-btn ${saved ? "saved" : ""}`}
+                      aria-pressed={saved}
+                      aria-label={saved ? "Remove from favorites" : "Save to favorites"}
+                      title={saved ? "Saved" : "Save route"}
+                      onClick={() => toggleFavorite(rec.route_id!)}
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill={saved ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+                        <path d="M12 20s-7-4.4-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.6-7 10-7 10z" />
+                      </svg>
+                    </button>
+                  )}
+                  {rec.path.length > 1 && (
+                    <RouteExportButtons
+                      routeId={rec.route_id}
+                      name={rec.route_name}
+                      loadPath={() => rec.path}
+                      format={rec.run_format}
+                      repeatCount={rec.repeat_count}
+                      surface={rec.surface_type}
+                    />
+                  )}
+                  <button
+                    className="rec-why-toggle"
+                    aria-expanded={!!openReasoning[i]}
+                    onClick={() => toggleReasoning(i)}
+                  >
+                    Why this route
+                    <span className={`chevron ${openReasoning[i] ? "open" : ""}`}>▾</span>
+                  </button>
+                </div>
+
+                {openReasoning[i] && (() => {
+                  const factors = Object.entries(rec.score_breakdown ?? {}).filter(([, pts]) => Math.abs(pts) >= 0.5);
+                  const helped = factors.filter(([, p]) => p > 0).sort((x, y) => y[1] - x[1]);
+                  const hurt = factors.filter(([, p]) => p < 0).sort((x, y) => x[1] - y[1]);
+                  const biggest = Math.max(...factors.map(([, p]) => Math.abs(p)), 1);
+                  const row = ([key, pts]: [string, number]) => (
+                    <div className="rec-breakdown-row" key={key}>
+                      <span>{factorLabel(key, pts)}</span>
+                      <span className="rec-breakdown-bar">
+                        <span className={pts >= 0 ? "plus" : "minus"} style={{ width: `${(Math.abs(pts) / biggest) * 100}%` }} />
+                      </span>
+                      <span className={`pts ${pts >= 0 ? "plus" : "minus"}`}>
+                        {pts >= 0 ? "+" : "−"}
+                        {Math.abs(pts).toFixed(0)}
+                      </span>
+                    </div>
+                  );
+                  return (
+                    <div className="rec-reasoning">
+                      {helped.length > 0 && (
+                        <div className="rec-breakdown">
+                          <span className="rec-breakdown-title">What helped</span>
+                          {helped.map(row)}
+                        </div>
+                      )}
+                      {hurt.length > 0 && (
+                        <div className="rec-breakdown">
+                          <span className="rec-breakdown-title">What held it back</span>
+                          {hurt.map(row)}
+                        </div>
+                      )}
+                      <p className="rec-breakdown-note">
+                        Every route starts at 100. These add up to its fit score of <b>{rec.score.toFixed(0)}</b>.
+                      </p>
+                    </div>
+                  );
+                })()}
+              </div>
+            </article>
+          );
+        })}
       </div>
+
+      {groupToday && count > 0 && (
+        <Link to="/groups" className="group-suggest">
+          <span className="group-suggest-icon" aria-hidden="true">👟</span>
+          <span className="group-suggest-text">
+            <span className="group-suggest-label">Rather run with a group?</span>
+            <strong>
+              {groupToday.club_name} · {formatMeetTime(groupToday.starts_at)} · {sessionTitle(groupToday)}
+            </strong>
+            <small>{groupToday.reasons[0]}</small>
+          </span>
+          <span className="group-suggest-fit">
+            <b>{Math.round(groupToday.fit)}</b>fit
+          </span>
+        </Link>
+      )}
 
       <footer className="map-attribution">
         Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors,
-        rendered with <a href="https://leafletjs.com" target="_blank" rel="noreferrer">Leaflet</a>. Photos via{" "}
-        <a href="https://www.wikipedia.org" target="_blank" rel="noreferrer">Wikipedia</a>.
+        rendered with <a href="https://leafletjs.com" target="_blank" rel="noreferrer">Leaflet</a>. Weather and air
+        quality by <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a>.
       </footer>
     </div>
   );

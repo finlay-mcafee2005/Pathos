@@ -38,14 +38,13 @@ function LoginPage() {
       <ThemeToggle />
       <div className="split-auth-panel">
         <div className="split-auth-content">
-          <div className="auth-icon">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-              <path d="M13 4l-3 8h4l-2 8 7-11h-4l2-5z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" fill="none" />
-              <circle cx="6" cy="18" r="2" stroke="currentColor" strokeWidth="2" />
-            </svg>
+          <div className="auth-brand">
+            <img src="/pathos-logo.png" alt="Pathos logo" width={72} height={72} />
+            <span className="auth-brand-name">Pathos</span>
           </div>
           <p className="auth-eyebrow">Welcome back</p>
           <h1>Log in</h1>
+          <p className="auth-sub">Check in and get today's routes.</p>
 
           <form className="form" onSubmit={handleSubmit}>
             <section className="form-section">
@@ -62,7 +61,7 @@ function LoginPage() {
             {error && <p className="error">Error: {error}</p>}
 
             <button type="submit" disabled={loading}>
-              {loading ? "Logging in..." : "Log in"}
+              {loading ? "Logging in..." : "Log in →"}
             </button>
 
             <p className="hint">
@@ -73,6 +72,11 @@ function LoginPage() {
       </div>
       <div className="split-auth-image">
         <BackgroundSlideshow />
+        <div className="auth-photo-caption">
+          <span className="auth-photo-pill">Los Angeles · Glendale · Pasadena</span>
+          <h2>Run the route that fits today.</h2>
+          <p>Tell Pathos how your body feels. It picks the trail or road to match.</p>
+        </div>
       </div>
     </div>
   );
