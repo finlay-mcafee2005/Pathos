@@ -21,7 +21,7 @@ from geoalchemy2.shape import to_shape
 from app.models import Route
 from app.scoring.difficulty import classify_difficulty
 
-DATABASE_URL = "postgresql://postgres:devpassword@localhost:5432/run_recommender"
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:devpassword@localhost:5432/run_recommender")
 # Open-Meteo (Copernicus 90m DEM): free, no key, up to 100 points/request.
 # Replaced Open-Elevation, which rate-limits (429) almost immediately.
 ELEVATION_API = "https://api.open-meteo.com/v1/elevation"

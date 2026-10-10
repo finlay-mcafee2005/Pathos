@@ -22,7 +22,7 @@ from geoalchemy2.elements import WKTElement
 from app.models import Route
 from app.scoring.difficulty import classify_difficulty
 
-DATABASE_URL = "postgresql://postgres:devpassword@localhost:5432/run_recommender"
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:devpassword@localhost:5432/run_recommender")
 engine = create_engine(DATABASE_URL)
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"

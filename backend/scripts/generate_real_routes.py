@@ -19,7 +19,7 @@ from geoalchemy2.elements import WKTElement
 
 from app.models import Route
 
-DATABASE_URL = "postgresql://postgres:devpassword@localhost:5432/run_recommender"
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:devpassword@localhost:5432/run_recommender")
 OSRM_URL = "http://localhost:5001"
 
 engine = create_engine(DATABASE_URL)

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import BodyMap from "../components/BodyMap";
+import { API_URL } from "../utils/format";
 
 const MUSCLE_GROUPS = [
   // Front view
@@ -108,7 +109,7 @@ function CheckinPage() {
   const [runWith, setRunWith] = useState<string>(searchParams.get("group") ?? "");
   useEffect(() => {
     if (!userId) return;
-    fetch(`http://127.0.0.1:8000/run-groups/mine/${userId}`)
+    fetch(`${API_URL}/run-groups/mine/${userId}`)
       .then((r) => (r.ok ? r.json() : []))
       .then((gs: { id: string; name: string }[]) => {
         setMyGroups(gs);
@@ -157,7 +158,7 @@ function CheckinPage() {
   }
   useEffect(() => {
     if (!userId) return;
-    fetch(`http://127.0.0.1:8000/checkins/${userId}/last`)
+    fetch(`${API_URL}/checkins/${userId}/last`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => d && setLast(d))
       .catch(() => {});
@@ -216,7 +217,7 @@ function CheckinPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("http://127.0.0.1:8000/checkins", {
+      const response = await fetch(API_URL + "/checkins", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

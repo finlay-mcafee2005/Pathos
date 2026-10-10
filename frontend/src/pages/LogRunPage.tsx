@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { API_URL } from "../utils/format";
 
 // 47.5 minutes -> "47:30"; 75 minutes -> "1:15:00"
 function formatClock(totalMinutes: number): string {
@@ -71,7 +72,7 @@ function LogRunPage() {
         reader.onerror = () => reject(new Error("Couldn't read that file."));
         reader.readAsDataURL(file);
       });
-      const res = await fetch("http://127.0.0.1:8000/runs/import", {
+      const res = await fetch(API_URL + "/runs/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: userId, filename: file.name, data_base64: base64 }),
@@ -145,7 +146,7 @@ function LogRunPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("http://127.0.0.1:8000/runs", {
+      const response = await fetch(API_URL + "/runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

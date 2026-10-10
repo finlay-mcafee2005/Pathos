@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from sqlmodel import SQLModel, create_engine
 from app.models import *  # noqa: F401,F403  (imports all table classes)
 
-DATABASE_URL = "postgresql://postgres:devpassword@localhost:5432/run_recommender"
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:devpassword@localhost:5432/run_recommender")
 
 engine = create_engine(DATABASE_URL, echo=True)
 

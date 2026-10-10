@@ -1,3 +1,4 @@
+import os
 import re
 from uuid import UUID
 from datetime import date, timedelta, datetime
@@ -33,14 +34,19 @@ from app.scoring.route_combiner import generate_combined_routes
 from app.scoring.engine import build_personal_context, DailyCheckin, normalize_body_part, LOWER_BODY_PARTS
 from app.scoring.groups import GroupSession, RunnerToday, match_groups, best_for_today, KM_PER_MI
 
-DATABASE_URL = "postgresql://postgres:devpassword@localhost:5432/run_recommender"
+# Set DATABASE_URL on Railway; falls back to the local Docker database.
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:devpassword@localhost:5432/run_recommender")
+if DATABASE_URL.startswith("postgres://"):          # some hosts use the old scheme name
+    DATABASE_URL = "postgresql://" + DATABASE_URL[len("postgres://"):]
 engine = create_engine(DATABASE_URL)
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    # FRONTEND_ORIGINS on Railway: your Vercel URL(s), comma-separated
+    allow_origins=[o.strip() for o in os.environ.get("FRONTEND_ORIGINS", "http://localhost:5173").split(",") if o.strip()],
+    allow_origin_regex=os.environ.get("FRONTEND_ORIGIN_REGEX") or None,   # e.g. Vercel preview links
     allow_methods=["*"],
     allow_headers=["*"],
 )

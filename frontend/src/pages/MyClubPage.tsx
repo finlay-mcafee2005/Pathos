@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { API_URL } from "../utils/format";
 
 type ClubSchedule = {
   day: string;
@@ -26,7 +27,7 @@ function MyClubPage() {
       setLoading(false);
       return;
     }
-    fetch(`http://127.0.0.1:8000/clubs/mine/${userId}`)
+    fetch(`${API_URL}/clubs/mine/${userId}`)
       .then((res) => {
         if (!res.ok) throw new Error(`Server responded with ${res.status}`);
         return res.json();

@@ -17,7 +17,7 @@ from sqlmodel import Session, create_engine, select
 from app.models import Route
 from app.scoring.difficulty import classify_difficulty
 
-DATABASE_URL = "postgresql://postgres:devpassword@localhost:5432/run_recommender"
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:devpassword@localhost:5432/run_recommender")
 
 engine = create_engine(DATABASE_URL)
 

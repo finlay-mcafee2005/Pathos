@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import BackgroundSlideshow from "../components/BackgroundSlideshow";
 import ThemeToggle from "../components/ThemeToggle";
+import { API_URL } from "../utils/format";
 
 type Injury = {
   body_part: string;
@@ -120,7 +121,7 @@ function SignupPage() {
     if (step === 1 && address.trim() !== checkedAddress) {
       setCheckingArea(true);
       try {
-        const res = await fetch("http://127.0.0.1:8000/check-area", {
+        const res = await fetch(API_URL + "/check-area", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ address: address.trim() }),
@@ -157,7 +158,7 @@ function SignupPage() {
     setError(null);
     setLoading(true);
     try {
-      const response = await fetch("http://127.0.0.1:8000/signup", {
+      const response = await fetch(API_URL + "/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

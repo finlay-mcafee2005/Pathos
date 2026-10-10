@@ -21,7 +21,7 @@ from app.models import Route
 from osm_surface import classify_surface
 from app.scoring.difficulty import classify_difficulty
 
-DATABASE_URL = "postgresql://postgres:devpassword@localhost:5432/run_recommender"
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:devpassword@localhost:5432/run_recommender")
 OSM_FILE = os.path.expanduser(
     "~/run-recommender-app/osrm-data/planet_-118.49,33.738_-117.669,34.382.osm.pbf"
 )

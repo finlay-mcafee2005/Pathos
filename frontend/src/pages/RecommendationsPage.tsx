@@ -5,6 +5,7 @@ import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useRouteActions } from "../components/RouteExportButtons";
 import { type GroupMatch, formatMeetTime, sessionTitle } from "./GroupsPage";
+import { API_URL } from "../utils/format";
 
 function MapResizer({ path }: { path: [number, number][] }) {
   const map = useMap();
@@ -279,7 +280,7 @@ function RecommendationsPage() {
   // load saved routes so the Save buttons show the right state
   useEffect(() => {
     if (!userId) return;
-    fetch(`http://127.0.0.1:8000/favorites/${userId}`)
+    fetch(`${API_URL}/favorites/${userId}`)
       .then((res) => (res.ok ? res.json() : []))
       .then((favs: { route_id: string }[]) => setFavoriteIds(new Set(favs.map((f) => f.route_id))))
       .catch(() => {});
@@ -294,8 +295,8 @@ function RecommendationsPage() {
   async function toggleFavorite(routeId: string) {
     const isSaved = favoriteIds.has(routeId);
     const res = isSaved
-      ? await fetch(`http://127.0.0.1:8000/favorites/${userId}/${routeId}`, { method: "DELETE" })
-      : await fetch("http://127.0.0.1:8000/favorites", {
+      ? await fetch(`${API_URL}/favorites/${userId}/${routeId}`, { method: "DELETE" })
+      : await fetch(API_URL + "/favorites", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ user_id: userId, route_id: routeId }),
@@ -321,7 +322,7 @@ function RecommendationsPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`http://127.0.0.1:8000/recommendations/${userId}`);
+      const response = await fetch(`${API_URL}/recommendations/${userId}`);
       if (!response.ok) {
         const body = await response.json().catch(() => null);
         if (response.status === 404 && body?.detail === "No checkin for today") {
@@ -331,11 +332,11 @@ function RecommendationsPage() {
       }
       const data = await response.json();
       setRecommendations(data);
-      fetch(`http://127.0.0.1:8000/conditions/${userId}`)
+      fetch(`${API_URL}/conditions/${userId}`)
         .then((res) => (res.ok ? res.json() : null))
         .then(setConditions)
         .catch(() => setConditions(null));
-      fetch(`http://127.0.0.1:8000/groups/${userId}`)
+      fetch(`${API_URL}/groups/${userId}`)
         .then((res) => (res.ok ? res.json() : null))
         .then((g) => setGroupToday(g?.today ?? null))
         .catch(() => setGroupToday(null));

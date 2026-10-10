@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import BackgroundSlideshow from "../components/BackgroundSlideshow";
 import ThemeToggle from "../components/ThemeToggle";
+import { API_URL } from "../utils/format";
 
 function LoginPage() {
   const navigate = useNavigate();
@@ -15,7 +16,7 @@ function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("http://127.0.0.1:8000/login", {
+      const response = await fetch(API_URL + "/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),

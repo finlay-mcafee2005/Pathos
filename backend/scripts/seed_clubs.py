@@ -28,7 +28,7 @@ from sqlmodel import Session, create_engine, select
 from app.models import Club, ClubSchedule, User
 from app.geocoding import geocode_address
 
-DATABASE_URL = "postgresql://postgres:devpassword@localhost:5432/run_recommender"
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:devpassword@localhost:5432/run_recommender")
 engine = create_engine(DATABASE_URL)
 
 VERIFIED_ON = date(2026, 10, 7)

@@ -1,4 +1,6 @@
-export const API_URL = "http://127.0.0.1:8000";
+// Backend address: set VITE_API_URL in Vercel (e.g. https://pathos-api.up.railway.app);
+// falls back to the local backend when running on your Mac.
+export const API_URL: string = (import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
 
 export function kmToMiles(km: number): number {
   return km * 0.621371;
