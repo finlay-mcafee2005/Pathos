@@ -24,6 +24,8 @@ function MapResizer({ path }: { path: [number, number][] }) {
 }
 
 type Recommendation = {
+  recommendation_id?: string;
+  rank?: number;
   route_id: string | null;
   route_name: string;
   score: number;
@@ -42,7 +44,17 @@ type Recommendation = {
 
 // Plain-language explanation for each scoring factor.
 // [when it raised the score, when it lowered the score]
+// Raw scores start at 100 and add or lose points per factor; in practice a
+// weak route lands around 80 and an excellent one around 170. Show that span
+// as a 0-100% match so it reads like every other rating.
+const MATCH_FLOOR = 80;
+const MATCH_CEILING = 170;
+function matchPct(score: number): number {
+  return Math.round(Math.max(0, Math.min(1, (score - MATCH_FLOOR) / (MATCH_CEILING - MATCH_FLOOR))) * 100);
+}
+
 const FACTOR_LABELS: Record<string, [string, string]> = {
+  hills: ["Matches the hills you asked for", "More climbing than you wanted"],
   soreness: ["Easy on your sore muscles", "This surface is hard on a sore muscle"],
   injury: ["Easy on your injury", "This surface could aggravate your injury"],
   surface_relief: ["Softer surface for your sore muscles", "Surface is rough on sore muscles"],
@@ -181,6 +193,7 @@ function RecActions({ rec, saved, onSave, onLog }: {
 }) {
   const { busy, handleFollow, handleGpx, handleMaps } = useRouteActions({
     routeId: rec.route_id,
+    recommendationId: rec.recommendation_id,
     name: rec.route_name,
     loadPath: () => rec.path,
     format: rec.run_format,
@@ -471,9 +484,9 @@ function RecommendationsPage() {
               <div className="rec-body">
                 <div className="rec-title-row">
                   <h2>{rec.route_name}</h2>
-                  <span className="rec-match" title="Fit score from your check-in">
-                    <span className="rec-match-num">{rec.score.toFixed(0)}</span>
-                    <span className="rec-match-label">fit</span>
+                  <span className="rec-match" title="How well this route matches your check-in">
+                    <span className="rec-match-num">{matchPct(rec.score)}<small>%</small></span>
+                    <span className="rec-match-label">match</span>
                   </span>
                 </div>
 
@@ -509,7 +522,7 @@ function RecommendationsPage() {
                   rec={rec}
                   saved={saved}
                   onSave={() => rec.route_id && toggleFavorite(rec.route_id)}
-                  onLog={() => navigate("/log-run", { state: { routeId: rec.route_id, routeName: rec.route_name } })}
+                  onLog={() => navigate("/log-run", { state: { routeId: rec.route_id, routeName: rec.route_name, recommendationId: rec.recommendation_id } })}
                 />
 
                 <button
@@ -554,7 +567,7 @@ function RecommendationsPage() {
                         </div>
                       )}
                       <p className="rec-breakdown-note">
-                        Every route starts at 100. These add up to its fit score of <b>{rec.score.toFixed(0)}</b>.
+                        Every route starts even. These factors add up to a <b>{matchPct(rec.score)}% match</b> with how you feel today.
                       </p>
                     </div>
                   );

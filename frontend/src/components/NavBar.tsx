@@ -13,6 +13,7 @@ const MY_RUNNING_LINKS = [
   { to: "/favorites", label: "Favorite routes" },
   { to: "/stats", label: "Stats" },
   { to: "/groups", label: "Group runs" },
+  { to: "/run-together", label: "Run together" },
 ];
 
 function NavBar() {

@@ -25,8 +25,8 @@ How:
        < 35%   -> discarded (that's a road run)
   4. Skip near-duplicates (mostly the same nodes as a route already kept).
 
-Safe to re-run: deletes routes it created before (names containing
-"trail loop - " or "trail out-and-back - ") and regenerates them.
+Safe to re-run: only ADDS routes whose names don't exist yet. Existing
+routes, and the runs and favorites linked to them, are never touched.
 
 Run with: python3 scripts/generate_trail_routes.py
 Then:     python3 scripts/update_elevation.py   (elevation + difficulty)
@@ -68,6 +68,15 @@ TRAILHEADS = [
     ("Sam Merrill (Cobb Estate)", 34.2042, -118.1286),
     ("Verdugo Mountains",       34.2178, -118.2551),
     ("Lower Arroyo Seco",       34.1367, -118.1665),
+    # added
+    ("Elysian Park",            34.0806, -118.2425),
+    ("Runyon Canyon",           34.1046, -118.3500),
+    ("Fern Dell (Griffith Park)", 34.1110, -118.3080),
+    ("Ascot Hills Park",        34.0738, -118.1889),
+    ("Kenneth Hahn Park",       34.0090, -118.3680),
+    ("Baldwin Hills Overlook",  34.0180, -118.3830),
+    ("Millard Canyon",          34.2160, -118.1460),
+    ("Chantry Flat",            34.1960, -118.0220),
 ]
 
 TARGET_DISTANCES_KM = [5, 8, 12, 16]     # round-trip distance for both kinds
@@ -183,16 +192,11 @@ def main():
 
     engine = create_engine(DATABASE_URL)
     with Session(engine) as session:
-        old = ("SELECT id FROM route WHERE name LIKE '%trail loop - %' "
-               "OR name LIKE '%trail out-and-back - %'")
-        session.exec(text(f"DELETE FROM recommendation WHERE route_id IN ({old})"))
-        session.exec(text(f"UPDATE run SET route_id = NULL WHERE route_id IN ({old})"))
-        removed = session.exec(text(
-            "DELETE FROM route WHERE name LIKE '%trail loop - %' "
-            "OR name LIKE '%trail out-and-back - %'")).rowcount
-        session.commit()
-        if removed:
-            print(f"Removed {removed} trail routes from a previous run.")
+        # additive: keep every existing route (and the runs/favorites linked to it)
+        existing = {row[0] for row in session.exec(text(
+            "SELECT name FROM route WHERE name LIKE '%trail loop - %' "
+            "OR name LIKE '%trail out-and-back - %'")).all()}
+        print(f"{len(existing)} generated trail routes already in the database (kept as-is).")
 
         kept = []                       # node sets of accepted routes, for de-duplication
         added = {"trail": 0, "mixed": 0}
@@ -205,6 +209,8 @@ def main():
                     for kind, builder in (("loop", loop_candidate),
                                           ("out-and-back", out_and_back_candidate)):
                         label = f"{name} trail {kind} - {target} km {direction}"
+                        if label in existing:
+                            continue
                         try:
                             best = builder(lat, lon, bearing, target, trail_nodes)
                         except Exception as e:

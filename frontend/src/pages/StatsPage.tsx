@@ -13,7 +13,20 @@ type Stats = {
   favorite_count: number;
   weekly: { week_start: string; distance_km: number }[];
   this_week_days?: boolean[];
+  this_week_daily_km?: number[];
+  runs_this_week?: number;
+  fastest_pace_min_km?: number | null;
+  longest_run_name?: string | null;
+  surface_mix_km?: Record<string, number>;
 };
+
+const SURFACES: { key: string; label: string }[] = [
+  { key: "pavement", label: "Road" },
+  { key: "trail", label: "Trail" },
+  { key: "track", label: "Track" },
+  { key: "mixed", label: "Mixed" },
+  { key: "own", label: "Your own routes" },
+];
 
 const DAY_LETTERS = ["M", "T", "W", "T", "F", "S", "S"];
 
@@ -33,69 +46,52 @@ function TopoLines() {
   );
 }
 
-// Weekly mileage drawn as a trail elevation profile
-function ElevationChart({ weekly }: { weekly: Stats["weekly"] }) {
-  const W = 800;
-  const H = 230;
-  const top = 34;
-  const bottom = 200;
-  const n = weekly.length;
-  const miles = weekly.map((w) => kmToMiles(w.distance_km));
-  const max = Math.max(...miles, 1);
-  const pts = miles.map((m, i) => ({
-    x: ((i + 0.5) / n) * W,
-    y: bottom - (m / max) * (bottom - top),
-    m,
-  }));
+function weeklyAvg(weekly: Stats["weekly"]): number {
+  return weekly.reduce((sum, w) => sum + kmToMiles(w.distance_km), 0) / Math.max(weekly.length, 1);
+}
 
-  // smooth curve: horizontal tangents at each point, so hills never overshoot
-  let line = `M 0 ${pts[0].y} L ${pts[0].x} ${pts[0].y}`;
-  for (let i = 1; i < n; i++) {
-    const p0 = pts[i - 1];
-    const p1 = pts[i];
-    const mx = (p0.x + p1.x) / 2;
-    line += ` C ${mx} ${p0.y}, ${mx} ${p1.y}, ${p1.x} ${p1.y}`;
-  }
-  line += ` L ${W} ${pts[n - 1].y}`;
-  const area = `${line} L ${W} ${bottom} L 0 ${bottom} Z`;
-  const last = pts[n - 1];
+// Weekly mileage as labelled bars, with a dashed line at the 8-week average
+function WeeklyBars({ weekly }: { weekly: Stats["weekly"] }) {
+  const miles = weekly.map((w) => kmToMiles(w.distance_km));
+  const rawMax = Math.max(...miles, 1);
+  const step = rawMax > 40 ? 20 : rawMax > 20 ? 10 : 5;
+  const max = Math.ceil(rawMax / step) * step;
+  const ticks = Array.from({ length: max / step + 1 }, (_, i) => i * step);
+  const avg = miles.reduce((s, m) => s + m, 0) / miles.length;
+  const n = weekly.length;
 
   return (
-    <div className="elev">
-      <svg viewBox={`0 0 ${W} ${H}`} className="elev-svg" role="img" aria-label="Miles per week, last 8 weeks">
-        <defs>
-          <linearGradient id="elevFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.35" />
-            <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {[0.5, 1].map((f) => (
-          <line key={f} x1="0" x2={W} y1={bottom - f * (bottom - top)} y2={bottom - f * (bottom - top)} className="elev-grid" />
+    <div className="wb">
+      <div className="wb-axis">
+        {[...ticks].reverse().map((t) => <span key={t}>{t}</span>)}
+      </div>
+      <div className="wb-plot">
+        <div className="wb-area">
+        {ticks.map((t) => (
+          <i key={t} className="wb-grid" style={{ bottom: `${(t / max) * 100}%` }} />
         ))}
-        <line x1="0" x2={W} y1={bottom} y2={bottom} className="elev-base" />
-        <path d={area} fill="url(#elevFill)" />
-        <path d={line} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" className="elev-line" />
-        {pts.slice(0, -1).map((p, i) => (
-          <circle key={i} cx={p.x} cy={p.y} r="4.5" className="elev-dot" />
-        ))}
-        <circle cx={last.x} cy={last.y} r="11" className="elev-now-halo" />
-        <circle cx={last.x} cy={last.y} r="6.5" className="elev-now" />
-      </svg>
-
-      {/* hover columns + labels, aligned to the points */}
-      <div className="elev-cols">
+        {avg > 0 && <div className="wb-avg" style={{ bottom: `${(avg / max) * 100}%` }} />}
+        <div className="wb-bars">
+          {weekly.map((w, i) => {
+            const isNow = i === n - 1;
+            const m = miles[i];
+            return (
+              <div key={w.week_start} className={`wb-col ${isNow ? "now" : ""}`}>
+                <div className="wb-bar-wrap">
+                  {m > 0 && <span className="wb-val">{m.toFixed(1)}</span>}
+                  <div className={`wb-bar ${m === 0 ? "zero" : ""}`} style={{ height: m > 0 ? `${(m / max) * 100}%` : undefined }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        </div>
+      </div>
+      <div className="wb-labels">
         {weekly.map((w, i) => {
           const [, mo, d] = w.week_start.split("-").map(Number);
           const isNow = i === n - 1;
-          return (
-            <div key={w.week_start} className="elev-col" tabIndex={0}>
-              <span className="elev-tip" style={{ top: `${(pts[i].y / H) * 100}%` }}>
-                <strong>{miles[i].toFixed(1)} mi</strong>
-                {isNow ? "this week" : `wk of ${mo}/${d}`}
-              </span>
-              <span className={`elev-label ${isNow ? "now" : ""}`}>{isNow ? "NOW" : `${mo}/${d}`}</span>
-            </div>
-          );
+          return <span key={w.week_start} className={isNow ? "now" : ""}>{isNow ? "This wk" : `${mo}/${d}`}</span>;
         })}
       </div>
     </div>
@@ -169,13 +165,19 @@ function StatsPage() {
                   {delta >= 0 ? "▲" : "▼"} {Math.abs(delta).toFixed(1)} mi vs last week
                 </span>
 
-                <div className="week-days">
+                <div className="week-bars">
                   {DAY_LETTERS.map((letter, i) => {
-                    const ran = stats.this_week_days?.[i] ?? false;
+                    const km = stats.this_week_daily_km?.[i] ?? (stats.this_week_days?.[i] ? 1 : 0);
+                    const mi = kmToMiles(km);
+                    const dayMax = Math.max(...(stats.this_week_daily_km ?? [1]).map(kmToMiles), 1);
                     return (
-                      <div key={i} className="week-day">
-                        <span className={`week-dot ${ran ? "ran" : ""} ${i === todayIdx ? "today" : ""}`} />
+                      <div key={i} className={`week-bar-col ${i === todayIdx ? "today" : ""} ${i > todayIdx ? "future" : ""}`}>
+                        <span className="week-bar-val">{mi > 0 ? mi.toFixed(1) : ""}</span>
+                        <div className="week-bar-track">
+                          <div className="week-bar-fill" style={{ height: mi > 0 ? `${Math.max((mi / dayMax) * 100, 8)}%` : 0 }} />
+                        </div>
                         <span className="week-day-letter">{letter}</span>
+                        <i className="week-today-dot" />
                       </div>
                     );
                   })}
@@ -190,38 +192,110 @@ function StatsPage() {
 
             <section className="elev-card">
               <div className="elev-head">
-                <h2>Mileage profile</h2>
-                <span>Last 8 weeks</span>
+                <h2>Weekly mileage</h2>
+                <span className="wb-legend">
+                  <i className="wb-legend-avg" /> {weeklyAvg(stats.weekly).toFixed(1)} mi/wk avg
+                  <span className="wb-legend-sep">·</span> Last 8 weeks
+                </span>
               </div>
-              <ElevationChart weekly={stats.weekly} />
+              <WeeklyBars weekly={stats.weekly} />
             </section>
           </div>
 
-          <section className="splits">
-            <div className="split">
-              <span className="split-label">Runs</span>
-              <span className="split-value">{stats.total_runs}</span>
+          <section className="tiles">
+            <div className="tile">
+              <span className="tile-head">
+                <span className="tile-icon runs" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M4 18l5-6 4 3 7-9" /></svg>
+              </span>
+                <span className="tile-label">Runs</span>
+              </span>
+              <span className="tile-value">{stats.total_runs}</span>
+              <span className="tile-sub">{stats.runs_this_week ?? 0} this week</span>
             </div>
-            <div className="split">
-              <span className="split-label">Avg pace</span>
-              <span className="split-value">{pace}<small>/mi</small></span>
+            <div className="tile">
+              <span className="tile-head">
+                <span className="tile-icon pace" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="7" /><path d="M12 13l3-3M10 3h4" /></svg>
+              </span>
+                <span className="tile-label">Avg pace</span>
+              </span>
+              <span className="tile-value">{pace}<small>/mi</small></span>
+              <span className="tile-sub">
+                {stats.fastest_pace_min_km ? `Best ${formatPacePerMile(stats.fastest_pace_min_km)}` : "Distance-weighted"}
+              </span>
             </div>
-            <div className="split">
-              <span className="split-label">Longest</span>
-              <span className="split-value">{kmToMiles(stats.longest_run_km).toFixed(1)}<small>mi</small></span>
+            <div className="tile">
+              <span className="tile-head">
+                <span className="tile-icon longest" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M3 20l6-10 4 6 3-4 5 8z" /></svg>
+              </span>
+                <span className="tile-label">Longest</span>
+              </span>
+              <span className="tile-value">{kmToMiles(stats.longest_run_km).toFixed(1)}<small>mi</small></span>
+              <span className="tile-sub">{stats.longest_run_name ?? "Your own route"}</span>
             </div>
-            <div className="split">
-              <span className="split-label">Avg rating</span>
-              <span className="split-value">
+            <div className="tile">
+              <span className="tile-head">
+                <span className="tile-icon rating" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" /></svg>
+              </span>
+                <span className="tile-label">Avg rating</span>
+              </span>
+              <span className="tile-value">
                 {stats.avg_rating != null ? stats.avg_rating : "–"}
                 {stats.avg_rating != null && <small>/5</small>}
               </span>
+              <span className="tile-sub tile-stars">
+                {stats.avg_rating != null &&
+                  Array.from({ length: 5 }, (_, i) => (
+                    <i key={i} className={i < Math.round(stats.avg_rating!) ? "on" : ""}>★</i>
+                  ))}
+              </span>
             </div>
-            <div className="split">
-              <span className="split-label">Saved routes</span>
-              <span className="split-value">{stats.favorite_count}</span>
-            </div>
+            <Link to="/favorites" className="tile tile-link">
+              <span className="tile-head">
+                <span className="tile-icon saved" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z" /></svg>
+              </span>
+                <span className="tile-label">Saved routes</span>
+              </span>
+              <span className="tile-value">{stats.favorite_count}</span>
+              <span className="tile-sub">View favorites →</span>
+            </Link>
           </section>
+
+          {stats.surface_mix_km && totalMiles > 0 && (
+            <section className="mix-card">
+              <div className="elev-head">
+                <h2>Where your miles come from</h2>
+                <span>All time</span>
+              </div>
+              <div className="mix-bar">
+                {SURFACES.filter((sf) => (stats.surface_mix_km![sf.key] ?? 0) > 0).map((sf) => (
+                  <div
+                    key={sf.key}
+                    className={`mix-seg mix-${sf.key}`}
+                    style={{ flexGrow: stats.surface_mix_km![sf.key] }}
+                    title={`${sf.label}: ${kmToMiles(stats.surface_mix_km![sf.key]).toFixed(1)} mi`}
+                  />
+                ))}
+              </div>
+              <ul className="mix-legend">
+                {SURFACES.filter((sf) => (stats.surface_mix_km![sf.key] ?? 0) > 0).map((sf) => {
+                  const mi = kmToMiles(stats.surface_mix_km![sf.key]);
+                  return (
+                    <li key={sf.key}>
+                      <i className={`mix-${sf.key}`} />
+                      <span>{sf.label}</span>
+                      <b>{mi.toFixed(1)} mi</b>
+                      <small>{Math.round((mi / totalMiles) * 100)}%</small>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
         </>
       )}
     </div>

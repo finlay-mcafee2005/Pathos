@@ -31,6 +31,7 @@ def build_user_profile(session: Session, user: User) -> UserProfile:
         goal=user.goal or "general_fitness",
         home_lat=user.latitude,
         home_lon=user.longitude,
+        usual_pace_min_km=getattr(user, "usual_pace_min_km", None),
     )
 
 
@@ -50,6 +51,7 @@ def build_daily_checkin(checkin: Checkin) -> DailyCheckin:
         available_minutes=getattr(checkin, "available_minutes", None),
         mood=getattr(checkin, "mood", None),
         run_intent=getattr(checkin, "run_intent", None),
+        hills_pref=getattr(checkin, "hills_pref", None),
     )
 
 
@@ -161,7 +163,7 @@ def build_route_candidates(routes: List[Route]) -> List[RouteCandidate]:
     return [
         RouteCandidate(
             id=str(r.id),
-            name=r.name,
+            name=getattr(r, "nickname", None) or r.name,
             distance_km=r.distance_km,
             elevation_gain_m=r.elevation_gain_m,
             difficulty=r.difficulty,

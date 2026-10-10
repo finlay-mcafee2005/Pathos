@@ -50,7 +50,7 @@ class CombinedRoute:
 
     def __init__(self, legs, coords_list):
         self.id = str(uuid4())
-        self.name = " + ".join(leg.name for leg in legs)
+        self.name = " + ".join(getattr(leg, "nickname", None) or leg.name for leg in legs)
         self.coords = [pt for coords in coords_list for pt in coords]
         self.distance_km = round(path_length_km(self.coords), 2)
         self.elevation_gain_m = sum(leg.elevation_gain_m or 0 for leg in legs)

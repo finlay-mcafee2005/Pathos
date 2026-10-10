@@ -23,6 +23,7 @@ export type GroupMatch = {
   source_url?: string | null;
   verified_on?: string | null;
   notes?: string | null;
+  place_label?: string | null;
 };
 
 type GroupsResponse = {
@@ -78,6 +79,144 @@ function FitMeter({ fit }: { fit: number }) {
       </svg>
       <span className="fit-num">{Math.round(fit)}</span>
       <span className="fit-label">fit</span>
+    </div>
+  );
+}
+
+function shortPlace(location: string): string {
+  // "The Oinkster, 2005 Colorado Blvd, Los Angeles, CA" -> "The Oinkster"
+  return location.split(",")[0].trim();
+}
+
+function fitWord(fit: number): string {
+  if (fit >= 80) return "Great fit";
+  if (fit >= 65) return "Good fit";
+  if (fit >= 50) return "Okay fit";
+  return "Long shot";
+}
+
+function longDayLabel(iso: string): string {
+  const label = dayLabel(iso);
+  const date = new Date(iso).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  return label === "Today" || label === "Tomorrow" ? `${label} · ${date}` : date;
+}
+
+function groupByDay(matches: GroupMatch[]): [string, GroupMatch[]][] {
+  const sorted = [...matches].sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+  const groups = new Map<string, GroupMatch[]>();
+  for (const m of sorted) {
+    const key = longDayLabel(m.starts_at);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(m);
+  }
+  // within a day, best fit first
+  return [...groups.entries()].map(([k, v]) => [k, v.sort((a, b) => b.fit - a.fit)]);
+}
+
+function SessionCard({ m }: { m: GroupMatch }) {
+  const [open, setOpen] = useState(false);
+  const allPaces = /all/i.test(m.pace_range);
+  // drop reasons that just repeat a tag or the distance line
+  const reasons = m.reasons.filter(
+    (r) => !(allPaces && /all paces/i.test(r)) && !/close to home|near home/i.test(r),
+  );
+  const [time, ampm] = formatMeetTime(m.starts_at).split(" ");
+  const longNotes = (m.notes?.length ?? 0) > 110;
+  const tone = m.fit >= 80 ? "great" : m.fit >= 65 ? "good" : "fair";
+
+  return (
+    <article className={`gr-card ${m.is_my_club ? "mine" : ""}`}>
+      <div className="gr-time">
+        <span className="gr-time-num">{time}</span>
+        <span className="gr-time-ampm">{ampm}</span>
+      </div>
+
+      <div className="gr-main">
+        <div className="gr-title-row">
+          <h3>{m.club_name}</h3>
+          {m.is_my_club && <span className="gr-badge">Your club</span>}
+        </div>
+        <p className="gr-where">
+          <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z" fill="none" stroke="currentColor" strokeWidth="2" />
+            <circle cx="12" cy="10" r="2.5" fill="currentColor" />
+          </svg>
+          <span title={m.location}>{m.place_label || shortPlace(m.location)}</span>
+          {m.distance_from_home_km != null && (
+            <span className="gr-away">{Math.max(0.1, m.distance_from_home_km * 0.621371).toFixed(1)} mi from home</span>
+          )}
+        </p>
+        <div className="gr-tags">
+          <span className="gr-tag type">{sessionTitle(m)}</span>
+          {m.surface && <span className="gr-tag">{m.surface.charAt(0).toUpperCase() + m.surface.slice(1)}</span>}
+          <span className="gr-tag">{allPaces ? "All paces" : m.pace_range.replace(" min/mi", "/mi")}</span>
+          {m.notes?.toLowerCase().includes("free") && <span className="gr-tag">Free</span>}
+        </div>
+        {(reasons.length > 0 || m.cautions.length > 0) && (
+          <ul className="gr-reasons">
+            {reasons.slice(0, 2).map((r) => <li key={r}>{r}</li>)}
+            {m.cautions.slice(0, 1).map((c) => <li key={c} className="caution">{c}</li>)}
+          </ul>
+        )}
+        {m.notes && (
+          <p className={`gr-notes ${longNotes && !open ? "clamped" : ""}`}>
+            {m.notes}
+            {longNotes && (
+              <button type="button" className="gr-more" onClick={() => setOpen(!open)}>
+                {open ? "Less" : "More"}
+              </button>
+            )}
+          </p>
+        )}
+        <div className="gr-links">
+          <a
+            className="gr-link"
+            href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(m.location)}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
+                 strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M3 11l18-8-8 18-2-8-8-2z" />
+            </svg>
+            Directions
+          </a>
+          {m.source_url && (
+            <a className="gr-link" href={m.source_url} target="_blank" rel="noreferrer">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
+                   strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" />
+              </svg>
+              Club schedule
+            </a>
+          )}
+        </div>
+      </div>
+
+      <div className={`gr-fit ${tone}`}>
+        <FitRing fit={m.fit} />
+        <span className="gr-fit-word">{fitWord(m.fit)}</span>
+      </div>
+    </article>
+  );
+}
+
+function FitRing({ fit }: { fit: number }) {
+  const r = 26;
+  const c = 2 * Math.PI * r;
+  return (
+    <div className="gr-ring" aria-label={`${Math.round(fit)} out of 100 fit`}>
+      <svg width="64" height="64" viewBox="0 0 64 64" aria-hidden="true">
+        <circle cx="32" cy="32" r={r} className="gr-ring-track" />
+        <circle
+          cx="32" cy="32" r={r}
+          className="gr-ring-fill"
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - fit / 100)}
+          transform="rotate(-90 32 32)"
+        />
+      </svg>
+      <span className="gr-ring-num">{Math.round(fit)}</span>
     </div>
   );
 }
@@ -172,52 +311,19 @@ function GroupsPage() {
         </div>
       )}
 
-      <div className="group-list">
-        {others.map((m) => (
-          <article key={`${m.club_id}-${m.starts_at}`} className={`group-card ${m.is_today ? "today" : ""}`}>
-            <div className="group-when">
-              <span className="group-day">{dayLabel(m.starts_at)}</span>
-              <span className="group-time">{formatMeetTime(m.starts_at)}</span>
-            </div>
-
-            <div className="group-main">
-              <div className="group-title-row">
-                <h3>{m.club_name}</h3>
-                {m.is_my_club && <span className="group-badge">Your club</span>}
-              </div>
-              <div className="group-tags">
-                <span className="run-tag">{sessionTitle(m)}</span>
-                {m.surface && <span className="run-tag">{m.surface.charAt(0).toUpperCase() + m.surface.slice(1)}</span>}
-                <span className="run-tag">{m.pace_range.replace(" min/mi", "/mi")}</span>
-                {m.notes?.toLowerCase().includes("free") && <span className="run-tag">Free</span>}
-                <span className="group-where">
-                  {m.location}
-                  {m.distance_from_home_km != null && ` · ${(m.distance_from_home_km * 0.621371).toFixed(1)} mi away`}
-                </span>
-              </div>
-              <ul className="group-reasons">
-                {m.reasons.slice(0, 2).map((r) => (
-                  <li key={r}>{r}</li>
-                ))}
-                {m.cautions.slice(0, 1).map((c) => (
-                  <li key={c} className="caution">{c}</li>
-                ))}
-              </ul>
-              {m.notes && <p className="group-notes">{m.notes}</p>}
-              {m.source_url && (
-                <p className="group-source">
-                  <a href={m.source_url} target="_blank" rel="noreferrer">Schedule source</a>
-                  {m.verified_on &&
-                    ` · checked ${new Date(m.verified_on + "T12:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}`}
-                  {" "}· confirm before you go
-                </p>
-              )}
-            </div>
-
-            <FitMeter fit={m.fit} />
-          </article>
-        ))}
-      </div>
+      {groupByDay(others).map(([day, sessions]) => (
+        <section key={day} className="gr-day">
+          <h2 className="gr-day-title">
+            <span>{day}</span>
+            <small>{sessions.length} session{sessions.length === 1 ? "" : "s"}</small>
+          </h2>
+          <div className="gr-list">
+            {sessions.map((m) => (
+              <SessionCard key={`${m.club_id}-${m.starts_at}`} m={m} />
+            ))}
+          </div>
+        </section>
+      ))}
 
       <section className="group-club">
         <div>

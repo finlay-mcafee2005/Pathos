@@ -1,23 +1,27 @@
 import re
 from uuid import UUID
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 import json
 from sqlalchemy import text
 
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlmodel import Session, create_engine, select
+from sqlmodel import Session, SQLModel, create_engine, select
+from dataclasses import replace
 from geoalchemy2.shape import to_shape
 from datetime import date as date_type
-from pydantic import BaseModel
-from app.geocoding import geocode_address
+from pydantic import BaseModel, Field
+from app.geocoding import geocode_address, geocode_la
 from app.conditions import fetch_conditions
 from app.directions import directions_for
 from app.activity_import import parse_activity, match_route, ImportProblem
 import base64
 from zoneinfo import ZoneInfo
 from typing import List, Literal, Optional
-from app.models import User, Checkin, Route, Injury, Run, Club, ClubSchedule, FavoriteRoute
+from app.models import User, Checkin, Route, Injury, Run, Club, ClubSchedule, FavoriteRoute, Recommendation, RunGroup, RunGroupMember
+from app.scoring.group_picks import Member, group_recommend
+from app.scoring.engine import haversine_km as _hav
+from app.scoring.converters import route_start
 from app.auth import hash_password, verify_password
 
 from app.scoring.engine import recommend, diversify
@@ -45,6 +49,8 @@ app.add_middleware(
 def add_new_columns():
     """create_all() won't add columns to tables that already exist, so add
     any new ones here. IF NOT EXISTS makes this safe to run every startup."""
+    # new tables (no-op if they exist)
+    SQLModel.metadata.create_all(engine, tables=[RunGroup.__table__, RunGroupMember.__table__])
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS run_time VARCHAR"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS available_minutes FLOAT"))
@@ -59,8 +65,19 @@ def add_new_columns():
         conn.execute(text("ALTER TABLE club ADD COLUMN IF NOT EXISTS verified_on DATE"))
         conn.execute(text("ALTER TABLE club ADD COLUMN IF NOT EXISTS notes VARCHAR"))
         for col, typ in [("duration_s", "FLOAT"), ("elevation_gain_m", "FLOAT"), ("avg_heart_rate", "FLOAT"),
-                         ("max_heart_rate", "FLOAT"), ("source", "VARCHAR")]:
+                         ("max_heart_rate", "FLOAT"), ("source", "VARCHAR"),
+                         ("recommendation_id", "UUID"), ("pick_fit", "VARCHAR")]:
             conn.execute(text(f"ALTER TABLE run ADD COLUMN IF NOT EXISTS {col} {typ}"))
+        conn.execute(text("ALTER TABLE route ADD COLUMN IF NOT EXISTS nickname VARCHAR"))
+        conn.execute(text("ALTER TABLE route ADD COLUMN IF NOT EXISTS hidden BOOLEAN DEFAULT FALSE"))
+        conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS hills_pref VARCHAR"))
+        conn.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS usual_pace_min_km FLOAT'))
+        conn.execute(text("ALTER TABLE route ADD COLUMN IF NOT EXISTS elevation_loss_m FLOAT"))
+        # recommendation logging
+        conn.execute(text("ALTER TABLE recommendation ALTER COLUMN route_id DROP NOT NULL"))
+        for col, typ in [("checkin_id", "UUID"), ("rank", "INTEGER"), ("route_name", "VARCHAR"),
+                         ("shown_at", "TIMESTAMP"), ("run_id", "UUID")]:
+            conn.execute(text(f"ALTER TABLE recommendation ADD COLUMN IF NOT EXISTS {col} {typ}"))
 
 
 MAX_DISTANCE_KM = 15  # only consider routes within this radius of the user's home
@@ -79,6 +96,9 @@ GENERATED_KIND = [
 ]
 
 
+DIRECTION_WORD = {"north": "North", "south": "South", "east": "East", "west": "West"}
+
+
 def display_name(name: str) -> str:
     """Friendly card title. Generated routes are stored as e.g.
     'Occidental College road loop - 8 km south' (the scripts rely on that
@@ -87,10 +107,14 @@ def display_name(name: str) -> str:
     Combined routes ('A + B') are cleaned part by part."""
     parts = []
     for part in name.split(" + "):
+        m = GENERATED_SUFFIX.search(part)
+        direction = DIRECTION_WORD.get(m.group(2).lower(), "") if m else ""
         part = GENERATED_SUFFIX.sub("", part)
         for old, new in GENERATED_KIND:
             if part.endswith(old):
-                part = part[: -len(old)] + new
+                # keep the direction so loops from the same start stay distinct:
+                # "Occidental College road loop - 8 km south" -> "Occidental College South Loop"
+                part = part[: -len(old)] + (f" {direction}" if direction else "") + new
                 break
         parts.append(part)
     return " + ".join(parts)
@@ -114,7 +138,7 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session)):
 
     routes_query = text("""
         SELECT id FROM route
-        WHERE ST_DWithin(
+        WHERE NOT COALESCE(hidden, FALSE) AND ST_DWithin(
             ST_StartPoint(gps_path)::geography,
             ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography,
             :max_distance_m
@@ -131,6 +155,22 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session)):
     nearby_ids = [row[0] for row in nearby_route_ids]
 
     routes = session.exec(select(Route).where(Route.id.in_(nearby_ids))).all()
+
+    # Travel limit is a hard rule. If nothing starts inside it, fall back to the
+    # few closest routes (within the max radius) rather than showing nothing.
+    if len(routes) < 3 and effective_radius_km < MAX_DISTANCE_KM:
+        closest = session.exec(
+            text("""
+                SELECT id FROM route
+                WHERE NOT COALESCE(hidden, FALSE) AND ST_DWithin(ST_StartPoint(gps_path)::geography,
+                                 ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography, :max_m)
+                ORDER BY ST_Distance(ST_StartPoint(gps_path)::geography,
+                                     ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography)
+                LIMIT 3
+            """),
+            params={"lon": user.longitude, "lat": user.latitude, "max_m": MAX_DISTANCE_KM * 1000},
+        ).all()
+        routes = session.exec(select(Route).where(Route.id.in_([r[0] for r in closest]))).all()
 
     if not routes:
         raise HTTPException(
@@ -167,8 +207,33 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session)):
             results = diversify(results + combined_results, 3,
                                 surface_requested=bool(checkin.surface_preference))
 
-    return [
+    # log exactly what was shown for this check-in (a refresh replaces it)
+    # (picks that already have a run logged against them are kept)
+    for old_rec in session.exec(select(Recommendation).where(Recommendation.checkin_id == checkin.id,
+                                                             Recommendation.run_id.is_(None))).all():
+        session.delete(old_rec)
+    rec_ids = []
+    now = datetime.utcnow()
+    for rank, r in enumerate(results, start=1):
+        rec = Recommendation(
+            user_id=user.id,
+            route_id=UUID(r.route.id) if r.route.id in real_route_ids else None,
+            rec_date=date.today(),
+            score=r.score,
+            reasoning="; ".join(r.reasons)[:1000],
+            checkin_id=checkin.id,
+            rank=rank,
+            route_name=display_name(r.route.name),
+            shown_at=now,
+        )
+        session.add(rec)
+        rec_ids.append(str(rec.id))
+    session.commit()
+
+    response = [
         {
+            "recommendation_id": rec_ids[i],
+            "rank": i + 1,
             # combined routes are synthetic (not in the route table), so they get
             # no id - logging a run on one just records distance/pace
             "route_id": r.route.id if r.route.id in real_route_ids else None,
@@ -181,7 +246,7 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session)):
             "effective_distance_km": round(r.effective_distance_km, 2),
             "reasons": r.reasons,
             "distance_km": r.route.distance_km,
-            "elevation_gain_m": r.route.elevation_gain_m,
+            "elevation_gain_m": run_climb_m(route_by_id[r.route.id], r.run_format, r.repeat_count),
             "difficulty": r.difficulty,
             "surface_type": r.route.surface_type,
             "path": [
@@ -193,8 +258,41 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session)):
                 )
             ],
         }
-        for r in results
+        for i, r in enumerate(results)
     ]
+    return unique_titles(response)
+
+
+def run_climb_m(route, run_format: str, repeat_count: int) -> float:
+    """Climb for the run as recommended, not just the stored path:
+    out-and-back = the climb out + the climb back (what you descended going out),
+    repeated loop = one lap's climb x laps."""
+    gain = route.elevation_gain_m or 0.0
+    if run_format == "out_and_back":
+        loss = getattr(route, "elevation_loss_m", None)
+        return round(gain + (loss if loss is not None else gain), 1)
+    if run_format == "repeat":
+        return round(gain * max(1, repeat_count or 1), 1)
+    return round(gain, 1)
+
+
+def unique_titles(cards: list) -> list:
+    """Never show two picks with the same title: tell look-alikes apart by
+    length ("Short" / "Long"), or by distance if there are three."""
+    groups = {}
+    for c in cards:
+        groups.setdefault(c["route_name"], []).append(c)
+    for name, same in groups.items():
+        if len(same) < 2:
+            continue
+        same.sort(key=lambda c: c["distance_km"])
+        if len(same) == 2 and same[1]["distance_km"] - same[0]["distance_km"] >= 1.0:
+            same[0]["route_name"] = f"{name} (Short)"
+            same[1]["route_name"] = f"{name} (Long)"
+        else:
+            for c in same:
+                c["route_name"] = f"{name} \u00b7 {c['distance_km'] * 0.621371:.1f} mi"
+    return cards
 
 class InjuryInput(BaseModel):
     body_part: str
@@ -212,41 +310,57 @@ class SignupRequest(BaseModel):
     fitness_level: str
     goal: str
     weekly_mileage_avg: float
+    usual_pace_min_mile: Optional[float] = Field(default=None, ge=4, le=20)  # easy pace, minutes per mile
     injuries: List[InjuryInput] = []
     club_join_code: Optional[str] = None
 
 
-SIGNUP_COVERAGE_RADIUS_KM = 50  # generous radius allowing for driving-distance users
+SIGNUP_COVERAGE_RADIUS_KM = 15  # need routes within ~9 mi of home for useful picks
 
 
-@app.post("/signup")
-def signup(payload: SignupRequest, session: Session = Depends(get_session)):
+class AreaCheck(BaseModel):
+    address: str
+
+
+def check_coverage(session: Session, address: str):
+    """Geocode inside LA and make sure Pathos has routes near it.
+    Returns (lat, lon, label, route_count) or raises a 400 with a plain message."""
     try:
-        lat, lon = geocode_address(payload.address)
+        lat, lon, label = geocode_la(address)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-    nearby_check = session.exec(
+    except Exception:
+        raise HTTPException(status_code=503, detail="Couldn't look up that location right now. Try again in a moment.")
+    count = session.exec(
         text("""
             SELECT COUNT(*) FROM route
-            WHERE ST_DWithin(
+            WHERE NOT COALESCE(hidden, FALSE) AND ST_DWithin(
                 ST_StartPoint(gps_path)::geography,
                 ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography,
                 :max_distance_m
             )
         """),
         params={"lon": lon, "lat": lat, "max_distance_m": SIGNUP_COVERAGE_RADIUS_KM * 1000},
-    ).first()
-
-    if nearby_check[0] == 0:
+    ).first()[0]
+    if count == 0:
         raise HTTPException(
             status_code=400,
-            detail=(
-                f"We don't currently have any routes within {SIGNUP_COVERAGE_RADIUS_KM}km "
-                f"of this address. This app currently covers the Los Angeles area "
-                f"(Glendale, Pasadena, Eagle Rock, and nearby foothills)."
-            ),
+            detail=(f"Found {label}, but Pathos doesn't have routes near there yet. It currently covers "
+                    f"northeast LA, Glendale, Burbank, Pasadena and nearby areas."),
         )
+    return lat, lon, label, count
+
+
+@app.post("/check-area")
+def check_area(payload: AreaCheck, session: Session = Depends(get_session)):
+    """Signup step 2: confirm the location before moving on."""
+    lat, lon, label, count = check_coverage(session, payload.address)
+    return {"label": label, "lat": lat, "lon": lon, "routes_nearby": count}
+
+
+@app.post("/signup")
+def signup(payload: SignupRequest, session: Session = Depends(get_session)):
+    lat, lon, _label, _count = check_coverage(session, payload.address)
 
     club_id = None
     if payload.club_join_code:
@@ -265,6 +379,7 @@ def signup(payload: SignupRequest, session: Session = Depends(get_session)):
         date_of_birth=payload.date_of_birth,
         fitness_level=payload.fitness_level,
         weekly_mileage_avg=payload.weekly_mileage_avg,
+        usual_pace_min_km=(payload.usual_pace_min_mile / 1.60934) if payload.usual_pace_min_mile else None,
         address=payload.address,
         latitude=lat,
         longitude=lon,
@@ -303,6 +418,36 @@ class CheckinRequest(BaseModel):
     available_minutes: Optional[float] = None
     mood: Optional[Literal["stressed", "flat", "good", "restless", "low"]] = None
     run_intent: Optional[Literal["easy", "workout", "long", "explore"]] = None
+    hills_pref: Optional[Literal["avoid", "want"]] = None
+
+
+@app.get("/checkins/{user_id}/last")
+def last_checkin(user_id: UUID, session: Session = Depends(get_session)):
+    """The most recent check-in from an earlier day, for "Same as yesterday"."""
+    c = session.exec(
+        select(Checkin)
+        .where(Checkin.user_id == user_id, Checkin.checkin_date < date_type.today())
+        .order_by(Checkin.checkin_date.desc(), Checkin.created_at.desc())
+    ).first()
+    if not c:
+        return None
+    return {
+        "checkin_date": c.checkin_date.isoformat(),
+        "days_ago": (date_type.today() - c.checkin_date).days,
+        "energy_score": c.energy_score,
+        "sleep_hours": c.sleep_hours,
+        "sleep_quality": c.sleep_quality,
+        "sore_body_parts": json.loads(c.sore_body_parts or "[]"),
+        "mood": c.mood,
+        "run_intent": c.run_intent,
+        "planned_distance_miles": round(c.planned_distance_km / 1.60934, 1) if c.planned_distance_km else None,
+        "available_minutes": c.available_minutes,
+        "willing_to_drive_miles": round(c.willing_to_drive_km / 1.60934, 1) if c.willing_to_drive_km else None,
+        "surface_preference": c.surface_preference,
+        "wants_scenic": c.wants_scenic,
+        "run_time": c.run_time,
+        "hills_pref": c.hills_pref,
+    }
 
 
 @app.post("/checkins")
@@ -324,6 +469,7 @@ def create_checkin(payload: CheckinRequest, session: Session = Depends(get_sessi
         available_minutes=payload.available_minutes,
         mood=payload.mood,
         run_intent=payload.run_intent,
+        hills_pref=payload.hills_pref,
     )
     session.add(checkin)
     session.commit()
@@ -355,6 +501,8 @@ class RunRequest(BaseModel):
     avg_heart_rate: Optional[float] = None
     max_heart_rate: Optional[float] = None
     source: Optional[str] = None
+    recommendation_id: Optional[UUID] = None
+    pick_fit: Optional[Literal["yes", "sort_of", "no"]] = None
 
 
 @app.post("/runs")
@@ -372,10 +520,31 @@ def log_run(payload: RunRequest, session: Session = Depends(get_session)):
         avg_heart_rate=payload.avg_heart_rate,
         max_heart_rate=payload.max_heart_rate,
         source=payload.source or "manual",
+        pick_fit=payload.pick_fit,
     )
+
+    # link the run to the recommendation it came from. If the app didn't say,
+    # match it to a route recommended to this user in the last 2 days.
+    rec = session.get(Recommendation, payload.recommendation_id) if payload.recommendation_id else None
+    if rec is None and payload.route_id:
+        rec = session.exec(
+            select(Recommendation)
+            .where(Recommendation.user_id == payload.user_id,
+                   Recommendation.route_id == payload.route_id,
+                   Recommendation.rec_date >= run.run_date - timedelta(days=2))
+            .order_by(Recommendation.shown_at.desc())
+        ).first()
+    if rec is not None and rec.user_id == payload.user_id:
+        run.recommendation_id = rec.id
+
     session.add(run)
     session.commit()
     session.refresh(run)
+    if rec is not None and rec.user_id == payload.user_id:
+        rec.accepted = True
+        rec.run_id = run.id
+        session.add(rec)
+        session.commit()
     return {"run_id": str(run.id)}
 
 
@@ -413,7 +582,7 @@ def import_run_file(payload: ImportRunRequest, session: Session = Depends(get_se
         nearby = session.exec(
             text("""
                 SELECT id FROM route
-                WHERE ST_DWithin(gps_path::geography,
+                WHERE NOT COALESCE(hidden, FALSE) AND ST_DWithin(gps_path::geography,
                                  ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography, 1500)
             """),
             params={"lon": start_lon, "lat": start_lat},
@@ -423,7 +592,7 @@ def import_run_file(payload: ImportRunRequest, session: Session = Depends(get_se
             candidates = []
             for r in session.exec(select(Route).where(Route.id.in_(ids))).all():
                 path = [(lat, lon) for lon, lat in to_shape(r.gps_path).coords]
-                candidates.append((str(r.id), display_name(r.name), path))
+                candidates.append((str(r.id), display_name(r.nickname or r.name), path))
             match = match_route(track, candidates)
 
     start = summary.start_time
@@ -439,6 +608,40 @@ def import_run_file(payload: ImportRunRequest, session: Session = Depends(get_se
         "max_heart_rate": summary.max_hr,
         "point_count": len(summary.points),
         "matched_route": match,
+    }
+
+
+@app.get("/research/summary")
+def research_summary(user_id: Optional[UUID] = None, session: Session = Depends(get_session)):
+    """How the recommendations are doing: of check-ins that got picks, how
+    often a run followed, which rank was run, and whether it fit.
+    Pass ?user_id=... for one runner; leave it off for everyone."""
+    q = select(Recommendation).where(Recommendation.checkin_id.is_not(None))
+    if user_id:
+        q = q.where(Recommendation.user_id == user_id)
+    recs = session.exec(q).all()
+    checkins = {r.checkin_id for r in recs}
+    ran_rank = {}
+    for r in recs:
+        if r.run_id:
+            ran_rank[r.checkin_id] = min(ran_rank.get(r.checkin_id, 99), r.rank or 99)
+
+    rq = select(Run).where(Run.pick_fit.is_not(None))
+    if user_id:
+        rq = rq.where(Run.user_id == user_id)
+    fits = [r.pick_fit for r in session.exec(rq).all()]
+
+    n = len(checkins)
+    def pct(x):
+        return round(100 * x / n, 1) if n else None
+    return {
+        "checkins_with_picks": n,
+        "ran_a_pick": len(ran_rank),
+        "ran_top_pick": sum(1 for v in ran_rank.values() if v == 1),
+        "ran_pick_rate_pct": pct(len(ran_rank)),
+        "top_pick_rate_pct": pct(sum(1 for v in ran_rank.values() if v == 1)),
+        "rank_of_run": {str(k): sum(1 for v in ran_rank.values() if v == k) for k in (1, 2, 3)},
+        "pick_fit": {k: fits.count(k) for k in ("yes", "sort_of", "no")},
     }
 
 
@@ -517,7 +720,7 @@ def get_route_path(route_id: UUID, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Route not found")
     return {
         "route_id": str(route.id),
-        "route_name": display_name(route.name),
+        "route_name": display_name(route.nickname or route.name),
         "path": [[lat, lon] for lon, lat in to_shape(route.gps_path).coords],
     }
 
@@ -545,7 +748,20 @@ def _group_match_json(m) -> dict:
         "source_url": getattr(s, "source_url", None),
         "verified_on": getattr(s, "verified_on", None),
         "notes": getattr(s, "notes", None),
+        "place_label": getattr(s, "place_label", None) or s.location,
     }
+
+
+def club_place_label(location: Optional[str]) -> str:
+    """'Garvanza Park, 6240 Meridian St, Los Angeles, CA' -> 'Garvanza Park, Los Angeles'
+       '235 N Lake Ave, Pasadena, CA'                     -> '235 N Lake Ave, Pasadena'"""
+    if not location:
+        return ""
+    parts = [p.strip() for p in location.split(",") if p.strip()]
+    parts = [p for p in parts if not re.fullmatch(r"(CA|California|USA|United States|\d{5})", p)]
+    if len(parts) <= 1:
+        return parts[0] if parts else location
+    return f"{parts[0]}, {parts[-1]}"
 
 
 @app.get("/groups/{user_id}")
@@ -581,8 +797,26 @@ def get_group_matches(user_id: UUID, session: Session = Depends(get_session)):
         home_lon=user.longitude,
     )
 
+    clubs = session.exec(select(Club)).all()
+    for club in clubs:
+        # older seeds stored just the store name for Glendale
+        if club.location and club.location.startswith("lululemon, 889 Americana"):
+            club.location = "Americana at Brand (lululemon), 889 Americana Way, Glendale, CA"
+            session.add(club)
+        # clubs whose address never geocoded have no "mi away"; try again (once)
+        if club.latitude is None and club.location:
+            parts = [p.strip() for p in club.location.split(",")]
+            for attempt in (club.location, ", ".join(parts[1:])):
+                try:
+                    club.latitude, club.longitude, _ = geocode_la(attempt)
+                    session.add(club)
+                    break
+                except Exception:
+                    continue
+    session.commit()
+
     sessions = []
-    for club in session.exec(select(Club)).all():
+    for club in clubs:
         for sched in session.exec(select(ClubSchedule).where(ClubSchedule.club_id == club.id)).all():
             sessions.append(GroupSession(
                 club_id=str(club.id), club_name=club.name, location=club.location,
@@ -594,6 +828,7 @@ def get_group_matches(user_id: UUID, session: Session = Depends(get_session)):
             sessions[-1].source_url = club.source_url
             sessions[-1].verified_on = club.verified_on.isoformat() if club.verified_on else None
             sessions[-1].notes = club.notes
+            sessions[-1].place_label = club_place_label(club.location)
 
     matches = match_groups(sessions, runner)
     today = best_for_today(matches)
@@ -657,12 +892,17 @@ def list_runs(user_id: UUID, session: Session = Depends(get_session)):
             "id": str(run.id),
             "run_date": run.run_date.isoformat(),
             "route_id": str(run.route_id) if run.route_id else None,
-            "route_name": display_name(route.name) if route else None,
+            "route_name": display_name(route.nickname or route.name) if route else None,
             "surface_type": route.surface_type if route else None,
             "distance_km": run.distance_km,
             "pace_min_km": run.pace_min_km,
             "rating": run.rating,
             "post_run_soreness": run.post_run_soreness,
+            "duration_s": run.duration_s,
+            "elevation_gain_m": run.elevation_gain_m,
+            "avg_heart_rate": run.avg_heart_rate,
+            "source": run.source,
+            "pick_fit": run.pick_fit,
         })
     return result
 
@@ -710,7 +950,32 @@ def get_stats(user_id: UUID, session: Session = Depends(get_session)):
         "this_week_days": [
             (week_start + timedelta(days=i)) in run_days for i in range(7)
         ],
+        "this_week_daily_km": [
+            round(sum(r.distance_km for r in runs if r.run_date == week_start + timedelta(days=i)), 2)
+            for i in range(7)
+        ],
+        "runs_this_week": sum(1 for r in runs if r.run_date >= week_start),
+        "fastest_pace_min_km": round(min((r.pace_min_km for r in runs), default=0), 2) or None,
+        "longest_run_name": _longest_name(session, runs),
+        "surface_mix_km": _surface_mix(session, runs),
     }
+
+
+def _longest_name(session: Session, runs: list) -> Optional[str]:
+    if not runs:
+        return None
+    longest = max(runs, key=lambda r: r.distance_km)
+    route = session.get(Route, longest.route_id) if longest.route_id else None
+    return display_name(route.nickname or route.name) if route else None
+
+
+def _surface_mix(session: Session, runs: list) -> dict:
+    mix = {"pavement": 0.0, "trail": 0.0, "track": 0.0, "mixed": 0.0, "own": 0.0}
+    for r in runs:
+        route = session.get(Route, r.route_id) if r.route_id else None
+        key = route.surface_type if route and route.surface_type in mix else "own"
+        mix[key] += r.distance_km
+    return {k: round(v, 2) for k, v in mix.items()}
 
 
 class FavoriteRequest(BaseModel):
@@ -744,7 +1009,7 @@ def list_favorites(user_id: UUID, session: Session = Depends(get_session)):
         ).all())
         result.append({
             "route_id": str(route.id),
-            "route_name": display_name(route.name),
+            "route_name": display_name(route.nickname or route.name),
             "distance_km": route.distance_km,
             "elevation_gain_m": route.elevation_gain_m,
             "difficulty": route.difficulty,
@@ -787,3 +1052,208 @@ def remove_favorite(user_id: UUID, route_id: UUID, session: Session = Depends(ge
         session.commit()
     return {"ok": True}
 
+
+
+
+# ---------------------------------------------------------------------------
+# Run together: friends check in separately, get one shared route
+# ---------------------------------------------------------------------------
+
+class RunGroupCreate(BaseModel):
+    user_id: UUID
+    name: str
+
+
+class RunGroupJoin(BaseModel):
+    user_id: UUID
+    code: str
+
+
+class RunGroupUser(BaseModel):
+    user_id: UUID
+
+
+class MeetingSpot(BaseModel):
+    user_id: UUID
+    address: Optional[str] = None      # None / "" clears it -> "near everyone"
+
+
+NEAR_HOME_KM = 3.2          # same as the check-in's "Near home"
+MEET_SPOT_RADIUS_KM = 3.0   # routes must start this close to a meeting spot
+
+
+def _new_join_code(session: Session) -> str:
+    import secrets
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"   # no 0/O or 1/I mix-ups
+    while True:
+        code = "".join(secrets.choice(alphabet) for _ in range(6))
+        if not session.exec(select(RunGroup).where(RunGroup.join_code == code)).first():
+            return code
+
+
+def _group_json(session: Session, g: RunGroup) -> dict:
+    members = session.exec(select(RunGroupMember).where(RunGroupMember.group_id == g.id)).all()
+    out = []
+    for mem in members:
+        u = session.get(User, mem.user_id)
+        if not u:
+            continue
+        checked = session.exec(
+            select(Checkin).where(Checkin.user_id == u.id, Checkin.checkin_date == date.today())
+        ).first() is not None
+        out.append({"user_id": str(u.id), "name": u.full_name.split()[0] if u.full_name else "Runner",
+                    "checked_in_today": checked, "is_owner": u.id == g.owner_id})
+    out.sort(key=lambda m: (not m["is_owner"], m["name"].lower()))
+    return {"id": str(g.id), "name": g.name, "join_code": g.join_code,
+            "meet_label": g.meet_label, "members": out}
+
+
+def _member_of(session: Session, group_id: UUID, user_id: UUID) -> RunGroup:
+    g = session.get(RunGroup, group_id)
+    if not g or not session.exec(select(RunGroupMember).where(
+            RunGroupMember.group_id == group_id, RunGroupMember.user_id == user_id)).first():
+        raise HTTPException(status_code=404, detail="Group not found")
+    return g
+
+
+@app.post("/run-groups")
+def create_run_group(payload: RunGroupCreate, session: Session = Depends(get_session)):
+    name = payload.name.strip()[:60] or "Running crew"
+    g = RunGroup(name=name, join_code=_new_join_code(session), owner_id=payload.user_id)
+    session.add(g)
+    session.commit()
+    session.add(RunGroupMember(group_id=g.id, user_id=payload.user_id))
+    session.commit()
+    return _group_json(session, g)
+
+
+@app.post("/run-groups/join")
+def join_run_group(payload: RunGroupJoin, session: Session = Depends(get_session)):
+    g = session.exec(select(RunGroup).where(RunGroup.join_code == payload.code.strip().upper())).first()
+    if not g:
+        raise HTTPException(status_code=404, detail="No group with that code. Check it with whoever shared it.")
+    exists = session.exec(select(RunGroupMember).where(
+        RunGroupMember.group_id == g.id, RunGroupMember.user_id == payload.user_id)).first()
+    if not exists:
+        session.add(RunGroupMember(group_id=g.id, user_id=payload.user_id))
+        session.commit()
+    return _group_json(session, g)
+
+
+@app.post("/run-groups/{group_id}/leave")
+def leave_run_group(group_id: UUID, payload: RunGroupUser, session: Session = Depends(get_session)):
+    mem = session.exec(select(RunGroupMember).where(
+        RunGroupMember.group_id == group_id, RunGroupMember.user_id == payload.user_id)).first()
+    if mem:
+        session.delete(mem)
+        session.commit()
+    return {"ok": True}
+
+
+@app.get("/run-groups/mine/{user_id}")
+def my_run_groups(user_id: UUID, session: Session = Depends(get_session)):
+    ids = [m.group_id for m in session.exec(select(RunGroupMember).where(RunGroupMember.user_id == user_id)).all()]
+    groups = [session.get(RunGroup, i) for i in ids]
+    return [_group_json(session, g) for g in groups if g]
+
+
+@app.put("/run-groups/{group_id}/meeting-spot")
+def set_meeting_spot(group_id: UUID, payload: MeetingSpot, session: Session = Depends(get_session)):
+    g = _member_of(session, group_id, payload.user_id)
+    if not payload.address or not payload.address.strip():
+        g.meet_label = g.meet_lat = g.meet_lon = None
+    else:
+        try:
+            lat, lon, label = geocode_la(payload.address.strip())
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        g.meet_label, g.meet_lat, g.meet_lon = label, lat, lon
+    session.add(g)
+    session.commit()
+    return _group_json(session, g)
+
+
+@app.get("/run-groups/{group_id}/recommendations")
+def run_group_recommendations(group_id: UUID, user_id: UUID, session: Session = Depends(get_session)):
+    g = _member_of(session, group_id, user_id)
+    rows = session.exec(select(RunGroupMember).where(RunGroupMember.group_id == g.id)).all()
+
+    members, homes, radii, waiting = [], [], [], []
+    for row in rows:
+        u = session.get(User, row.user_id)
+        if not u:
+            continue
+        first = u.full_name.split()[0] if u.full_name else "Runner"
+        ck = session.exec(
+            select(Checkin).where(Checkin.user_id == u.id, Checkin.checkin_date == date.today())
+            .order_by(Checkin.created_at.desc())
+        ).first()
+        if not ck:
+            waiting.append(first)
+            continue
+        profile = build_user_profile(session, u)
+        if g.meet_lat is not None:      # everyone meets there: judge closeness from the spot
+            profile = replace(profile, home_lat=g.meet_lat, home_lon=g.meet_lon)
+        daily = build_daily_checkin(ck)
+        members.append(Member(first, profile, daily, build_recent_runs(session, u.id)))
+        homes.append((u.latitude, u.longitude))
+        radii.append(ck.willing_to_drive_km or MAX_DISTANCE_KM)
+
+    if not members:
+        raise HTTPException(status_code=400, detail="Nobody in the group has checked in today yet.")
+
+    # where routes may start
+    if g.meet_lat is not None:
+        center, search_km = (g.meet_lat, g.meet_lon), MEET_SPOT_RADIUS_KM
+    else:
+        lat = sum(h[0] for h in homes) / len(homes)
+        lon = sum(h[1] for h in homes) / len(homes)
+        spread = max(_hav(lat, lon, h[0], h[1]) for h in homes)
+        center, search_km = (lat, lon), min(spread + max(radii), MAX_DISTANCE_KM + spread)
+    ids = [r[0] for r in session.exec(text("""
+        SELECT id FROM route
+        WHERE NOT COALESCE(hidden, FALSE) AND ST_DWithin(
+            ST_StartPoint(gps_path)::geography,
+            ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography, :m)
+    """), params={"lon": center[1], "lat": center[0], "m": search_km * 1000}).all()]
+    routes = session.exec(select(Route).where(Route.id.in_(ids))).all() if ids else []
+
+    if g.meet_lat is None and routes:
+        # fair for everyone: each member's own travel limit, measured from their home
+        def worst(route):
+            s_lat, s_lon = route_start(route)
+            return max(_hav(h[0], h[1], s_lat, s_lon) / r for h, r in zip(homes, radii))
+        fits = [r for r in routes if worst(r) <= 1.0]
+        routes = fits if len(fits) >= 3 else sorted(routes, key=worst)[:25]
+    if not routes:
+        raise HTTPException(status_code=404, detail="No routes found that work for everyone's location.")
+
+    route_by_id = {str(r.id): r for r in routes}
+    picks, shared_km = group_recommend(members, build_route_candidates(routes))
+
+    def start_km_for(route, home):
+        s_lat, s_lon = route_start(route)
+        return round(_hav(home[0], home[1], s_lat, s_lon) * 0.621371, 1)
+
+    return {
+        "group": _group_json(session, g),
+        "shared_distance_mi": round(shared_km * 0.621371, 1),
+        "waiting_on": waiting,
+        "picks": [{
+            "route_id": p.route.id,
+            "route_name": display_name(p.route.name),
+            "distance_km": p.route.distance_km,
+            "effective_distance_km": round(p.effective_distance_km, 2),
+            "run_format": p.run_format,
+            "repeat_count": p.repeat_count,
+            "elevation_gain_m": run_climb_m(route_by_id[p.route.id], p.run_format, p.repeat_count),
+            "surface_type": p.route.surface_type,
+            "difficulty": p.difficulty,
+            "minutes_range": [min(p.estimated_minutes), max(p.estimated_minutes)],
+            "members": [{
+                "name": f.name, "fit": f.fit, "reason": f.reason, "extra_laps": f.extra_laps,
+                "start_mi": start_km_for(route_by_id[p.route.id], h),
+            } for f, h in zip(p.members, homes)],
+            "path": [[lat, lon] for lon, lat in to_shape(route_by_id[p.route.id].gps_path).coords],
+        } for p in picks],
+    }

@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import BodyMap from "../components/BodyMap";
 
 const MUSCLE_GROUPS = [
   // Front view
@@ -18,6 +19,15 @@ const MUSCLE_GROUPS = [
   { id: "lower_back", label: "Lower back", view: "back", path: "M 85 148 Q 100 144 115 148 Q 118 162 113 176 Q 100 180 87 176 Q 82 162 85 148 Z" },
   { id: "left_tricep", label: "Left tricep", view: "back", path: "M 60 90 Q 48 96 46 128 L 50 155 Q 57 158 61 150 L 63 118 Z" },
   { id: "right_tricep", label: "Right tricep", view: "back", path: "M 140 90 Q 152 96 154 128 L 150 155 Q 143 158 139 150 L 137 118 Z" },
+  { id: "left_shoulder", label: "Left shoulder", view: "front", path: "" },
+  { id: "right_shoulder", label: "Right shoulder", view: "front", path: "" },
+  { id: "left_forearm", label: "Left forearm", view: "front", path: "" },
+  { id: "right_forearm", label: "Right forearm", view: "front", path: "" },
+  { id: "obliques", label: "Obliques", view: "front", path: "" },
+  { id: "left_adductor", label: "Left inner thigh", view: "front", path: "" },
+  { id: "right_adductor", label: "Right inner thigh", view: "front", path: "" },
+  { id: "left_hip", label: "Left hip", view: "back", path: "" },
+  { id: "right_hip", label: "Right hip", view: "back", path: "" },
   { id: "glutes", label: "Glutes", view: "back", path: "M 78 183 Q 100 176 122 183 Q 124 198 118 212 Q 100 218 82 212 Q 76 198 78 183 Z" },
   { id: "left_hamstring", label: "Left hamstring", view: "back", path: "M 79 216 Q 71 235 75 250 Q 76 255 82 258 L 94 258 Q 97 255 96 250 Q 97 235 96 216 Q 87 213 79 216 Z" },
   { id: "right_hamstring", label: "Right hamstring", view: "back", path: "M 121 216 Q 129 235 125 250 Q 124 255 118 258 L 106 258 Q 103 255 104 250 Q 103 235 104 216 Q 113 213 121 216 Z" },
@@ -90,44 +100,112 @@ function CheckinPage() {
   const [runIntent, setRunIntent] = useState<Intent | null>(null);
   const [lengthMode, setLengthMode] = useState<"miles" | "minutes">("miles");
   const [showNote, setShowNote] = useState(false);
+  const [hillsPref, setHillsPref] = useState<"" | "avoid" | "want">("");
+
+  // who you're running with today: just you, or one of your Run together groups
+  const [searchParams] = useSearchParams();
+  const [myGroups, setMyGroups] = useState<{ id: string; name: string }[]>([]);
+  const [runWith, setRunWith] = useState<string>(searchParams.get("group") ?? "");
+  useEffect(() => {
+    if (!userId) return;
+    fetch(`http://127.0.0.1:8000/run-groups/mine/${userId}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((gs: { id: string; name: string }[]) => {
+        setMyGroups(gs);
+        setRunWith((cur) => (cur && gs.some((g) => g.id === cur) ? cur : ""));
+      })
+      .catch(() => {});
+  }, [userId]);
+  const runWithGroup = myGroups.find((g) => g.id === runWith) ?? null;
+
+  // "Same as yesterday": the last check-in from an earlier day, if any
+  type LastCheckin = {
+    days_ago: number; energy_score: number; sleep_hours: number | null; sleep_quality: number | null;
+    sore_body_parts: string[]; mood: Mood | null; run_intent: Intent | null;
+    planned_distance_miles: number | null; available_minutes: number | null;
+    willing_to_drive_miles: number | null; surface_preference: "trail" | "road" | null;
+    wants_scenic: boolean; hills_pref: "avoid" | "want" | null;
+  };
+  const [last, setLast] = useState<LastCheckin | null>(null);
+  const [copied, setCopied] = useState(false);
+  // what the form held before "Same as yesterday", so it can be undone
+  const [beforeCopy, setBeforeCopy] = useState<null | {
+    energy: number; sleepHours: string; sleepQuality: number; soreParts: string[];
+    mood: Mood | null; runIntent: Intent | null; lengthMode: "miles" | "minutes";
+    plannedDistance: string; availableMinutes: string; willingToDrive: string;
+    surfacePreference: "" | "trail" | "road"; wantsScenic: boolean; hillsPref: "" | "avoid" | "want";
+  }>(null);
+
+  function undoCopy() {
+    if (!beforeCopy) return;
+    const b = beforeCopy;
+    setEnergy(b.energy);
+    setSleepHours(b.sleepHours);
+    setSleepQuality(b.sleepQuality);
+    setSoreParts(b.soreParts);
+    setMood(b.mood);
+    setRunIntent(b.runIntent);
+    setLengthMode(b.lengthMode);
+    setPlannedDistance(b.plannedDistance);
+    setAvailableMinutes(b.availableMinutes);
+    setWillingToDrive(b.willingToDrive);
+    setSurfacePreference(b.surfacePreference);
+    setWantsScenic(b.wantsScenic);
+    setHillsPref(b.hillsPref);
+    setBeforeCopy(null);
+    setCopied(false);
+  }
+  useEffect(() => {
+    if (!userId) return;
+    fetch(`http://127.0.0.1:8000/checkins/${userId}/last`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setLast(d))
+      .catch(() => {});
+  }, [userId]);
+
+  function copyLast() {
+    if (!last) return;
+    setBeforeCopy({
+      energy, sleepHours, sleepQuality, soreParts, mood, runIntent, lengthMode,
+      plannedDistance, availableMinutes, willingToDrive, surfacePreference, wantsScenic, hillsPref,
+    });
+    setEnergy(last.energy_score);
+    setSleepHours(last.sleep_hours != null ? String(last.sleep_hours) : "");
+    if (last.sleep_quality != null) setSleepQuality(last.sleep_quality);
+    setSoreParts(last.sore_body_parts);
+    setMood(last.mood);
+    setRunIntent(last.run_intent);
+    if (last.planned_distance_miles) {
+      setLengthMode("miles");
+      setPlannedDistance(String(last.planned_distance_miles));
+      setAvailableMinutes("");
+    } else if (last.available_minutes) {
+      setLengthMode("minutes");
+      setAvailableMinutes(String(last.available_minutes));
+      setPlannedDistance("");
+    } else {
+      setPlannedDistance("");
+      setAvailableMinutes("");
+    }
+    // drive limit was stored as miles at ~20 mph; snap back to the 15/30/45 min chips
+    const mi = last.willing_to_drive_miles;
+    if (!mi || mi <= 2.5) setWillingToDrive("");
+    else setWillingToDrive(String([15, 30, 45].reduce((a, b) => (Math.abs(b - mi * 3) < Math.abs(a - mi * 3) ? b : a))));
+    setSurfacePreference(last.surface_preference ?? "");
+    setWantsScenic(last.wants_scenic);
+    setHillsPref(last.hills_pref ?? "");
+    setCopied(true);
+  }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [bodyTouched, setBodyTouched] = useState(false);
   function toggleBodyPart(id: string) {
+    setBodyTouched(true);
     setSoreParts((prev) =>
       prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
     );
   }
-
-  function SilhouetteBody({ view, offsetX }: { view: "front" | "back"; offsetX: number }) {
-  return (
-    <g transform={`translate(${offsetX}, 15)`}>
-      <ellipse cx="100" cy="35" rx="19" ry="23" className="body-shape" />
-      <path
-        d="M 70 58 Q 68 55 74 55 L 126 55 Q 132 55 130 58 L 136 130 Q 137 148 122 152 L 78 152 Q 63 148 64 130 Z"
-        className="body-shape"
-      />
-      <path d="M 68 58 Q 50 62 46 122 L 50 158 Q 57 161 62 153 L 66 128 Q 68 88 78 60 Z" className="body-shape" />
-      <path d="M 132 58 Q 150 62 154 122 L 150 158 Q 143 161 138 153 L 134 128 Q 132 88 122 60 Z" className="body-shape" />
-      <path d="M 78 152 L 122 152 L 127 182 Q 100 191 73 182 Z" className="body-shape" />
-      <path d="M 79 184 Q 73 220 77 260 L 82 328 Q 82 335 89 335 Q 96 335 96 328 L 100 260 Q 101 220 97 187 Z" className="body-shape" />
-      <path d="M 121 184 Q 127 220 123 260 L 118 328 Q 118 335 111 335 Q 104 335 104 328 L 100 260 Q 99 220 103 187 Z" className="body-shape" />
-      <ellipse cx="89" cy="339" rx="12" ry="6" className="body-shape" />
-      <ellipse cx="111" cy="339" rx="12" ry="6" className="body-shape" />
-
-      {MUSCLE_GROUPS.filter((m) => m.view === view).map((m) => (
-        <path
-          key={m.id}
-          d={m.path}
-          className={`muscle-region ${soreParts.includes(m.id) ? "active" : ""}`}
-          onClick={() => toggleBodyPart(m.id)}
-        >
-          <title>{m.label}</title>
-        </path>
-      ))}
-    </g>
-  );
-}
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -148,7 +226,9 @@ function CheckinPage() {
           sleep_quality: sleepQuality,
           sore_body_parts: soreParts,
           planned_distance_miles: plannedDistance ? parseFloat(plannedDistance) : null,
-          willing_to_drive_miles: willingToDrive ? (parseFloat(willingToDrive) / 60) * 30 : null,
+          // "Near home" = start within ~2 mi (run or a very short hop there);
+          // drive times assume ~20 mph average city driving
+          willing_to_drive_miles: willingToDrive ? (parseFloat(willingToDrive) / 60) * 20 : 2,
           wants_adventure: wantsAdventure,
           wants_scenic: wantsScenic,
           surface_preference: surfacePreference || null,
@@ -157,10 +237,11 @@ function CheckinPage() {
           mood_note: moodNote.trim() || null,
           mood,
           run_intent: runIntent,
+          hills_pref: hillsPref || null,
         }),
       });
       if (!response.ok) throw new Error(`Server responded with ${response.status}`);
-      navigate("/recommendations");
+      navigate(runWithGroup ? `/run-together?group=${runWithGroup.id}&auto=1` : "/recommendations");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -189,10 +270,38 @@ function CheckinPage() {
     soreNames.length === 0
       ? "nothing sore"
       : soreNames.length <= 2
-        ? `a sore ${soreNames.join(" and ")}`
+        ? (soreNames.length === 1 && !/s$/.test(soreNames[0]) ? "a " : "") + `sore ${soreNames.join(" and ")}`
         : `${soreNames.length} sore spots`;
   const moodPhrase = mood ? { good: ", feeling good", stressed: ", a bit stressed", restless: ", restless", flat: ", feeling flat", low: ", feeling low" }[mood] : "";
   const feelSentence = `${energyPhrase}${moodPhrase}, ${sleepPhrase}, ${sorePhrase}.`;
+
+  // ---- progress tracker + always-reachable submit bar ----
+  const STEP_NAMES = ["Energy", "Sleep", "Body", "Run"];
+  const stepDone = [
+    mood !== null || energy !== 5,
+    sleepHours !== "" || sleepQuality !== 3,
+    bodyTouched || soreParts.length > 0,
+    runIntent !== null || !!plannedDistance || !!availableMinutes,
+  ];
+  const finishRef = useRef<HTMLLIElement>(null);
+  const [finishVisible, setFinishVisible] = useState(false);
+  const [activeStep, setActiveStep] = useState(1);
+  useEffect(() => {
+    const finish = finishRef.current;
+    const io = new IntersectionObserver(([e]) => setFinishVisible(e.isIntersecting), { threshold: 0.2 });
+    if (finish) io.observe(finish);
+    const steps = [1, 2, 3, 4].map((i) => document.getElementById(`ci-step-${i}`)).filter(Boolean) as HTMLElement[];
+    const so = new IntersectionObserver((entries) => {
+      const vis = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+      if (vis[0]) setActiveStep(Number(vis[0].target.id.replace("ci-step-", "")));
+    }, { rootMargin: "-140px 0px -55% 0px" });
+    steps.forEach((el) => so.observe(el));
+    return () => { io.disconnect(); so.disconnect(); };
+  }, []);
+  function jumpTo(i: number) {
+    const el = document.getElementById(`ci-step-${i}`);
+    if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 140, behavior: "smooth" });
+  }
 
   const extras: string[] = [];
   if (soreNames.length > 0) extras.push("goes easy on the sore spots");
@@ -222,12 +331,53 @@ function CheckinPage() {
         <span className="ci-eyebrow">Daily check-in · {today}</span>
         <h1>How's the body today?</h1>
         <p>Four quick questions. Pathos picks the route to match.</p>
+        {last && !copied && (
+          <button type="button" className="ci-same" onClick={copyLast}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
+                 strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" />
+            </svg>
+            {last.days_ago === 1 ? "Same as yesterday" : `Same as last check-in (${last.days_ago} days ago)`}
+          </button>
+        )}
+        {last && copied && (
+          <span className="ci-same done">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
+                 strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M5 12.5l4.5 4.5L19 7.5" />
+            </svg>
+            Filled in. Change anything that's different.
+            <button type="button" className="ci-same-undo" onClick={undoCopy}>Undo</button>
+          </span>
+        )}
       </header>
 
       <form onSubmit={handleSubmit}>
+      <nav className="ci-tracker" aria-label="Check-in progress">
+        {STEP_NAMES.map((name, i) => (
+          <button
+            key={name}
+            type="button"
+            className={`${stepDone[i] ? "done" : ""} ${activeStep === i + 1 ? "active" : ""}`}
+            onClick={() => jumpTo(i + 1)}
+          >
+            <span className="ci-tracker-dot">{stepDone[i] ? "✓" : i + 1}</span>
+            {name}
+          </button>
+        ))}
+        <button
+          type="submit"
+          className={`ci-tracker-go ${finishVisible ? "faded" : ""}`}
+          disabled={loading}
+          title={feelSentence}
+        >
+          {loading ? "Finding..." : runWithGroup ? "Find our route" : "Find my routes"} <span aria-hidden="true">→</span>
+        </button>
+      </nav>
+
         <ol className="ci-steps">
           {/* 01 Energy */}
-          <li className="ci-step">
+          <li className="ci-step" id="ci-step-1">
             <span className="ci-marker">01</span>
             <section className="ci-card ci-energy-card" style={{ ["--e" as string]: energy / 10 } as React.CSSProperties}>
               <div className="ci-card-head">
@@ -279,7 +429,7 @@ function CheckinPage() {
           </li>
 
           {/* 02 Sleep */}
-          <li className="ci-step">
+          <li className="ci-step" id="ci-step-2">
             <span className="ci-marker">02</span>
             <section className="ci-card">
               <div className="ci-card-head">
@@ -330,7 +480,7 @@ function CheckinPage() {
           </li>
 
           {/* 03 Body */}
-          <li className="ci-step">
+          <li className="ci-step" id="ci-step-3">
             <span className="ci-marker">03</span>
             <section className="ci-card">
               <div className="ci-card-head">
@@ -338,32 +488,41 @@ function CheckinPage() {
                 <button
                   type="button"
                   className={`ci-chip ${soreParts.length === 0 ? "on" : ""}`}
-                  onClick={() => setSoreParts([])}
+                  onClick={() => { setSoreParts([]); setBodyTouched(true); }}
                 >
                   Feeling fresh
                 </button>
               </div>
-              <p className="ci-hint">Tap the muscles that are talking to you today.</p>
-              <svg viewBox="0 -20 400 370" className="body-map-dual">
-                <text x="130" y="10" textAnchor="middle" className="body-view-label">Front</text>
-                <text x="310" y="10" textAnchor="middle" className="body-view-label">Back</text>
-                <SilhouetteBody view="front" offsetX={30} />
-                <SilhouetteBody view="back" offsetX={210} />
-              </svg>
-              {soreParts.length > 0 && (
-                <div className="ci-sore-list">
-                  {soreParts.map((id) => (
-                    <button key={id} type="button" className="ci-chip on removable" onClick={() => toggleBodyPart(id)}>
-                      {MUSCLE_GROUPS.find((p) => p.id === id)?.label} ✕
-                    </button>
-                  ))}
+              <div className="ci-body-grid">
+                <BodyMap
+                  selected={soreParts}
+                  onToggle={toggleBodyPart}
+                  labels={Object.fromEntries(MUSCLE_GROUPS.map((m) => [m.id, m.label]))}
+                />
+                <div className="ci-body-side">
+                  <p className="ci-hint">Tap the muscles that are talking to you today. Tap again to clear.</p>
+                  {soreParts.length > 0 ? (
+                    <>
+                      <span className="ci-body-count">{soreParts.length} sore {soreParts.length === 1 ? "spot" : "spots"}</span>
+                      <div className="ci-sore-list">
+                        {soreParts.map((id) => (
+                          <button key={id} type="button" className="ci-chip on removable" onClick={() => toggleBodyPart(id)}>
+                            {MUSCLE_GROUPS.find((p) => p.id === id)?.label} ✕
+                          </button>
+                        ))}
+                      </div>
+                      <p className="ci-body-note">Pathos will favor softer surfaces and gentler routes for these.</p>
+                    </>
+                  ) : (
+                    <p className="ci-body-empty">{bodyTouched ? "Nothing sore. Nice." : "Nothing selected yet."}</p>
+                  )}
                 </div>
-              )}
+              </div>
             </section>
           </li>
 
           {/* 04 Today's run */}
-          <li className="ci-step">
+          <li className="ci-step" id="ci-step-4">
             <span className="ci-marker">04</span>
             <section className="ci-card">
               <div className="ci-card-head">
@@ -532,6 +691,21 @@ function CheckinPage() {
                       ))}
                     </div>
                   </div>
+                  <div className="ci-row">
+                    <span className="ci-row-label">Hills</span>
+                    <div className="ci-segmented compact">
+                      {([["avoid", "Avoid"], ["", "Don't mind"], ["want", "Want them"]] as const).map(([v, label]) => (
+                        <button
+                          key={label}
+                          type="button"
+                          className={hillsPref === v ? "on" : ""}
+                          onClick={() => setHillsPref(v)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <label className="ci-row ci-row-toggle">
                     <span className="ci-row-label">
                       Make it scenic
@@ -571,7 +745,7 @@ function CheckinPage() {
           </li>
 
           {/* Finish line */}
-          <li className="ci-step">
+          <li className="ci-step" ref={finishRef}>
             <span className="ci-marker ci-marker-finish" aria-hidden="true">
               {/* checkered finish flag */}
               <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
@@ -598,9 +772,24 @@ function CheckinPage() {
               <span className="ci-finish-label">Today's read</span>
               <p className="ci-finish-feel">{feelSentence}</p>
               <p className="ci-finish-plan">{planSentence}</p>
+              {myGroups.length > 0 && (
+                <div className="ci-runwith">
+                  <span className="ci-runwith-label">Running with</span>
+                  <div className="ci-runwith-options">
+                    <button type="button" className={!runWithGroup ? "on" : ""} onClick={() => setRunWith("")}>
+                      Just me
+                    </button>
+                    {myGroups.map((g) => (
+                      <button key={g.id} type="button" className={runWith === g.id ? "on" : ""} onClick={() => setRunWith(g.id)}>
+                        {g.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {error && <p className="ci-finish-error">{error}</p>}
               <button type="submit" disabled={loading}>
-                {loading ? "Finding routes..." : "Find my routes"}
+                {loading ? "Finding routes..." : runWithGroup ? `Find our route with ${runWithGroup.name}` : "Find my routes"}
                 <span aria-hidden="true">→</span>
               </button>
             </section>

@@ -23,6 +23,7 @@ class UserProfile:
     goal: str = "general_fitness"  # "race_training" | "general_fitness" | "weight_loss"
     home_lat: Optional[float] = None
     home_lon: Optional[float] = None
+    usual_pace_min_km: Optional[float] = None   # what they told us at signup
 
 @dataclass
 class DailyCheckin:
@@ -41,6 +42,7 @@ class DailyCheckin:
     conditions: Optional[object] = None       # app.conditions.Conditions, or None if unavailable
     mood: Optional[str] = None                # "stressed" | "flat" | "good" | "restless" | "low"
     run_intent: Optional[str] = None          # "easy" | "workout" | "long" | "explore"
+    hills_pref: Optional[str] = None          # "avoid" | "want" | None (don't mind)
 
 
 @dataclass
@@ -80,6 +82,8 @@ class ScoredRoute:
     days_since_last_run: Optional[int] = None   # None = never run
     avg_rating: Optional[float] = None
     breakdown: dict = field(default_factory=dict)   # component -> points
+    target_km: float = 0.0          # the distance this route was judged against
+    target_explicit: bool = False   # True when the runner set miles/minutes
     base_score: float = 0.0                          # score before the variety adjustment
     estimated_minutes: Optional[float] = None
     difficulty: str = "moderate"   # of the run as actually run (out-and-back / laps included)
@@ -196,7 +200,7 @@ W_OUT_AND_BACK = -2          # small nudge toward true loops
 W_REPEAT_PER_LAP = -3        # each extra lap of a repeated loop
 W_OVERLOAD = 15              # long route while mileage is well above average
 
-W_PROXIMITY = 8               # starts at home -> fades to 0 at the search radius
+W_PROXIMITY = 14              # starts at home -> fades to 0 at the search radius (travel is a priority)
 DEFAULT_RADIUS_KM = 15
 W_TASTE_SURFACE = 8           # x surface affinity (~ -2..+2), capped at +/-10
 W_TASTE_SCENIC = 2
@@ -229,10 +233,11 @@ DEFAULT_TYPICAL_RUN_KM = {"beginner": 4.0, "intermediate": 7.0, "advanced": 10.0
 RUNS_PER_WEEK = 4
 MAX_REPEATS = 3
 FLAT_HILL_M_PER_KM = 15
+W_HILLS_PREF = 18             # the runner said outright: avoid hills / want hills
 
 LOWER_BODY_PARTS = {
     "quad", "hamstring", "glutes", "calf", "shin", "knee", "ankle",
-    "hip", "achilles", "foot", "lower_back",
+    "hip", "achilles", "foot", "lower_back", "adductor",
 }
 
 
@@ -307,7 +312,10 @@ def build_personal_context(user: UserProfile, checkin: DailyCheckin,
         long_run_factor = goal["weekend_long_run"]
         long_run_reason = "Weekend - a good day for a longer run"
 
-    pace = rhythm.median_pace or DEFAULT_PACE_MIN_KM.get(user.fitness_level, 6.0)
+    # pace: their logged runs once there are some, else what they told us at
+    # signup, else a guess from their fitness level
+    pace = (rhythm.median_pace or user.usual_pace_min_km
+            or DEFAULT_PACE_MIN_KM.get(user.fitness_level, 6.0))
     return PersonalContext(today, ready, typical, taste, recovery, rhythm, pace,
                            long_run_factor, long_run_reason)
 
@@ -490,6 +498,21 @@ def score_route(
             reason = "Hillier than ideal for how you're feeling"
         add("terrain", pts, reason)
 
+    # the runner's own call on hills today outweighs anything inferred above
+    if checkin.hills_pref == "avoid":
+        steep = clamp((hill - 10) / 25)                    # 10 m/km -> 0, 35 m/km -> 1
+        if hill < FLAT_HILL_M_PER_KM:
+            add("hills", W_HILLS_PREF * 0.4, "Flat, like you asked")
+        else:
+            add("hills", -W_HILLS_PREF * steep,
+                "Has some climbing (you asked to avoid hills)" if steep >= 0.5 else None)
+    elif checkin.hills_pref == "want":
+        climb = clamp((hill - 15) / 25)                    # 15 m/km -> 0, 40 m/km -> 1
+        if climb > 0:
+            add("hills", W_HILLS_PREF * climb, "Plenty of climbing, like you asked" if climb >= 0.5 else None)
+        elif hill < 10:
+            add("hills", -W_HILLS_PREF * 0.5)
+
     # recovery day (hard effort yesterday / long streak): hills and extra length cost more
     if ctx.rhythm.recovery_day:
         steepness = clamp((hill - FLAT_HILL_M_PER_KM) / 20)
@@ -643,6 +666,8 @@ def score_route(
         effective_distance_km=effective_distance,
         distance_matched=distance_matched,
         distance_error_km=err if checkin.planned_distance_km else 0.0,
+        target_km=target,
+        target_explicit=bool(checkin.planned_distance_km),
         days_since_last_run=days_since,
         avg_rating=avg_rating,
         breakdown={k: round(v, 1) for k, v in parts.items()},
@@ -678,14 +703,37 @@ def similarity(a: ScoredRoute, b: ScoredRoute, count_surface: bool = True) -> fl
     sim = 0.0
     if count_surface and a.route.surface_type == b.route.surface_type:
         sim += 0.35
+    # same length (within 5%) adds to "same run"; it no longer rewards picks
+    # for being very different lengths, which pulled in 2 mi and 10 mi options
     da, db = a.effective_distance_km, b.effective_distance_km
-    if max(da, db) > 0 and abs(da - db) <= 0.15 * max(da, db):
+    if max(da, db) > 0 and abs(da - db) <= 0.05 * max(da, db):
         sim += 0.25
     if None not in (a.route.start_lat, a.route.start_lon, b.route.start_lat, b.route.start_lon):
         if haversine_km(a.route.start_lat, a.route.start_lon,
                         b.route.start_lat, b.route.start_lon) <= 1.5:
             sim += 0.40
     return sim
+
+
+# Distance is a band, not just a score: routes far from the target only show
+# up when there aren't enough within it. (Inferred targets get a wider band.)
+DISTANCE_BAND_EXPLICIT = (0.75, 1.30)
+DISTANCE_BAND_INFERRED = (0.60, 1.50)
+
+
+def in_distance_band(scored: List[ScoredRoute], top_n: int) -> List[ScoredRoute]:
+    def ok(s, band):
+        lo, hi = band
+        return s.target_km <= 0 or lo * s.target_km <= s.effective_distance_km <= hi * s.target_km
+    for widen in (1.0, 1.25, 1.6):   # loosen step by step if the area is thin
+        kept = []
+        for s in scored:
+            lo, hi = DISTANCE_BAND_EXPLICIT if s.target_explicit else DISTANCE_BAND_INFERRED
+            if ok(s, (lo / widen, hi * widen)):
+                kept.append(s)
+        if len(kept) >= top_n:
+            return kept
+    return scored
 
 
 def diversify(scored: List[ScoredRoute], top_n: int,
@@ -696,7 +744,7 @@ def diversify(scored: List[ScoredRoute], top_n: int,
     Uses base_score, so re-running it (main.py merges real + combined
     routes) never stacks penalties. When the runner asked for a surface,
     sharing that surface isn't counted as "too similar"."""
-    pool = sorted(scored, key=lambda s: (-s.base_score,) + rank_key(s)[1:])
+    pool = sorted(in_distance_band(scored, top_n), key=lambda s: (-s.base_score,) + rank_key(s)[1:])
     picked: List[ScoredRoute] = []
     while pool and len(picked) < top_n:
         best = None
@@ -722,6 +770,18 @@ def recommend(
     candidates: List[RouteCandidate],
     top_n: int = 3,
 ) -> List[ScoredRoute]:
+    ctx, checkin = prepare_context(user, checkin, recent)
+    scored = [score_route(r, user, checkin, recent, ctx) for r in candidates]
+    # gate on the difficulty of the run as it would actually be run
+    scored = [s for s in scored if passes_difficulty_gate(s.difficulty, user)]
+    # Always rank every eligible route and return the best top_n, even if
+    # none is a great distance match, so the user always sees options.
+    return diversify(scored, top_n, surface_requested=bool(checkin.surface_preference))
+
+
+def prepare_context(user: UserProfile, checkin: DailyCheckin, recent: RecentRuns):
+    """Runner context for today, with the run's purpose and any time budget
+    folded in. Returns (ctx, checkin) - the check-in may gain a distance."""
     ctx = build_personal_context(user, checkin, recent)
     # what the run is for shifts the target length when they didn't set one
     if checkin.run_intent == "long":
@@ -735,9 +795,11 @@ def recommend(
     if not checkin.planned_distance_km and checkin.available_minutes:
         checkin = replace(checkin, planned_distance_km=round(
             checkin.available_minutes * 0.9 / ctx.pace_min_km, 2))
-    scored = [score_route(r, user, checkin, recent, ctx) for r in candidates]
-    # gate on the difficulty of the run as it would actually be run
-    scored = [s for s in scored if passes_difficulty_gate(s.difficulty, user)]
-    # Always rank every eligible route and return the best top_n, even if
-    # none is a great distance match, so the user always sees options.
-    return diversify(scored, top_n, surface_requested=bool(checkin.surface_preference))
+    return ctx, checkin
+
+
+def target_km(ctx: PersonalContext, checkin: DailyCheckin) -> float:
+    """The distance this runner should aim for today (their own or inferred)."""
+    if checkin.planned_distance_km:
+        return checkin.planned_distance_km
+    return ctx.typical_km * (0.7 + 0.5 * ctx.readiness) * ctx.long_run_factor

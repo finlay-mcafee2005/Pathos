@@ -33,6 +33,9 @@ function LogRunPage() {
       : null
   );
   const routeId = linkedRoute?.id;
+  const recommendationId = location.state?.recommendationId as string | undefined;
+  const [pickFit, setPickFit] = useState<"yes" | "sort_of" | "no" | null>(null);
+  const cameFromPick = Boolean(recommendationId || routeId);
   const routeName = linkedRoute?.name;
 
   // data pulled from a watch file (GPX / TCX / FIT)
@@ -158,6 +161,8 @@ function LogRunPage() {
           avg_heart_rate: imported?.avg_heart_rate ?? null,
           max_heart_rate: imported?.max_heart_rate ?? null,
           source: imported?.source ?? prefill?.source ?? "manual",
+          recommendation_id: recommendationId ?? null,
+          pick_fit: cameFromPick ? pickFit : null,
         }),
       });
       if (!response.ok) throw new Error(`Server responded with ${response.status}`);
@@ -472,6 +477,35 @@ function LogRunPage() {
             <span>Fresh</span>
             <span>Wrecked</span>
           </div>
+
+          {cameFromPick && (
+            <>
+              <div className="lr-divider" />
+              <div className="lr-feel-row">
+                <span className="ci-field-label">Did this pick fit how you felt today?</span>
+                <span className="lr-fit-optional">Optional</span>
+              </div>
+              <div className="lr-fit" role="radiogroup" aria-label="Did this pick fit how you felt today?">
+                {([
+                  ["yes", "Yes", "Right call"],
+                  ["sort_of", "Sort of", "Close enough"],
+                  ["no", "No", "Not today"],
+                ] as const).map(([value, label, sub]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={pickFit === value}
+                    className={`lr-fit-opt fit-${value} ${pickFit === value ? "on" : ""}`}
+                    onClick={() => setPickFit(pickFit === value ? null : value)}
+                  >
+                    <span className="lr-fit-label">{label}</span>
+                    <span className="lr-fit-sub">{sub}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </section>
 
         {error && <p className="error">{error}</p>}

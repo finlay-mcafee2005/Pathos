@@ -35,6 +35,7 @@ class User(SQLModel, table=True):
 
     fitness_level: str = Field(default="beginner")
     weekly_mileage_avg: float = Field(default=0.0)
+    usual_pace_min_km: Optional[float] = None   # easy-run pace from signup (min per km)
 
     address: Optional[str] = None
     latitude: Optional[float] = None
@@ -90,6 +91,7 @@ class Checkin(SQLModel, table=True):
     available_minutes: Optional[float] = None
     mood: Optional[str] = None                 # "stressed" | "flat" | "good" | "restless" | "low"
     run_intent: Optional[str] = None           # "easy" | "workout" | "long" | "explore"
+    hills_pref: Optional[str] = None           # "avoid" | "want" | None
 
     user: User = Relationship(back_populates="checkins")
 # ---------------------------------------------------------------------------
@@ -99,9 +101,12 @@ class Checkin(SQLModel, table=True):
 class Route(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     name: str
+    nickname: Optional[str] = None   # unique, descriptive title shown in the app (scripts/name_routes.py)
+    hidden: Optional[bool] = Field(default=False)   # True = never recommended (not runnable / duplicate)
 
     distance_km: float
     elevation_gain_m: float
+    elevation_loss_m: Optional[float] = None   # total descent along the stored path
     surface_type: str        # "pavement" | "trail" | "track" | "mixed"
     difficulty: str          # "easy" | "moderate" | "hard"
     scenic: bool = Field(default=False)
@@ -135,6 +140,9 @@ class Run(SQLModel, table=True):
     avg_heart_rate: Optional[float] = None
     max_heart_rate: Optional[float] = None
     source: Optional[str] = None          # "manual" | "gpx" | "tcx" | "fit" | "follow"
+    # research: which recommendation this run came from, and did it fit
+    recommendation_id: Optional[UUID] = None
+    pick_fit: Optional[str] = None        # "yes" | "sort_of" | "no"
 
     user: User = Relationship(back_populates="runs")
     route: Optional[Route] = Relationship(back_populates="runs")
@@ -147,12 +155,18 @@ class Run(SQLModel, table=True):
 class Recommendation(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     user_id: UUID = Field(foreign_key="user.id", index=True)
-    route_id: UUID = Field(foreign_key="route.id")
+    route_id: Optional[UUID] = Field(default=None, foreign_key="route.id")   # None for combined routes
 
     rec_date: date = Field(index=True)
     score: float
     reasoning: str            # plain-language explanation shown to the user
     accepted: Optional[bool] = None  # did the user actually run this route
+    # research logging: which check-in produced it, where it ranked, what came of it
+    checkin_id: Optional[UUID] = Field(default=None, foreign_key="checkin.id", index=True)
+    rank: Optional[int] = None
+    route_name: Optional[str] = None
+    shown_at: Optional[datetime] = None
+    run_id: Optional[UUID] = None
 
     user: User = Relationship(back_populates="recommendations")
     route: Route = Relationship(back_populates="recommendations")
@@ -202,3 +216,29 @@ class FavoriteRoute(SQLModel, table=True):
     route_id: UUID = Field(foreign_key="route.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+
+
+# ---------------------------------------------------------------------------
+# Run together: a few friends who check in separately and get one shared pick
+# ---------------------------------------------------------------------------
+
+class RunGroup(SQLModel, table=True):
+    __tablename__ = "run_group"
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    name: str
+    join_code: str = Field(index=True, unique=True)
+    owner_id: UUID = Field(foreign_key="user.id")
+    # optional meeting spot; when empty, routes start somewhere fair for everyone's home
+    meet_label: Optional[str] = None
+    meet_lat: Optional[float] = None
+    meet_lon: Optional[float] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class RunGroupMember(SQLModel, table=True):
+    __tablename__ = "run_group_member"
+    __table_args__ = (UniqueConstraint("group_id", "user_id", name="uq_run_group_member"),)
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    group_id: UUID = Field(foreign_key="run_group.id", index=True)
+    user_id: UUID = Field(foreign_key="user.id", index=True)
+    joined_at: datetime = Field(default_factory=datetime.utcnow)

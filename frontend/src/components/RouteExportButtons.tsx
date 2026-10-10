@@ -4,6 +4,7 @@ import { downloadGpx, googleMapsUrl, type RunFormat } from "../utils/routeExport
 
 type Props = {
   routeId?: string | null;
+  recommendationId?: string;
   name: string;
   // returns the full-resolution path; async so Favorites can fetch it on demand
   loadPath: () => Promise<[number, number][]> | [number, number][];
@@ -14,7 +15,7 @@ type Props = {
 };
 
 // eslint-disable-next-line react-refresh/only-export-components
-export function useRouteActions({ routeId, name, loadPath, format, repeatCount, surface }: Omit<Props, "compact">) {
+export function useRouteActions({ routeId, recommendationId, name, loadPath, format, repeatCount, surface }: Omit<Props, "compact">) {
   const navigate = useNavigate();
   const [busy, setBusy] = useState<"gpx" | "maps" | "follow" | null>(null);
 
@@ -22,7 +23,7 @@ export function useRouteActions({ routeId, name, loadPath, format, repeatCount, 
     setBusy("follow");
     try {
       const path = await loadPath();
-      navigate("/follow", { state: { routeId, name, path, format, repeatCount, surface } });
+      navigate("/follow", { state: { routeId, recommendationId, name, path, format, repeatCount, surface } });
     } finally {
       setBusy(null);
     }

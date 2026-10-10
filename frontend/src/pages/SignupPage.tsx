@@ -28,12 +28,14 @@ const GOAL_OPTIONS = [
   { value: "weight_loss", icon: "🔥", title: "Get in shape", sub: "Build the habit, steady progress" },
 ];
 
+// value = the middle of each range, in miles per week
 const MILEAGE_CHIPS = [
-  { label: "0–5", value: "3" },
-  { label: "5–15", value: "10" },
-  { label: "15–25", value: "20" },
-  { label: "25–40", value: "32" },
-  { label: "40+", value: "45" },
+  { label: "0–10", value: "5" },
+  { label: "10–20", value: "15" },
+  { label: "20–30", value: "25" },
+  { label: "30–40", value: "35" },
+  { label: "40–50", value: "45" },
+  { label: "50–60", value: "55" },
 ];
 
 function passwordStrength(pw: string): { score: number; label: string } {
@@ -51,6 +53,9 @@ function SignupPage() {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [checkingArea, setCheckingArea] = useState(false);
+  const [areaLabel, setAreaLabel] = useState<string | null>(null);   // confirmed place
+  const [checkedAddress, setCheckedAddress] = useState("");
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -62,6 +67,16 @@ function SignupPage() {
   const [fitnessLevel, setFitnessLevel] = useState("beginner");
   const [goal, setGoal] = useState("general_fitness");
   const [weeklyMileage, setWeeklyMileage] = useState("");
+  const [mileageOther, setMileageOther] = useState(false);
+  const [paceMin, setPaceMin] = useState("");
+  const [paceSec, setPaceSec] = useState("");
+  // easy pace in minutes per mile, or null if blank / out of range (4:00-20:00)
+  const paceValue = (() => {
+    if (!paceMin) return null;
+    const v = parseInt(paceMin, 10) + (parseInt(paceSec || "0", 10) || 0) / 60;
+    return v >= 4 && v <= 20 ? Math.round(v * 100) / 100 : null;
+  })();
+  const paceInvalid = paceMin !== "" && paceValue === null;
   const [clubCode, setClubCode] = useState("");
 
   const [hasInjury, setHasInjury] = useState(false);
@@ -94,13 +109,37 @@ function SignupPage() {
     return null;
   }
 
-  function next() {
+  async function next() {
     const problem = stepError(step);
     if (problem) {
       setError(problem);
       return;
     }
     setError(null);
+    // step 2: make sure the location is a real place Pathos covers before moving on
+    if (step === 1 && address.trim() !== checkedAddress) {
+      setCheckingArea(true);
+      try {
+        const res = await fetch("http://127.0.0.1:8000/check-area", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address: address.trim() }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!res.ok) {
+          setAreaLabel(null);
+          setError(body?.detail ?? "Couldn't check that location.");
+          return;
+        }
+        setAreaLabel(body.label);
+        setCheckedAddress(address.trim());
+      } catch {
+        setError("Couldn't reach Pathos to check that location. Is the backend running?");
+        return;
+      } finally {
+        setCheckingArea(false);
+      }
+    }
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   }
 
@@ -131,6 +170,7 @@ function SignupPage() {
           fitness_level: fitnessLevel,
           goal,
           weekly_mileage_avg: parseFloat(weeklyMileage) || 0,
+          usual_pace_min_mile: paceValue,
           injuries: hasInjury ? injuries.filter((i) => i.body_part) : [],
           club_join_code: clubCode || null,
         }),
@@ -246,16 +286,23 @@ function SignupPage() {
                       </svg>
                       <input
                         value={address}
-                        onChange={(e) => setAddress(e.target.value)}
+                        onChange={(e) => {
+                          setAddress(e.target.value);
+                          setAreaLabel(null);
+                        }}
                         placeholder="e.g. Eagle Rock, Los Angeles"
                         autoFocus
                         autoComplete="street-address"
                       />
                     </span>
                   </label>
-                  <p className="su-note">
-                    Pathos currently covers Glendale, Pasadena, Eagle Rock and the nearby foothills.
-                  </p>
+                  {areaLabel && address.trim() === checkedAddress ? (
+                    <p className="su-note su-area-ok">✓ Found {areaLabel}. Routes nearby.</p>
+                  ) : (
+                    <p className="su-note">
+                      Pathos currently covers northeast LA, Glendale, Burbank, Pasadena and the nearby foothills.
+                    </p>
+                  )}
                   <details className="su-optional">
                     <summary>Optional details</summary>
                     <label>
@@ -312,12 +359,75 @@ function SignupPage() {
                       <button
                         key={c.label}
                         type="button"
-                        className={`ci-chip ${weeklyMileage === c.value ? "on" : ""}`}
-                        onClick={() => setWeeklyMileage(weeklyMileage === c.value ? "" : c.value)}
+                        className={`ci-chip ${!mileageOther && weeklyMileage === c.value ? "on" : ""}`}
+                        onClick={() => {
+                          setMileageOther(false);
+                          setWeeklyMileage(!mileageOther && weeklyMileage === c.value ? "" : c.value);
+                        }}
                       >
                         {c.label}
                       </button>
                     ))}
+                    <button
+                      type="button"
+                      className={`ci-chip ${mileageOther ? "on" : ""}`}
+                      onClick={() => {
+                        setMileageOther(!mileageOther);
+                        setWeeklyMileage("");
+                      }}
+                    >
+                      Other
+                    </button>
+                  </div>
+                  {mileageOther && (
+                    <span className="su-pace-input su-miles-other">
+                      <input
+                        inputMode="decimal"
+                        maxLength={5}
+                        autoFocus
+                        value={weeklyMileage}
+                        onChange={(e) => setWeeklyMileage(e.target.value.replace(/[^\d.]/g, ""))}
+                        placeholder="70"
+                        aria-label="Miles per week"
+                      />
+                      <span className="su-pace-unit">mi / week</span>
+                    </span>
+                  )}
+
+                  <div className="su-pace">
+                    <span className="su-label">
+                      Easy-run pace <span className="su-optional-tag">optional</span>
+                    </span>
+                    <div className="su-pace-row">
+                      <span className="su-pace-input">
+                        <input
+                          inputMode="numeric"
+                          maxLength={2}
+                          value={paceMin}
+                          onChange={(e) => setPaceMin(e.target.value.replace(/\D/g, ""))}
+                          placeholder="9"
+                          aria-label="Pace minutes"
+                        />
+                        <span className="su-pace-colon">:</span>
+                        <input
+                          inputMode="numeric"
+                          maxLength={2}
+                          value={paceSec}
+                          onChange={(e) => {
+                            const v = e.target.value.replace(/\D/g, "");
+                            setPaceSec(v && parseInt(v, 10) > 59 ? "59" : v);
+                          }}
+                          placeholder="30"
+                          aria-label="Pace seconds"
+                        />
+                        <span className="su-pace-unit">/mi</span>
+                      </span>
+                      <span className="su-pace-hint">
+                        {paceInvalid
+                          ? "Enter a pace between 4:00 and 20:00 per mile."
+                          : "Your comfortable, everyday pace, not race pace. Used for time estimates until you log runs."}
+                      </span>
+                    </div>
                   </div>
 
                   <label className="su-club">
@@ -410,8 +520,8 @@ function SignupPage() {
                     ← Back
                   </button>
                 )}
-                <button type="submit" className="su-next" disabled={loading}>
-                  {loading ? "Creating your account..." : isLast ? "Start running →" : "Continue →"}
+                <button type="submit" className="su-next" disabled={loading || checkingArea}>
+                  {loading ? "Creating your account..." : checkingArea ? "Checking location..." : isLast ? "Start running →" : "Continue →"}
                 </button>
               </div>
             </form>

@@ -59,6 +59,7 @@ function speak(text: string) {
 
 type FollowState = {
   routeId?: string | null;
+  recommendationId?: string;
   name: string;
   path: [number, number][];
   format?: RunFormat;
@@ -425,6 +426,7 @@ function FollowPage() {
       state: {
         routeId: state?.routeId ?? undefined,
         routeName: state?.name,
+        recommendationId: state?.recommendationId,
         prefill: {
           miles: miles.toFixed(2),
           minutes: String(Math.floor(finished.seconds / 60)),

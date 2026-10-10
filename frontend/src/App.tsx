@@ -7,6 +7,7 @@ import LogRunPage from "./pages/LogRunPage";
 import PastRunsPage from "./pages/PastRunsPage";
 import FavoritesPage from "./pages/FavoritesPage";
 import StatsPage from "./pages/StatsPage";
+import RunTogetherPage from "./pages/RunTogetherPage";
 import GroupsPage from "./pages/GroupsPage";
 import FollowPage from "./pages/FollowPage";
 import AppLayout from "./components/AppLayout";
@@ -39,6 +40,7 @@ function App() {
           <Route path="/favorites" element={<FavoritesPage />} />
           <Route path="/stats" element={<StatsPage />} />
           <Route path="/groups" element={<GroupsPage />} />
+          <Route path="/run-together" element={<RunTogetherPage />} />
           <Route path="/my-club" element={<Navigate to="/groups" replace />} />
         </Route>
       </Routes>

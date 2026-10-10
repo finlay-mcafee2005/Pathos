@@ -106,7 +106,7 @@ CLUBS = [
     },
     {
         "name": "Glendale Run Club",
-        "location": "lululemon, 889 Americana Way, Glendale, CA",
+        "location": "Americana at Brand (lululemon), 889 Americana Way, Glendale, CA",
         "pace_range": ALL_PACES,
         "experience_level": "all",
         "join_code": "GLENDALE1",

@@ -16,8 +16,10 @@ Each loop is checked against trail routes already in the DB: if more
 than 25% of it runs along known trails, it's stored as "mixed" instead
 of "pavement".
 
-Safe to re-run: it deletes loops it created before (names containing
-"road loop") and regenerates them.
+Safe to re-run: it only ADDS loops that don't exist yet (by name), and
+skips any new loop that mostly repeats a road loop already in the
+database. Existing routes, and the runs and favorites linked to them,
+are never touched.
 
 Run with: python3 scripts/generate_road_loops.py
 Then:     python3 scripts/update_elevation.py
@@ -51,10 +53,22 @@ ANCHORS = [
     ("South Pasadena",      34.1159, -118.1574, False),
     ("Atwater Village",     34.1185, -118.2610, False),
     ("Silver Lake",         34.0952, -118.2625, True),
+    # added: more start points near Oxy / NE LA and around the basin
+    ("Eagle Rock",          34.1392, -118.2120, False),
+    ("Mount Washington",    34.1047, -118.2089, True),
+    ("Glassell Park",       34.1172, -118.2337, False),
+    ("Los Feliz",           34.1064, -118.2873, False),
+    ("Echo Park Lake",      34.0729, -118.2606, True),
+    ("Downtown Burbank",    34.1808, -118.3090, False),
+    ("Alhambra",            34.0953, -118.1270, False),
+    ("Montrose",            34.2069, -118.2290, False),
+    ("Lake Hollywood",      34.1260, -118.3290, True),
+    ("San Marino",          34.1186, -118.1180, True),
 ]
 
-TARGET_DISTANCES_KM = [3, 5, 8, 12]
-DIRECTIONS = [(0, "north"), (180, "south")]   # which side of the start the loop bulges toward
+TARGET_DISTANCES_KM = [3, 5, 8, 10, 12, 16]
+DIRECTIONS = [(0, "north"), (90, "east"), (180, "south"), (270, "west")]   # which side of the start the loop bulges toward
+DUPLICATE_OVERLAP = 0.70   # skip a new loop if 70%+ of it runs on an existing road loop
 TOLERANCE = 0.10
 MAX_ITERATIONS = 6
 TRAIL_OVERLAP_MIXED = 0.25
@@ -136,24 +150,34 @@ def trail_overlap_fraction(session, wkt):
 
 
 
+def duplicate_overlap(session, wkt):
+    """Largest share of this loop that runs within 25 m of an existing road loop."""
+    row = session.exec(text("""
+        WITH loop AS (SELECT ST_GeomFromText(:wkt, 4326) AS g)
+        SELECT COALESCE(MAX(
+            ST_Length(ST_Intersection(loop.g, ST_Buffer(r.gps_path::geography, 25)::geometry)::geography)
+            / NULLIF(ST_Length(loop.g::geography), 0)), 0)
+        FROM loop, route r
+        WHERE r.name LIKE '%road loop%'
+          AND ST_DWithin(r.gps_path::geography, loop.g::geography, 25)
+    """), params={"wkt": wkt}).first()
+    return float(row[0] or 0)
+
+
 def main():
     engine = create_engine(DATABASE_URL)
 
     with Session(engine) as session:
-        # clear loops from a previous run (keep run history, drop stale recommendations)
-        old_ids = "SELECT id FROM route WHERE name LIKE '%road loop%'"
-        session.exec(text(f"DELETE FROM recommendation WHERE route_id IN ({old_ids})"))
-        session.exec(text(f"UPDATE run SET route_id = NULL WHERE route_id IN ({old_ids})"))
-        removed = session.exec(text("DELETE FROM route WHERE name LIKE '%road loop%'")).rowcount
-        session.commit()
-        if removed:
-            print(f"Removed {removed} loops from a previous run.")
+        existing = {row[0] for row in session.exec(text("SELECT name FROM route WHERE name LIKE '%road loop%'")).all()}
+        print(f"{len(existing)} road loops already in the database (kept as-is).")
 
         added, skipped = 0, 0
         for anchor, lat, lon, scenic in ANCHORS:
             for target in TARGET_DISTANCES_KM:
                 for bearing, direction in DIRECTIONS:
                     label = f"{anchor} road loop - {target} km {direction}"
+                    if label in existing:
+                        continue
                     try:
                         coords, km, err = build_loop(lat, lon, bearing, target)
                     except Exception as e:
@@ -166,6 +190,11 @@ def main():
                         continue
 
                     wkt = to_wkt(coords)
+                    session.flush()  # so loops added this run count as duplicates too
+                    if duplicate_overlap(session, wkt) > DUPLICATE_OVERLAP:
+                        print(f"  Skipped '{label}': mostly repeats an existing loop")
+                        skipped += 1
+                        continue
                     overlap = trail_overlap_fraction(session, wkt)
                     surface = "mixed" if overlap > TRAIL_OVERLAP_MIXED else "pavement"
 
