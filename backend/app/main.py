@@ -7,6 +7,10 @@ from sqlalchemy import text
 
 from fastapi import FastAPI, Depends, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+import logging
+from sqlalchemy import func
 from sqlmodel import Session, SQLModel, create_engine, select
 from dataclasses import replace
 from geoalchemy2.shape import to_shape
@@ -42,6 +46,21 @@ engine = create_engine(DATABASE_URL)
 
 app = FastAPI()
 
+
+class CatchErrors(BaseHTTPMiddleware):
+    """Turn unexpected crashes into a normal JSON 500. Registered before CORS
+    so CORS wraps it: without this, a crash returns a response with no CORS
+    headers and the browser only shows "Load failed"."""
+    async def dispatch(self, request, call_next):
+        try:
+            return await call_next(request)
+        except Exception:
+            logging.exception("Unhandled error on %s %s", request.method, request.url.path)
+            return JSONResponse(status_code=500,
+                                content={"detail": "Something went wrong on our end. Please try again."})
+
+
+app.add_middleware(CatchErrors)
 app.add_middleware(
     CORSMiddleware,
     # FRONTEND_ORIGINS on Railway: your Vercel URL(s), comma-separated
@@ -393,6 +412,9 @@ def check_area(payload: AreaCheck, session: Session = Depends(get_session)):
 
 @app.post("/signup")
 def signup(payload: SignupRequest, session: Session = Depends(get_session)):
+    payload.email = payload.email.strip().lower()
+    if session.exec(select(User).where(func.lower(User.email) == payload.email)).first():
+        raise HTTPException(status_code=400, detail="An account with that email already exists. Log in instead.")
     lat, lon, _label, _count = check_coverage(session, payload.address)
 
     club_id = None
@@ -519,7 +541,8 @@ class LoginRequest(BaseModel):
 
 @app.post("/login")
 def login(payload: LoginRequest, session: Session = Depends(get_session)):
-    user = session.exec(select(User).where(User.email == payload.email)).first()
+    email = payload.email.strip().lower()
+    user = session.exec(select(User).where(func.lower(User.email) == email)).first()
     if not user or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     return {"user_id": str(user.id), "token": make_token(user.id)}

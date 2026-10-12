@@ -291,7 +291,7 @@ function GroupsPage() {
               <h2>{data.today.club_name}</h2>
               <p className="group-hero-when">
                 <span className="bib">{formatMeetTime(data.today.starts_at)}</span> · {sessionTitle(data.today)} ·{" "}
-                {data.today.location}
+                {data.today.place_label ?? data.today.location}
               </p>
             </div>
             <FitMeter fit={data.today.fit} />
