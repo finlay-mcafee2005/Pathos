@@ -48,6 +48,11 @@ export function PathosRunner() {
   return (
     <svg className="sp-logo" viewBox="0 0 100 100" role="img" aria-label="Pathos logo">
       <defs>
+        <linearGradient id="sp-shine-grad" x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0" stopColor="#fff" stopOpacity="0" />
+          <stop offset="0.5" stopColor="#fff" stopOpacity="0.45" />
+          <stop offset="1" stopColor="#fff" stopOpacity="0" />
+        </linearGradient>
         <clipPath id="sp-tile">
           <rect x="0" y="0" width="100" height="100" rx="24" />
         </clipPath>
@@ -64,6 +69,8 @@ export function PathosRunner() {
             so the limbs stay readable where they cross the white trail */}
         <Runner stroke="#0B6CEB" extra={3.2} />
         <Runner stroke="#fff" extra={0} />
+        {/* a quick shine sweeps across once everything is in place */}
+        <rect className="sp-shine" x="-40" y="-20" width="26" height="140" fill="url(#sp-shine-grad)" />
       </g>
     </svg>
   );
@@ -87,7 +94,7 @@ export default function Splash({ onDone }: { onDone: () => void }) {
       onClick={() => { setLeaving(true); window.setTimeout(onDone, FADE_MS); }}
     >
       <div className="sp-stage">
-        <PathosRunner />
+        <div className="sp-logo-wrap"><PathosRunner /></div>
         <div className="sp-word">Pathos</div>
         <div className="sp-tag">Run the route that fits today.</div>
       </div>
