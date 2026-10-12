@@ -1,3 +1,4 @@
+import { useCallback, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import SignupPage from "./pages/SignupPage";
 import LoginPage from "./pages/LoginPage";
@@ -11,6 +12,7 @@ import RunTogetherPage from "./pages/RunTogetherPage";
 import GroupsPage from "./pages/GroupsPage";
 import FollowPage from "./pages/FollowPage";
 import AppLayout from "./components/AppLayout";
+import Splash, { shouldShowSplash } from "./components/Splash";
 import "./App.css";
 import { isLoggedIn } from "./utils/session";
 
@@ -19,8 +21,13 @@ function HomeRedirect() {
 }
 
 function App() {
+  // animated logo intro, shown once per session before the login page
+  const [showSplash, setShowSplash] = useState(() => shouldShowSplash(isLoggedIn()));
+  const hideSplash = useCallback(() => setShowSplash(false), []);
+
   return (
     <BrowserRouter>
+      {showSplash && <Splash onDone={hideSplash} />}
       <Routes>
         <Route path="/" element={<HomeRedirect />} />
         <Route path="/login" element={<LoginPage />} />

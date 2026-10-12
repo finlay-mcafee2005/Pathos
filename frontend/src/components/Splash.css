@@ -1,0 +1,105 @@
+/* ---------- Splash intro ---------- */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(60% 50% at 50% 42%, rgba(11, 108, 237, 0.16), transparent 70%),
+    var(--bg, #F4F6F9);
+  cursor: pointer;
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+.splash.leaving { opacity: 0; transform: scale(1.04); pointer-events: none; }
+
+.sp-stage { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+
+.sp-logo {
+  width: min(42vw, 190px);
+  height: auto;
+  filter: drop-shadow(0 18px 36px rgba(11, 108, 237, 0.35));
+  animation: sp-pop 0.6s cubic-bezier(.2, 1.4, .4, 1) both;
+}
+@keyframes sp-pop {
+  from { opacity: 0; transform: scale(0.6) rotate(-6deg); }
+  to   { opacity: 1; transform: scale(1) rotate(0); }
+}
+
+.sp-bg { fill: #0B6CEB; }
+.sp-sun { fill: #fff; }
+.sp-hills { fill: #0640A0; }
+
+.sp-scenery { animation: sp-drift 4s linear infinite; }
+@keyframes sp-drift { from { transform: translateX(0); } to { transform: translateX(-104px); } }
+
+.sp-trail {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 7;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: sp-draw 0.9s 0.25s cubic-bezier(.6, 0, .3, 1) forwards;
+}
+@keyframes sp-draw { to { stroke-dashoffset: 0; } }
+
+/* runner fades in as the trail finishes, then keeps running */
+.sp-runner { opacity: 0; animation: sp-in 0.35s 0.55s ease-out forwards; }
+@keyframes sp-in { to { opacity: 1; } }
+
+/* ---- run cycle (0.6s per stride) ---- */
+.sp-runner * { transform-box: view-box; }
+.sp-upper, .sp-lower { transform-origin: 0 0; animation-duration: 0.6s; animation-iteration-count: infinite; animation-timing-function: linear; }
+.sp-upper.b, .sp-lower.b { animation-delay: -0.3s; }     /* other side, half a stride later */
+
+.sp-upper.leg { animation-name: sp-thigh; }
+.sp-lower.leg { animation-name: sp-shin; }
+.sp-upper.arm { animation-name: sp-arm; }
+.sp-lower.arm { animation-name: sp-forearm; }
+
+/* angles: negative swings forward (right), positive swings back */
+@keyframes sp-thigh {
+  0%   { transform: rotate(-48deg); }
+  30%  { transform: rotate(-8deg); }
+  50%  { transform: rotate(38deg); }
+  75%  { transform: rotate(-22deg); }
+  100% { transform: rotate(-48deg); }
+}
+@keyframes sp-shin {
+  0%   { transform: rotate(18deg); }
+  30%  { transform: rotate(14deg); }
+  50%  { transform: rotate(38deg); }
+  65%  { transform: rotate(112deg); }
+  85%  { transform: rotate(62deg); }
+  100% { transform: rotate(18deg); }
+}
+@keyframes sp-arm {           /* opposite to the same-side leg */
+  0%   { transform: rotate(55deg); }
+  50%  { transform: rotate(-58deg); }
+  100% { transform: rotate(55deg); }
+}
+@keyframes sp-forearm {
+  0%   { transform: rotate(-70deg); }
+  50%  { transform: rotate(-110deg); }
+  100% { transform: rotate(-70deg); }
+}
+
+.sp-bob { animation: sp-bob 0.3s ease-in-out infinite alternate; }
+@keyframes sp-bob { from { transform: translateY(0.8px); } to { transform: translateY(-1.2px); } }
+
+.sp-word {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink, #0B1220);
+  animation: sp-up 0.5s 0.9s ease-out both;
+}
+.sp-tag {
+  font-size: 15px;
+  color: var(--ink, #0B1220);
+  opacity: 0.7;
+  margin-top: -8px;
+  animation: sp-up 0.5s 1.15s ease-out both;
+}
+@keyframes sp-up { from { opacity: 0; transform: translateY(8px); } to { transform: none; } }
