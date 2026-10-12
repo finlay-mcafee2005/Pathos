@@ -16,7 +16,12 @@ import urllib.parse
 import urllib.request
 from typing import List, Optional, Tuple
 
-OSRM_URL = os.environ.get("OSRM_URL", "http://localhost:5001")
+# Local dev: self-hosted OSRM on port 5001.
+# Production: set OSRM_URL to the public FOSSGIS foot server,
+#   https://routing.openstreetmap.de/routed-foot
+OSRM_URL = os.environ.get("OSRM_URL", "http://localhost:5001").rstrip("/")
+# public OSM servers ask clients to identify themselves
+USER_AGENT = "Pathos/1.0 (student running-route project)"
 TIMEOUT_S = 8
 MAX_MATCH_POINTS = 100          # OSRM's default --max-matching-size
 MAX_ROUTE_POINTS = 100
@@ -79,7 +84,8 @@ def simplify(path: List[Point], tol: float) -> List[Point]:
 
 def _get(url: str) -> Optional[dict]:
     try:
-        with urllib.request.urlopen(url, timeout=TIMEOUT_S) as resp:
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
             return json.loads(resp.read().decode())
     except Exception:
         return None
