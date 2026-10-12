@@ -98,6 +98,26 @@ function NavBar() {
             </button>
           </div>
         </div>
+
+        {/* phone menu: one clean list instead of the desktop bar squeezed down */}
+        <div className={`navbar-mobile ${menuOpen ? "open" : ""}`}>
+          <span className="nm-label">Today</span>
+          {MAIN_LINKS.map((l) => (
+            <NavLink key={l.to} to={l.to} className="nm-link">
+              {l.label}<span className="nm-arrow" aria-hidden="true">›</span>
+            </NavLink>
+          ))}
+          <span className="nm-label">My running</span>
+          {MY_RUNNING_LINKS.map((l) => (
+            <NavLink key={l.to} to={l.to} className="nm-link">
+              {l.label}<span className="nm-arrow" aria-hidden="true">›</span>
+            </NavLink>
+          ))}
+          <div className="nm-foot">
+            <ThemeToggle />
+            <button className="nm-logout" onClick={handleLogout}>Log out</button>
+          </div>
+        </div>
       </div>
     </nav>
   );

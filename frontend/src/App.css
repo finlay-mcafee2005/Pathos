@@ -8553,3 +8553,39 @@ body::before {
   .lb-metrics { grid-template-columns: auto auto minmax(0, 1fr); column-gap: 18px; }
   .lb-value { font-size: 21px; }
 }
+
+/* ================= Phone menu ================= */
+.navbar-mobile { display: none; }
+@media (max-width: 860px) {
+  .navbar-links, .navbar-links.open { display: none; }
+  .navbar-mobile.open {
+    display: flex; flex-direction: column; flex-basis: 100%;
+    padding: 0.35rem 0 0.9rem; max-height: calc(100svh - 70px); overflow-y: auto;
+    animation: nm-in 0.18s ease-out;
+  }
+  @keyframes nm-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+  .nm-label {
+    margin: 0.9rem 0.25rem 0.35rem; font-size: 0.72rem; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255, 255, 255, 0.65);
+    text-align: left;
+  }
+  .nm-label:first-child { margin-top: 0.4rem; }
+  .nm-link {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.8rem 0.9rem; border-radius: 14px; color: #fff; text-decoration: none;
+    font-size: 1.05rem; font-weight: 600; text-align: left;
+  }
+  .nm-link + .nm-link { margin-top: 2px; }
+  .nm-link:active { background: rgba(255, 255, 255, 0.1); }
+  .nm-link.active { background: rgba(255, 255, 255, 0.18); font-weight: 700; }
+  .nm-arrow { font-size: 1.4rem; line-height: 1; opacity: 0.55; }
+  .nm-foot {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    margin-top: 1rem; padding-top: 0.9rem; border-top: 1px solid rgba(255, 255, 255, 0.18);
+  }
+  .nm-logout {
+    padding: 0.6rem 1.3rem; border-radius: 999px; cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.4); background: rgba(255, 255, 255, 0.12);
+    color: #fff; font: 600 0.95rem Inter, sans-serif;
+  }
+}
