@@ -1263,3 +1263,9 @@ def run_group_recommendations(group_id: UUID, user_id: UUID, session: Session = 
             "path": [[lat, lon] for lon, lat in to_shape(route_by_id[p.route.id].gps_path).coords],
         } for p in picks],
     }
+
+
+@app.get("/health")
+def health():
+    """Tiny endpoint for uptime monitors (keeps the free Render service awake)."""
+    return {"ok": True}
