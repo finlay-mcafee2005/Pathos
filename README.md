@@ -7,7 +7,7 @@
 <p align="center"><b>Running routes picked for how you feel today.</b></p>
 
 <p align="center">
-  <a href="https://pathos-neon.vercel.app"><b>Try the live app →</b></a>
+  <a href="https://pathosrun.com"><b>Try it at pathosrun.com →</b></a>
 </p>
 
 ---
