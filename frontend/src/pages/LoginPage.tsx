@@ -3,13 +3,18 @@ import { useNavigate, Link } from "react-router-dom";
 import BackgroundSlideshow from "../components/BackgroundSlideshow";
 import ThemeToggle from "../components/ThemeToggle";
 import { API_URL } from "../utils/format";
+import { saveSession } from "../utils/session";
 
 function LoginPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() =>
+    new URLSearchParams(window.location.search).has("expired")
+      ? "Your session ended. Please log in again."
+      : null
+  );
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -25,7 +30,7 @@ function LoginPage() {
         throw new Error("Invalid email or password");
       }
       const data = await response.json();
-      localStorage.setItem("user_id", data.user_id);
+      saveSession(data.user_id, data.token);
       navigate("/checkin");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");

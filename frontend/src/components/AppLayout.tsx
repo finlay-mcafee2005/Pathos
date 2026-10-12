@@ -1,10 +1,11 @@
 import { Navigate, Outlet } from "react-router-dom";
 import NavBar from "./NavBar";
+import { isLoggedIn } from "../utils/session";
 
 // Wraps every logged-in page with the nav bar.
 // Sends logged-out users to the login page.
 function AppLayout() {
-  if (!localStorage.getItem("user_id")) {
+  if (!isLoggedIn()) {
     return <Navigate to="/login" replace />;
   }
   return (

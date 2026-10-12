@@ -12,14 +12,10 @@ import GroupsPage from "./pages/GroupsPage";
 import FollowPage from "./pages/FollowPage";
 import AppLayout from "./components/AppLayout";
 import "./App.css";
-
-function getStoredUserId(): string | null {
-  return localStorage.getItem("user_id");
-}
+import { isLoggedIn } from "./utils/session";
 
 function HomeRedirect() {
-  const userId = getStoredUserId();
-  return userId ? <Navigate to="/checkin" replace /> : <Navigate to="/login" replace />;
+  return isLoggedIn() ? <Navigate to="/checkin" replace /> : <Navigate to="/login" replace />;
 }
 
 function App() {

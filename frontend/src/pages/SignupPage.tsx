@@ -3,6 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import BackgroundSlideshow from "../components/BackgroundSlideshow";
 import ThemeToggle from "../components/ThemeToggle";
 import { API_URL } from "../utils/format";
+import { saveSession } from "../utils/session";
 
 type Injury = {
   body_part: string;
@@ -188,7 +189,7 @@ function SignupPage() {
       }
 
       const data = await response.json();
-      localStorage.setItem("user_id", data.user_id);
+      saveSession(data.user_id, data.token);
       navigate("/checkin");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");

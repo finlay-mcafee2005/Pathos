@@ -5,7 +5,7 @@ from datetime import date, timedelta, datetime
 import json
 from sqlalchemy import text
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session, SQLModel, create_engine, select
 from dataclasses import replace
@@ -23,7 +23,7 @@ from app.models import User, Checkin, Route, Injury, Run, Club, ClubSchedule, Fa
 from app.scoring.group_picks import Member, group_recommend
 from app.scoring.engine import haversine_km as _hav
 from app.scoring.converters import route_start
-from app.auth import hash_password, verify_password
+from app.auth import hash_password, verify_password, make_token, read_token
 
 from app.scoring.engine import recommend, diversify
 from app.scoring.converters import (
@@ -94,6 +94,32 @@ def get_session():
         yield session
 
 
+# --- who is calling ----------------------------------------------------------
+
+def current_user(authorization: Optional[str] = Header(None)) -> UUID:
+    """The logged-in user, from the "Authorization: Bearer <token>" header."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Please log in.")
+    user_id = read_token(authorization[7:].strip())
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Your session expired. Please log in again.")
+    return user_id
+
+
+def require_self(user_id: UUID, me: UUID = Depends(current_user)) -> UUID:
+    """For endpoints with a user_id in the URL: only that user may call them."""
+    check_self(user_id, me)
+    return me
+
+
+def check_self(user_id: UUID, me: UUID) -> None:
+    if user_id != me:
+        raise HTTPException(status_code=403, detail="That isn't your account.")
+
+
+ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()}
+
+
 GENERATED_SUFFIX = re.compile(r"\s+-\s+\d+(\.\d+)?\s*km\s+(north|south|east|west)$", re.IGNORECASE)
 GENERATED_KIND = [
     (" trail out-and-back", " Out-and-Back"),
@@ -127,7 +153,8 @@ def display_name(name: str) -> str:
 
 
 @app.get("/recommendations/{user_id}")
-def get_recommendations(user_id: UUID, session: Session = Depends(get_session)):
+def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
+        _me: UUID = Depends(require_self)):
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -405,7 +432,7 @@ def signup(payload: SignupRequest, session: Session = Depends(get_session)):
         ))
     session.commit()
 
-    return {"user_id": str(user.id)}
+    return {"user_id": str(user.id), "token": make_token(user.id)}
 
 class CheckinRequest(BaseModel):
     user_id: UUID
@@ -428,7 +455,8 @@ class CheckinRequest(BaseModel):
 
 
 @app.get("/checkins/{user_id}/last")
-def last_checkin(user_id: UUID, session: Session = Depends(get_session)):
+def last_checkin(user_id: UUID, session: Session = Depends(get_session),
+        _me: UUID = Depends(require_self)):
     """The most recent check-in from an earlier day, for "Same as yesterday"."""
     c = session.exec(
         select(Checkin)
@@ -457,7 +485,9 @@ def last_checkin(user_id: UUID, session: Session = Depends(get_session)):
 
 
 @app.post("/checkins")
-def create_checkin(payload: CheckinRequest, session: Session = Depends(get_session)):
+def create_checkin(payload: CheckinRequest, session: Session = Depends(get_session),
+        me: UUID = Depends(current_user)):
+    check_self(payload.user_id, me)
     checkin = Checkin(
         user_id=payload.user_id,
         checkin_date=date_type.today(),
@@ -492,7 +522,7 @@ def login(payload: LoginRequest, session: Session = Depends(get_session)):
     user = session.exec(select(User).where(User.email == payload.email)).first()
     if not user or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    return {"user_id": str(user.id)}
+    return {"user_id": str(user.id), "token": make_token(user.id)}
 
 class RunRequest(BaseModel):
     user_id: UUID
@@ -512,7 +542,9 @@ class RunRequest(BaseModel):
 
 
 @app.post("/runs")
-def log_run(payload: RunRequest, session: Session = Depends(get_session)):
+def log_run(payload: RunRequest, session: Session = Depends(get_session),
+        me: UUID = Depends(current_user)):
+    check_self(payload.user_id, me)
     run = Run(
         user_id=payload.user_id,
         route_id=payload.route_id,
@@ -565,10 +597,12 @@ class ImportRunRequest(BaseModel):
 
 
 @app.post("/runs/import")
-def import_run_file(payload: ImportRunRequest, session: Session = Depends(get_session)):
+def import_run_file(payload: ImportRunRequest, session: Session = Depends(get_session),
+        me: UUID = Depends(current_user)):
     """Read a GPX / TCX / FIT export and return what it contains, plus the
     Pathos route it matches (if any). Doesn't save anything: the Log a run
     form is filled in and the user confirms."""
+    check_self(payload.user_id, me)
     try:
         data = base64.b64decode(payload.data_base64, validate=False)
     except Exception:
@@ -618,10 +652,16 @@ def import_run_file(payload: ImportRunRequest, session: Session = Depends(get_se
 
 
 @app.get("/research/summary")
-def research_summary(user_id: Optional[UUID] = None, session: Session = Depends(get_session)):
+def research_summary(user_id: Optional[UUID] = None, session: Session = Depends(get_session),
+                     me: UUID = Depends(current_user)):
     """How the recommendations are doing: of check-ins that got picks, how
     often a run followed, which rank was run, and whether it fit.
-    Pass ?user_id=... for one runner; leave it off for everyone."""
+    Pass ?user_id=... for one runner; leave it off for everyone
+    (everyone needs your email in ADMIN_EMAILS)."""
+    if user_id != me:
+        caller = session.get(User, me)
+        if not caller or (caller.email or "").lower() not in ADMIN_EMAILS:
+            raise HTTPException(status_code=403, detail="Only admins can see other runners' numbers.")
     q = select(Recommendation).where(Recommendation.checkin_id.is_not(None))
     if user_id:
         q = q.where(Recommendation.user_id == user_id)
@@ -674,7 +714,8 @@ def list_clubs(session: Session = Depends(get_session)):
 
 
 @app.get("/clubs/mine/{user_id}")
-def get_my_club(user_id: UUID, session: Session = Depends(get_session)):
+def get_my_club(user_id: UUID, session: Session = Depends(get_session),
+        _me: UUID = Depends(require_self)):
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -702,7 +743,8 @@ def get_my_club(user_id: UUID, session: Session = Depends(get_session)):
 # ---------------------------------------------------------------------------
 
 @app.get("/conditions/{user_id}")
-def get_conditions(user_id: UUID, session: Session = Depends(get_session)):
+def get_conditions(user_id: UUID, session: Session = Depends(get_session),
+        _me: UUID = Depends(require_self)):
     """Weather / air / daylight for the user's home at the time they said
     they're running today. Returns null if there's no data (e.g. offline)."""
     user = session.get(User, user_id)
@@ -771,7 +813,8 @@ def club_place_label(location: Optional[str]) -> str:
 
 
 @app.get("/groups/{user_id}")
-def get_group_matches(user_id: UUID, session: Session = Depends(get_session)):
+def get_group_matches(user_id: UUID, session: Session = Depends(get_session),
+        _me: UUID = Depends(require_self)):
     """Club sessions in the next 7 days ranked by fit, plus the best one for
     today (if any fits well enough to suggest next to the solo routes)."""
     user = session.get(User, user_id)
@@ -851,7 +894,9 @@ class JoinClubRequest(BaseModel):
 
 
 @app.post("/clubs/join")
-def join_club(payload: JoinClubRequest, session: Session = Depends(get_session)):
+def join_club(payload: JoinClubRequest, session: Session = Depends(get_session),
+        me: UUID = Depends(current_user)):
+    check_self(payload.user_id, me)
     user = session.get(User, payload.user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -865,7 +910,8 @@ def join_club(payload: JoinClubRequest, session: Session = Depends(get_session))
 
 
 @app.post("/clubs/leave/{user_id}")
-def leave_club(user_id: UUID, session: Session = Depends(get_session)):
+def leave_club(user_id: UUID, session: Session = Depends(get_session),
+        _me: UUID = Depends(require_self)):
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -887,7 +933,8 @@ def get_directions(payload: DirectionsRequest):
 
 
 @app.get("/runs/{user_id}")
-def list_runs(user_id: UUID, session: Session = Depends(get_session)):
+def list_runs(user_id: UUID, session: Session = Depends(get_session),
+        _me: UUID = Depends(require_self)):
     runs = session.exec(
         select(Run).where(Run.user_id == user_id).order_by(Run.run_date.desc())
     ).all()
@@ -914,7 +961,8 @@ def list_runs(user_id: UUID, session: Session = Depends(get_session)):
 
 
 @app.get("/stats/{user_id}")
-def get_stats(user_id: UUID, session: Session = Depends(get_session)):
+def get_stats(user_id: UUID, session: Session = Depends(get_session),
+        _me: UUID = Depends(require_self)):
     runs = session.exec(select(Run).where(Run.user_id == user_id)).all()
     today = date_type.today()
     week_start = today - timedelta(days=today.weekday())  # Monday
@@ -999,7 +1047,8 @@ def _thin_path(points: list, max_points: int = 80) -> list:
 
 
 @app.get("/favorites/{user_id}")
-def list_favorites(user_id: UUID, session: Session = Depends(get_session)):
+def list_favorites(user_id: UUID, session: Session = Depends(get_session),
+        _me: UUID = Depends(require_self)):
     favorites = session.exec(
         select(FavoriteRoute)
         .where(FavoriteRoute.user_id == user_id)
@@ -1030,7 +1079,9 @@ def list_favorites(user_id: UUID, session: Session = Depends(get_session)):
 
 
 @app.post("/favorites")
-def add_favorite(payload: FavoriteRequest, session: Session = Depends(get_session)):
+def add_favorite(payload: FavoriteRequest, session: Session = Depends(get_session),
+        me: UUID = Depends(current_user)):
+    check_self(payload.user_id, me)
     if not session.get(Route, payload.route_id):
         raise HTTPException(status_code=404, detail="Route not found")
     existing = session.exec(
@@ -1046,7 +1097,8 @@ def add_favorite(payload: FavoriteRequest, session: Session = Depends(get_sessio
 
 
 @app.delete("/favorites/{user_id}/{route_id}")
-def remove_favorite(user_id: UUID, route_id: UUID, session: Session = Depends(get_session)):
+def remove_favorite(user_id: UUID, route_id: UUID, session: Session = Depends(get_session),
+        _me: UUID = Depends(require_self)):
     fav = session.exec(
         select(FavoriteRoute).where(
             FavoriteRoute.user_id == user_id,
@@ -1123,7 +1175,9 @@ def _member_of(session: Session, group_id: UUID, user_id: UUID) -> RunGroup:
 
 
 @app.post("/run-groups")
-def create_run_group(payload: RunGroupCreate, session: Session = Depends(get_session)):
+def create_run_group(payload: RunGroupCreate, session: Session = Depends(get_session),
+        me: UUID = Depends(current_user)):
+    check_self(payload.user_id, me)
     name = payload.name.strip()[:60] or "Running crew"
     g = RunGroup(name=name, join_code=_new_join_code(session), owner_id=payload.user_id)
     session.add(g)
@@ -1134,7 +1188,9 @@ def create_run_group(payload: RunGroupCreate, session: Session = Depends(get_ses
 
 
 @app.post("/run-groups/join")
-def join_run_group(payload: RunGroupJoin, session: Session = Depends(get_session)):
+def join_run_group(payload: RunGroupJoin, session: Session = Depends(get_session),
+        me: UUID = Depends(current_user)):
+    check_self(payload.user_id, me)
     g = session.exec(select(RunGroup).where(RunGroup.join_code == payload.code.strip().upper())).first()
     if not g:
         raise HTTPException(status_code=404, detail="No group with that code. Check it with whoever shared it.")
@@ -1147,7 +1203,9 @@ def join_run_group(payload: RunGroupJoin, session: Session = Depends(get_session
 
 
 @app.post("/run-groups/{group_id}/leave")
-def leave_run_group(group_id: UUID, payload: RunGroupUser, session: Session = Depends(get_session)):
+def leave_run_group(group_id: UUID, payload: RunGroupUser, session: Session = Depends(get_session),
+        me: UUID = Depends(current_user)):
+    check_self(payload.user_id, me)
     mem = session.exec(select(RunGroupMember).where(
         RunGroupMember.group_id == group_id, RunGroupMember.user_id == payload.user_id)).first()
     if mem:
@@ -1157,14 +1215,17 @@ def leave_run_group(group_id: UUID, payload: RunGroupUser, session: Session = De
 
 
 @app.get("/run-groups/mine/{user_id}")
-def my_run_groups(user_id: UUID, session: Session = Depends(get_session)):
+def my_run_groups(user_id: UUID, session: Session = Depends(get_session),
+        _me: UUID = Depends(require_self)):
     ids = [m.group_id for m in session.exec(select(RunGroupMember).where(RunGroupMember.user_id == user_id)).all()]
     groups = [session.get(RunGroup, i) for i in ids]
     return [_group_json(session, g) for g in groups if g]
 
 
 @app.put("/run-groups/{group_id}/meeting-spot")
-def set_meeting_spot(group_id: UUID, payload: MeetingSpot, session: Session = Depends(get_session)):
+def set_meeting_spot(group_id: UUID, payload: MeetingSpot, session: Session = Depends(get_session),
+        me: UUID = Depends(current_user)):
+    check_self(payload.user_id, me)
     g = _member_of(session, group_id, payload.user_id)
     if not payload.address or not payload.address.strip():
         g.meet_label = g.meet_lat = g.meet_lon = None
@@ -1180,7 +1241,8 @@ def set_meeting_spot(group_id: UUID, payload: MeetingSpot, session: Session = De
 
 
 @app.get("/run-groups/{group_id}/recommendations")
-def run_group_recommendations(group_id: UUID, user_id: UUID, session: Session = Depends(get_session)):
+def run_group_recommendations(group_id: UUID, user_id: UUID, session: Session = Depends(get_session),
+        _me: UUID = Depends(require_self)):
     g = _member_of(session, group_id, user_id)
     rows = session.exec(select(RunGroupMember).where(RunGroupMember.group_id == g.id)).all()
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import ThemeToggle from "./ThemeToggle";
+import { clearSession } from "../utils/session";
 
 const MAIN_LINKS = [
   { to: "/checkin", label: "Daily check-in" },
@@ -41,7 +42,7 @@ function NavBar() {
   }, []);
 
   function handleLogout() {
-    localStorage.removeItem("user_id");
+    clearSession();
     navigate("/login");
   }
 
