@@ -5,8 +5,8 @@ import "./Splash.css";
 // the Pathos logo builds itself, then the runner takes off along the trail.
 // Click / tap / any key skips it. Skipped entirely for reduced-motion users.
 
-const SHOW_MS = 3000;   // how long the intro plays before fading out
-const FADE_MS = 500;
+const SHOW_MS = 4200;   // how long the intro plays before fading out
+const FADE_MS = 600;
 const SEEN_KEY = "pathos_splash_seen";
 
 function Limb({ cls, x, y, upper, lower, width }: {
@@ -54,17 +54,12 @@ export function PathosRunner() {
       </defs>
       <g clipPath="url(#sp-tile)">
         <rect className="sp-bg" x="0" y="0" width="100" height="100" />
+        {/* scene builds in order: sun, hills, trail, then the runner */}
         <circle className="sp-sun" cx="30" cy="25" r="6.5" />
-        {/* hills drift past for a sense of speed (two copies loop seamlessly) */}
-        <g className="sp-scenery">
-          <path className="sp-hills"
-            d="M2 47.5 Q10 40 20 34 Q24 31.5 28 34 L35 39 Q39 36 42 37 Q52 43 66 47.5 Z" />
-          <path className="sp-hills"
-            d="M106 47.5 Q114 40 124 34 Q128 31.5 132 34 L139 39 Q143 36 146 37 Q156 43 170 47.5 Z" />
-        </g>
-        {/* the winding trail draws itself in */}
-        <path className="sp-trail" pathLength={100}
-          d="M46 104 C18 96 4 86 16 78 C30 69 70 70 86 62 C96 57 86 51 64 48 L52 47.5" />
+        <path className="sp-hills"
+          d="M4 48 Q12 41 21 35 Q25 32.5 29 35 L36 40 Q40 37 43 38 Q52 43.5 64 48 Z" />
+        <path className="sp-trail"
+          d="M50 104 C20 98 2 90 14 84 C26 77 62 79 82 71.5 C98 65 95 56 79 52.5 C72 50.8 66 50 61 49.6" />
         {/* the runner: drawn twice, a blue outline pass then the white figure,
             so the limbs stay readable where they cross the white trail */}
         <Runner stroke="#0B6CEB" extra={3.2} />

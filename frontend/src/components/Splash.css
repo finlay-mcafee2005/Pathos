@@ -1,4 +1,9 @@
-/* ---------- Splash intro ---------- */
+/* ---------- Splash intro ----------
+   Timeline (seconds):
+   0.0  tile pops in        0.35 sun rises       0.55 hills rise
+   0.8  trail rises in      1.5  runner arrives and runs
+   1.9  "Pathos"            2.15 tagline         4.2  fade out        */
+
 .splash {
   position: fixed;
   inset: 0;
@@ -6,100 +11,107 @@
   display: grid;
   place-items: center;
   background:
-    radial-gradient(60% 50% at 50% 42%, rgba(11, 108, 237, 0.16), transparent 70%),
+    radial-gradient(55% 45% at 50% 42%, rgba(11, 108, 237, 0.14), transparent 70%),
     var(--bg, #F4F6F9);
   cursor: pointer;
-  transition: opacity 0.5s ease, transform 0.5s ease;
+  transition: opacity 0.6s ease, transform 0.6s ease;
 }
-.splash.leaving { opacity: 0; transform: scale(1.04); pointer-events: none; }
+.splash.leaving { opacity: 0; transform: scale(1.03); pointer-events: none; }
 
-.sp-stage { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.sp-stage { display: flex; flex-direction: column; align-items: center; gap: 18px; }
 
+/* tile */
 .sp-logo {
-  width: min(42vw, 190px);
+  width: min(44vw, 200px);
   height: auto;
-  filter: drop-shadow(0 18px 36px rgba(11, 108, 237, 0.35));
-  animation: sp-pop 0.6s cubic-bezier(.2, 1.4, .4, 1) both;
+  filter: drop-shadow(0 18px 36px rgba(11, 108, 237, 0.30));
+  animation: sp-pop 0.7s cubic-bezier(.25, 1.25, .45, 1) both;
 }
 @keyframes sp-pop {
-  from { opacity: 0; transform: scale(0.6) rotate(-6deg); }
-  to   { opacity: 1; transform: scale(1) rotate(0); }
+  from { opacity: 0; transform: scale(0.82); }
+  to   { opacity: 1; transform: scale(1); }
 }
-
 .sp-bg { fill: #0B6CEB; }
-.sp-sun { fill: #fff; }
-.sp-hills { fill: #0640A0; }
 
-.sp-scenery { animation: sp-drift 4s linear infinite; }
-@keyframes sp-drift { from { transform: translateX(0); } to { transform: translateX(-104px); } }
+/* scene pieces, one after another */
+.sp-sun   { fill: #fff;    animation: sp-rise 0.6s 0.35s ease-out both; }
+.sp-hills { fill: #0640A0; animation: sp-rise 0.6s 0.55s ease-out both; }
+@keyframes sp-rise {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: none; }
+}
 
 .sp-trail {
   fill: none;
   stroke: #fff;
-  stroke-width: 7;
+  stroke-width: 6.5;          /* one even width along the whole road */
   stroke-linecap: round;
-  stroke-dasharray: 100;
-  stroke-dashoffset: 100;
-  animation: sp-draw 0.9s 0.25s cubic-bezier(.6, 0, .3, 1) forwards;
+  stroke-linejoin: round;
+  transform-origin: 50px 100px;
+  animation: sp-trail-in 0.9s 0.8s cubic-bezier(.25, 1, .4, 1) both;
 }
-@keyframes sp-draw { to { stroke-dashoffset: 0; } }
+@keyframes sp-trail-in {
+  from { opacity: 0; transform: translateY(8px) scaleY(0.85); }
+  to   { opacity: 1; transform: none; }
+}
 
-/* runner fades in as the trail finishes, then keeps running */
-.sp-runner { opacity: 0; animation: sp-in 0.35s 0.55s ease-out forwards; }
-@keyframes sp-in { to { opacity: 1; } }
+/* runner glides in, then keeps a steady stride */
+.sp-runner { opacity: 0; animation: sp-arrive 0.6s 1.5s ease-out forwards; }
+@keyframes sp-arrive {
+  from { opacity: 0; transform: translateX(-6px); }
+  to   { opacity: 1; transform: none; }
+}
 
-/* ---- run cycle (0.6s per stride) ---- */
-.sp-runner * { transform-box: view-box; }
-.sp-upper, .sp-lower { transform-origin: 0 0; animation-duration: 0.6s; animation-iteration-count: infinite; animation-timing-function: linear; }
-.sp-upper.b, .sp-lower.b { animation-delay: -0.3s; }     /* other side, half a stride later */
+/* ---- run cycle: 0.9s per stride ---- */
+.sp-upper, .sp-lower {
+  transform-origin: 0 0;
+  animation-duration: 0.9s;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
+}
+.sp-upper.b, .sp-lower.b { animation-delay: -0.45s; }   /* other side, half a stride later */
 
 .sp-upper.leg { animation-name: sp-thigh; }
 .sp-lower.leg { animation-name: sp-shin; }
 .sp-upper.arm { animation-name: sp-arm; }
 .sp-lower.arm { animation-name: sp-forearm; }
 
-/* angles: negative swings forward (right), positive swings back */
+/* negative = swings forward (right), positive = swings back */
 @keyframes sp-thigh {
-  0%   { transform: rotate(-48deg); }
-  30%  { transform: rotate(-8deg); }
-  50%  { transform: rotate(38deg); }
-  75%  { transform: rotate(-22deg); }
-  100% { transform: rotate(-48deg); }
+  0%, 100% { transform: rotate(-40deg); }
+  50%      { transform: rotate(32deg); }
 }
 @keyframes sp-shin {
-  0%   { transform: rotate(18deg); }
-  30%  { transform: rotate(14deg); }
-  50%  { transform: rotate(38deg); }
-  65%  { transform: rotate(112deg); }
-  85%  { transform: rotate(62deg); }
-  100% { transform: rotate(18deg); }
+  0%, 100% { transform: rotate(14deg); }
+  45%      { transform: rotate(30deg); }
+  70%      { transform: rotate(95deg); }
 }
 @keyframes sp-arm {           /* opposite to the same-side leg */
-  0%   { transform: rotate(55deg); }
-  50%  { transform: rotate(-58deg); }
-  100% { transform: rotate(55deg); }
+  0%, 100% { transform: rotate(45deg); }
+  50%      { transform: rotate(-45deg); }
 }
 @keyframes sp-forearm {
-  0%   { transform: rotate(-70deg); }
-  50%  { transform: rotate(-110deg); }
-  100% { transform: rotate(-70deg); }
+  0%, 100% { transform: rotate(-80deg); }
+  50%      { transform: rotate(-100deg); }
 }
 
-.sp-bob { animation: sp-bob 0.3s ease-in-out infinite alternate; }
-@keyframes sp-bob { from { transform: translateY(0.8px); } to { transform: translateY(-1.2px); } }
+.sp-bob { animation: sp-bob 0.45s ease-in-out infinite alternate; }
+@keyframes sp-bob { from { transform: translateY(0.6px); } to { transform: translateY(-0.9px); } }
 
+/* wordmark */
 .sp-word {
   font-size: 34px;
   font-weight: 800;
   letter-spacing: -0.02em;
+  line-height: 1;
   color: var(--ink, #0B1220);
-  animation: sp-up 0.5s 0.9s ease-out both;
+  animation: sp-up 0.6s 1.9s ease-out both;
 }
 .sp-tag {
   font-size: 15px;
   color: var(--ink, #0B1220);
-  opacity: 0.7;
+  opacity: 0.65;
   margin-top: -8px;
-  animation: sp-up 0.5s 1.15s ease-out both;
+  animation: sp-up 0.6s 2.15s ease-out both;
 }
-@keyframes sp-up { from { opacity: 0; transform: translateY(8px); } to { transform: none; } }
+@keyframes sp-up { from { opacity: 0; transform: translateY(6px); } to { transform: none; } }
