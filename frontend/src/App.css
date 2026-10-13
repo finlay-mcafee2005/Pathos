@@ -8595,3 +8595,15 @@ body::before {
 [data-theme="dark"] .rt-setup-sub,
 [data-theme="dark"] .rt-how span { color: #b6c3d8; }
 [data-theme="dark"] .rt-inline input::placeholder { color: #7f8db0; }
+
+/* Group runs: brighter secondary text in dark mode */
+[data-theme="dark"] .gr-where,
+[data-theme="dark"] .gr-where span { color: #c7d2e4; }
+[data-theme="dark"] .gr-away { color: #9fb0cc; }
+[data-theme="dark"] .gr-notes { color: #b6c3d8; }
+[data-theme="dark"] .gr-reasons li.caution { color: #fbbf24; }
+[data-theme="dark"] .gr-day-title small { color: #9fb0cc; }
+[data-theme="dark"] .gr-fit.fair { --ring: #b6c3d8; }
+[data-theme="dark"] .gr-fit-word { filter: brightness(1.15); }
+[data-theme="dark"] .ci-intro p { color: #c7d2e4; }
+[data-theme="dark"] .gr-tag { color: #e2e8f0; }
