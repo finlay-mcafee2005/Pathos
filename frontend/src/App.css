@@ -8589,3 +8589,9 @@ body::before {
     color: #fff; font: 600 0.95rem Inter, sans-serif;
   }
 }
+
+/* Run together: keep setup cards readable in dark mode */
+[data-theme="dark"] .rt-setup-title { color: #f1f5f9; }
+[data-theme="dark"] .rt-setup-sub,
+[data-theme="dark"] .rt-how span { color: #b6c3d8; }
+[data-theme="dark"] .rt-inline input::placeholder { color: #7f8db0; }
