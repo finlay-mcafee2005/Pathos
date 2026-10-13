@@ -6,6 +6,9 @@ import { installAuthFetch } from './utils/session'
 
 installAuthFetch()
 
+// apply the saved light/dark theme right away (the intro shows before any page mounts)
+try { document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'light') } catch { /* ignore */ }
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

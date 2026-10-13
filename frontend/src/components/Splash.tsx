@@ -76,22 +76,22 @@ export function PathosRunner() {
   );
 }
 
-export default function Splash({ onDone }: { onDone: () => void }) {
+export default function Splash({ onDone, onLeave }: { onDone: () => void; onLeave?: () => void }) {
   const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
     try { sessionStorage.setItem(SEEN_KEY, "1"); } catch { /* ignore */ }
-    const t1 = window.setTimeout(() => setLeaving(true), SHOW_MS);
+    const t1 = window.setTimeout(() => { setLeaving(true); onLeave?.(); }, SHOW_MS);
     const t2 = window.setTimeout(onDone, SHOW_MS + FADE_MS);
-    const skip = () => { setLeaving(true); window.setTimeout(onDone, FADE_MS); };
+    const skip = () => { setLeaving(true); onLeave?.(); window.setTimeout(onDone, FADE_MS); };
     window.addEventListener("keydown", skip, { once: true });
     return () => { window.clearTimeout(t1); window.clearTimeout(t2); window.removeEventListener("keydown", skip); };
-  }, [onDone]);
+  }, [onDone, onLeave]);
 
   return (
     <div
       className={`splash${leaving ? " leaving" : ""}`}
-      onClick={() => { setLeaving(true); window.setTimeout(onDone, FADE_MS); }}
+      onClick={() => { setLeaving(true); onLeave?.(); window.setTimeout(onDone, FADE_MS); }}
     >
       <div className="sp-stage">
         <div className="sp-logo-wrap"><PathosRunner /></div>

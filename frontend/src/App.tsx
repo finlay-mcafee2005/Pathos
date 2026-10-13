@@ -24,11 +24,15 @@ function App() {
   // animated logo intro, shown once per session before the login page
   const [showSplash, setShowSplash] = useState(() => shouldShowSplash(isLoggedIn()));
   const hideSplash = useCallback(() => setShowSplash(false), []);
+  // the pages (and the login form) mount only once the intro starts fading,
+  // so the browser's password/email autofill prompt doesn't pop up over it
+  const [pagesReady, setPagesReady] = useState(() => !showSplash);
+  const showPages = useCallback(() => setPagesReady(true), []);
 
   return (
     <BrowserRouter>
-      {showSplash && <Splash onDone={hideSplash} />}
-      <Routes>
+      {showSplash && <Splash onDone={hideSplash} onLeave={showPages} />}
+      {pagesReady && <Routes>
         <Route path="/" element={<HomeRedirect />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
@@ -46,7 +50,7 @@ function App() {
           <Route path="/run-together" element={<RunTogetherPage />} />
           <Route path="/my-club" element={<Navigate to="/groups" replace />} />
         </Route>
-      </Routes>
+      </Routes>}
     </BrowserRouter>
   );
 }
