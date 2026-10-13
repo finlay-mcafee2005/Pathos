@@ -8653,3 +8653,43 @@ body::before {
   font: 700 15px Inter, sans-serif; cursor: pointer; box-shadow: 0 10px 22px rgba(37, 99, 235, .3);
 }
 .vf-note { font-size: 13px !important; }
+
+/* ================= Forgot / reset password, account ================= */
+.vf-form { width: 100%; display: flex; flex-direction: column; gap: 12px; margin-top: 8px; text-align: left; }
+.vf-form label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 600; color: var(--ink); }
+.vf-form input[type="email"], .vf-form input[type="password"], .vf-form input[type="text"] {
+  padding: 12px 14px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--bg);
+  color: var(--ink); font: 500 16px Inter, sans-serif;
+}
+.vf-form input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, .15); }
+.vf-form .vf-show { flex-direction: row; align-items: center; gap: 8px; font-weight: 500; opacity: .8; }
+.vf-form .vf-button { width: 100%; }
+.vf-error { margin: 0 !important; padding: 10px 12px; border-radius: 10px; background: #fef2f2; color: #b91c1c !important; opacity: 1 !important; font-size: 14px !important; }
+.vf-link { font-size: 14px; font-weight: 600; color: #2563eb; text-decoration: none; margin-top: 4px; }
+.auth-forgot { align-self: flex-end; margin-top: -4px; font-size: 14px; font-weight: 600; color: #2563eb; text-decoration: none; }
+.auth-notice { margin: 0; padding: 10px 14px; border-radius: 12px; background: #ecfdf5; color: #065f46; font-size: 14px; }
+
+.account-page { max-width: 720px; margin: 0 auto; text-align: left; }
+.ac-card { margin-top: 18px; padding: 20px 22px; border-radius: 20px; background: var(--card-bg); border: 1px solid var(--border); }
+.ac-card h2 { margin: 0 0 10px; font-size: 18px; font-weight: 800; color: var(--ink); }
+.ac-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ac-email { font-size: 16px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.ac-badge { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: #fef3c7; color: #92400e; }
+.ac-badge.ok { background: #dcfce7; color: #166534; }
+.ac-hint { margin: 10px 0 0; font-size: 14px; line-height: 1.5; color: var(--ink); opacity: .75; }
+.ac-link { border: 0; background: none; padding: 0; color: #2563eb; font: 700 14px Inter, sans-serif; cursor: pointer; }
+.ac-card.danger { border-color: #fecaca; }
+.ac-danger-btn { margin-top: 14px; padding: 10px 18px; border-radius: 999px; border: 1.5px solid #dc2626; background: transparent; color: #dc2626; font: 700 14px Inter, sans-serif; cursor: pointer; }
+.ac-danger-btn.solid { margin-top: 0; background: #dc2626; color: #fff; }
+.ac-danger-btn:disabled { opacity: .45; cursor: default; }
+.ac-delete { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+.ac-delete label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 600; color: var(--ink); }
+.ac-delete input[type="password"] { padding: 11px 14px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--bg); color: var(--ink); font: 500 16px Inter, sans-serif; max-width: 360px; }
+.ac-delete .ac-check { flex-direction: row; align-items: flex-start; gap: 8px; font-weight: 500; }
+.ac-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.ac-cancel { padding: 10px 18px; border-radius: 999px; border: 1.5px solid var(--border); background: transparent; color: var(--ink); font: 600 14px Inter, sans-serif; cursor: pointer; }
+[data-theme="dark"] .ac-card.danger { border-color: #7f1d1d; }
+[data-theme="dark"] .ac-danger-btn { color: #f87171; border-color: #f87171; }
+[data-theme="dark"] .ac-danger-btn.solid { background: #dc2626; color: #fff; border-color: #dc2626; }
+[data-theme="dark"] .vf-error { background: #3b1219; color: #fecaca !important; }
+[data-theme="dark"] .auth-notice { background: #0f2e22; color: #a7f3d0; }

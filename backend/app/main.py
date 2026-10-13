@@ -28,7 +28,8 @@ from app.scoring.group_picks import Member, group_recommend
 from app.scoring.engine import haversine_km as _hav
 from app.scoring.converters import route_start
 from app.auth import hash_password, verify_password, make_token, read_token, make_link_token, read_link_token
-from app.emails import send_welcome_email, send_verify_email, APP_URL
+import hashlib
+from app.emails import send_welcome_email, send_verify_email, send_reset_email, APP_URL
 
 from app.scoring.engine import recommend, diversify
 from app.scoring.converters import (
@@ -1417,6 +1418,106 @@ def resend_verify_email(background: BackgroundTasks, session: Session = Depends(
     _last_verify_sent[user.id] = now
     background.add_task(send_verify_email, user.email, user.full_name, verify_link(user))
     return {"ok": True, "email": user.email}
+
+
+# ---------------------------------------------------------------------------
+# Forgot password. The reset link carries a fingerprint of the current
+# password hash, so it stops working as soon as the password changes
+# (one use) and after 1 hour. Clicking it also proves the person owns the
+# email, so it marks the email verified.
+# ---------------------------------------------------------------------------
+
+RESET_PURPOSE = "reset_password"
+MIN_PASSWORD_LEN = 6
+_last_reset_sent: dict = {}
+
+
+def _pw_fingerprint(user: User) -> str:
+    return hashlib.sha256((user.hashed_password or "").encode()).hexdigest()[:16]
+
+
+def reset_link(user: User) -> str:
+    token = make_link_token(user.id, RESET_PURPOSE, f"{user.email}|{_pw_fingerprint(user)}", hours=1)
+    return f"{APP_URL}/reset-password?token={token}"
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+@app.post("/password/forgot")
+def forgot_password(payload: ForgotPasswordRequest, background: BackgroundTasks,
+                    session: Session = Depends(get_session)):
+    """Always answers the same way, so it can't be used to find out who has an account."""
+    email = payload.email.strip().lower()
+    user = session.exec(select(User).where(func.lower(User.email) == email)).first()
+    now = datetime.utcnow().timestamp()
+    if user and now - _last_reset_sent.get(user.id, 0) >= RESEND_COOLDOWN_S:
+        _last_reset_sent[user.id] = now
+        background.add_task(send_reset_email, user.email, user.full_name, reset_link(user))
+    return {"ok": True}
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str
+
+
+@app.post("/password/reset")
+def reset_password(payload: ResetPasswordRequest, session: Session = Depends(get_session)):
+    found = read_link_token(payload.token, RESET_PURPOSE)
+    bad = HTTPException(status_code=400, detail="This reset link has expired or was already used. Ask for a new one.")
+    if not found:
+        raise bad
+    user_id, stamp = found
+    user = session.get(User, user_id)
+    if not user or stamp != f"{(user.email or '').lower()}|{_pw_fingerprint(user)}":
+        raise bad
+    if len(payload.password) < MIN_PASSWORD_LEN:
+        raise HTTPException(status_code=400, detail=f"Use at least {MIN_PASSWORD_LEN} characters for your password.")
+    user.hashed_password = hash_password(payload.password)
+    if not user.email_verified:
+        user.email_verified = True
+        user.email_verified_at = datetime.utcnow()
+    session.add(user)
+    session.commit()
+    return {"user_id": str(user.id), "token": make_token(user.id)}
+
+
+# ---------------------------------------------------------------------------
+# Delete account: removes the user and everything linked to them.
+# Run-together groups they own pass to another member, or are removed if empty.
+# ---------------------------------------------------------------------------
+
+def delete_user_everything(session: Session, user_id: UUID) -> None:
+    p = {"uid": user_id}
+    for table in ("recommendation", "run", "checkin", "injury", "favoriteroute", "run_group_member"):
+        session.exec(text(f"DELETE FROM {table} WHERE user_id = :uid"), params=p)
+    for (gid,) in session.exec(text("SELECT id FROM run_group WHERE owner_id = :uid"), params=p).all():
+        heir = session.exec(text("SELECT user_id FROM run_group_member WHERE group_id = :g ORDER BY joined_at LIMIT 1"),
+                            params={"g": gid}).first()
+        if heir:
+            session.exec(text("UPDATE run_group SET owner_id = :u WHERE id = :g"), params={"u": heir[0], "g": gid})
+        else:
+            session.exec(text("DELETE FROM run_group WHERE id = :g"), params={"g": gid})
+    session.exec(text('DELETE FROM "user" WHERE id = :uid'), params=p)
+    session.commit()
+
+
+class DeleteAccountRequest(BaseModel):
+    password: str
+
+
+@app.post("/me/delete")
+def delete_my_account(payload: DeleteAccountRequest, session: Session = Depends(get_session),
+                      me: UUID = Depends(current_user)):
+    user = session.get(User, me)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not verify_password(payload.password, user.hashed_password):
+        raise HTTPException(status_code=403, detail="That password isn't right.")
+    delete_user_everything(session, me)
+    return {"ok": True}
 
 
 @app.get("/health")

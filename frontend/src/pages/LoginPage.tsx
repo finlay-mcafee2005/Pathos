@@ -10,6 +10,7 @@ function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const deletedNotice = new URLSearchParams(window.location.search).has("deleted");
   const [error, setError] = useState<string | null>(() =>
     new URLSearchParams(window.location.search).has("expired")
       ? "Your session ended. Please log in again."
@@ -62,8 +63,10 @@ function LoginPage() {
                 Password
                 <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
               </label>
+              <Link to="/forgot-password" className="auth-forgot">Forgot password?</Link>
             </section>
 
+            {deletedNotice && !error && <p className="auth-notice">Your account and data were deleted. Thanks for trying Pathos.</p>}
             {error && <p className="error">Error: {error}</p>}
 
             <button type="submit" disabled={loading}>

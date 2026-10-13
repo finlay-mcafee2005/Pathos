@@ -171,3 +171,48 @@ Pathos
 def send_verify_email(to: str, full_name: str, verify_url: str) -> bool:
     subject, html_body, text = verify_email(full_name, verify_url)
     return send_email(to, subject, html_body, text)
+
+
+def reset_email(full_name: str, reset_url: str) -> tuple:
+    """(subject, html, text) for a password-reset message."""
+    first = (full_name or "").strip().split(" ")[0] or "there"
+    name = html.escape(first)
+    url = html.escape(reset_url, quote=True)
+    subject = "Reset your Pathos password"
+    text = f"""Hi {first},
+
+Someone (hopefully you) asked to reset the password for your Pathos account.
+Choose a new one here:
+{reset_url}
+
+The link works for 1 hour and can only be used once.
+If you didn't ask for this, ignore this email. Your password won't change.
+
+Pathos
+"""
+    html_body = f"""<!doctype html>
+<html><body style="margin:0;padding:0;background:#f4f6f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;color:#0b1220;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f9;padding:32px 12px;"><tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 8px 28px rgba(11,108,235,.10);">
+  <tr><td style="background:linear-gradient(120deg,#1d4ed8,#3b82f6);background-color:#2563eb;padding:24px 32px;">
+    <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+      <td><img src="{APP_URL}/favicon.png" width="40" height="40" alt="" style="display:block;border-radius:11px;"></td>
+      <td style="padding-left:12px;font-size:22px;font-weight:800;color:#ffffff;letter-spacing:-0.02em;">Pathos</td>
+    </tr></table>
+  </td></tr>
+  <tr><td style="padding:30px 32px 6px;">
+    <h1 style="margin:0 0 10px;font-size:24px;line-height:1.25;font-weight:800;">Reset your password, {name}</h1>
+    <p style="margin:0;font-size:16px;line-height:1.55;color:#334155;">Someone (hopefully you) asked to reset the password for your Pathos account. Tap the button to choose a new one.</p>
+  </td></tr>
+  <tr><td align="center" style="padding:26px 32px 10px;">
+    <a href="{url}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 30px;border-radius:999px;">Choose a new password</a>
+  </td></tr>
+  <tr><td style="padding:10px 32px 30px;font-size:13px;line-height:1.5;color:#64748b;">The link works for 1 hour and can only be used once. If you didn't ask for this, ignore this email and your password won't change.</td></tr>
+</table></td></tr></table>
+</body></html>"""
+    return subject, html_body, text
+
+
+def send_reset_email(to: str, full_name: str, reset_url: str) -> bool:
+    subject, html_body, text = reset_email(full_name, reset_url)
+    return send_email(to, subject, html_body, text)

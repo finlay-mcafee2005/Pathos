@@ -15,6 +15,7 @@ const MY_RUNNING_LINKS = [
   { to: "/stats", label: "Stats" },
   { to: "/groups", label: "Group runs" },
   { to: "/run-together", label: "Run together" },
+  { to: "/account", label: "Account" },
 ];
 
 function NavBar() {

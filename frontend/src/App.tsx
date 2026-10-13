@@ -12,6 +12,9 @@ import RunTogetherPage from "./pages/RunTogetherPage";
 import GroupsPage from "./pages/GroupsPage";
 import FollowPage from "./pages/FollowPage";
 import VerifyEmailPage from "./pages/VerifyEmailPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
+import AccountPage from "./pages/AccountPage";
 import AppLayout from "./components/AppLayout";
 import Splash, { shouldShowSplash } from "./components/Splash";
 import "./App.css";
@@ -39,6 +42,8 @@ function App() {
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/follow" element={<FollowPage />} />
         <Route path="/verify-email" element={<VerifyEmailPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
         {/* logged-in pages: all share the nav bar */}
         <Route element={<AppLayout />}>
@@ -50,6 +55,7 @@ function App() {
           <Route path="/stats" element={<StatsPage />} />
           <Route path="/groups" element={<GroupsPage />} />
           <Route path="/run-together" element={<RunTogetherPage />} />
+          <Route path="/account" element={<AccountPage />} />
           <Route path="/my-club" element={<Navigate to="/groups" replace />} />
         </Route>
       </Routes>}
