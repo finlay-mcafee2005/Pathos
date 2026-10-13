@@ -125,11 +125,8 @@ def is_loop_route(route, threshold_km: float = 0.15) -> bool:
     Works for both real SQLModel Route objects and synthetic combined routes."""
     from math import radians, sin, cos, sqrt, atan2
 
-    if hasattr(route, "coords"):
-        coords = route.coords
-    else:
-        from geoalchemy2.shape import to_shape
-        coords = list(to_shape(route.gps_path).coords)
+    from app.scoring.route_combiner import get_route_coords   # cached geometry
+    coords = get_route_coords(route)
 
     if len(coords) < 2:
         return False
@@ -148,11 +145,8 @@ def is_loop_route(route, threshold_km: float = 0.15) -> bool:
 
 def route_start(route):
     """(lat, lon) of the first point, for real Routes and combined routes."""
-    if hasattr(route, "coords"):
-        coords = route.coords
-    else:
-        from geoalchemy2.shape import to_shape
-        coords = list(to_shape(route.gps_path).coords)
+    from app.scoring.route_combiner import get_route_coords   # cached geometry
+    coords = get_route_coords(route)
     if not coords:
         return None, None
     lon, lat = coords[0][0], coords[0][1]
