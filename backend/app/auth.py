@@ -69,8 +69,34 @@ def read_token(token: str) -> Optional[UUID]:
         if not hmac.compare_digest(sig, _sign(header + "." + body)):
             return None
         claims = json.loads(_unb64(body))
-        if claims.get("exp", 0) < time.time():
+        if claims.get("exp", 0) < time.time() or "pur" in claims:
             return None
         return UUID(claims["sub"])
+    except Exception:
+        return None
+
+
+# One-purpose links (email verification). Same signature as login tokens, but
+# carry a "purpose" so a verify link can never be used as a login token, and
+# the email it was sent to, so changing the email invalidates old links.
+
+def make_link_token(user_id: UUID, purpose: str, email: str, hours: int = 24) -> str:
+    header = _b64(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
+    now = int(time.time())
+    body = _b64(json.dumps({"sub": str(user_id), "pur": purpose, "eml": email.lower(),
+                            "iat": now, "exp": now + hours * 3600}).encode())
+    return f"{header}.{body}.{_sign(header + '.' + body)}"
+
+
+def read_link_token(token: str, purpose: str):
+    """(user_id, email) from a valid, unexpired link of this purpose, else None."""
+    try:
+        header, body, sig = token.split(".")
+        if not hmac.compare_digest(sig, _sign(header + "." + body)):
+            return None
+        claims = json.loads(_unb64(body))
+        if claims.get("pur") != purpose or claims.get("exp", 0) < time.time():
+            return None
+        return UUID(claims["sub"]), claims.get("eml", "")
     except Exception:
         return None

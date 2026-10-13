@@ -1,5 +1,6 @@
 import { Navigate, Outlet } from "react-router-dom";
 import NavBar from "./NavBar";
+import VerifyBanner from "./VerifyBanner";
 import { isLoggedIn } from "../utils/session";
 
 // Wraps every logged-in page with the nav bar.
@@ -11,6 +12,7 @@ function AppLayout() {
   return (
     <>
       <NavBar />
+      <VerifyBanner />
       <Outlet />
     </>
   );

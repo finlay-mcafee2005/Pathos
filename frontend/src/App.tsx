@@ -11,6 +11,7 @@ import StatsPage from "./pages/StatsPage";
 import RunTogetherPage from "./pages/RunTogetherPage";
 import GroupsPage from "./pages/GroupsPage";
 import FollowPage from "./pages/FollowPage";
+import VerifyEmailPage from "./pages/VerifyEmailPage";
 import AppLayout from "./components/AppLayout";
 import Splash, { shouldShowSplash } from "./components/Splash";
 import "./App.css";
@@ -37,6 +38,7 @@ function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/follow" element={<FollowPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
 
         {/* logged-in pages: all share the nav bar */}
         <Route element={<AppLayout />}>

@@ -5,7 +5,7 @@ from datetime import date, timedelta, datetime
 import json
 from sqlalchemy import text
 
-from fastapi import FastAPI, Depends, HTTPException, Header
+from fastapi import FastAPI, Depends, HTTPException, Header, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -27,7 +27,8 @@ from app.models import User, Checkin, Route, Injury, Run, Club, ClubSchedule, Fa
 from app.scoring.group_picks import Member, group_recommend
 from app.scoring.engine import haversine_km as _hav
 from app.scoring.converters import route_start
-from app.auth import hash_password, verify_password, make_token, read_token
+from app.auth import hash_password, verify_password, make_token, read_token, make_link_token, read_link_token
+from app.emails import send_welcome_email, send_verify_email, APP_URL
 
 from app.scoring.engine import recommend, diversify
 from app.scoring.converters import (
@@ -97,6 +98,8 @@ def add_new_columns():
         conn.execute(text("ALTER TABLE route ADD COLUMN IF NOT EXISTS hidden BOOLEAN DEFAULT FALSE"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS hills_pref VARCHAR"))
         conn.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS usual_pace_min_km FLOAT'))
+        conn.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE'))
+        conn.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP'))
         conn.execute(text("ALTER TABLE route ADD COLUMN IF NOT EXISTS elevation_loss_m FLOAT"))
         # recommendation logging
         conn.execute(text("ALTER TABLE recommendation ALTER COLUMN route_id DROP NOT NULL"))
@@ -411,7 +414,7 @@ def check_area(payload: AreaCheck, session: Session = Depends(get_session)):
 
 
 @app.post("/signup")
-def signup(payload: SignupRequest, session: Session = Depends(get_session)):
+def signup(payload: SignupRequest, background: BackgroundTasks, session: Session = Depends(get_session)):
     payload.email = payload.email.strip().lower()
     if session.exec(select(User).where(func.lower(User.email) == payload.email)).first():
         raise HTTPException(status_code=400, detail="An account with that email already exists. Log in instead.")
@@ -453,6 +456,9 @@ def signup(payload: SignupRequest, session: Session = Depends(get_session)):
             reported_at=injury.reported_at,
         ))
     session.commit()
+
+    # welcome email goes out after the response, so signup stays fast
+    background.add_task(send_welcome_email, user.email, user.full_name, verify_link(user))
 
     return {"user_id": str(user.id), "token": make_token(user.id)}
 
@@ -1348,6 +1354,69 @@ def run_group_recommendations(group_id: UUID, user_id: UUID, session: Session = 
             "path": [[lat, lon] for lon, lat in to_shape(route_by_id[p.route.id].gps_path).coords],
         } for p in picks],
     }
+
+
+# ---------------------------------------------------------------------------
+# Email verification (soft: the app works right away, a banner nudges until
+# the link in the welcome email is clicked)
+# ---------------------------------------------------------------------------
+
+VERIFY_PURPOSE = "verify_email"
+RESEND_COOLDOWN_S = 60
+_last_verify_sent: dict = {}
+
+
+def verify_link(user: User) -> str:
+    token = make_link_token(user.id, VERIFY_PURPOSE, user.email, hours=24)
+    return f"{APP_URL}/verify-email?token={token}"
+
+
+@app.get("/me")
+def me(session: Session = Depends(get_session), me: UUID = Depends(current_user)):
+    user = session.get(User, me)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"user_id": str(user.id), "email": user.email,
+            "first_name": (user.full_name or "").split(" ")[0],
+            "email_verified": bool(user.email_verified)}
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str
+
+
+@app.post("/verify-email")
+def verify_email_link(payload: VerifyEmailRequest, session: Session = Depends(get_session)):
+    """Opened from the email link, so it works without being logged in."""
+    found = read_link_token(payload.token, VERIFY_PURPOSE)
+    if not found:
+        raise HTTPException(status_code=400, detail="This link has expired or isn't valid. Send yourself a new one from the app.")
+    user_id, email = found
+    user = session.get(User, user_id)
+    if not user or (user.email or "").lower() != email:
+        raise HTTPException(status_code=400, detail="This link is for an older email address. Send yourself a new one from the app.")
+    if not user.email_verified:
+        user.email_verified = True
+        user.email_verified_at = datetime.utcnow()
+        session.add(user)
+        session.commit()
+    return {"ok": True, "email": user.email}
+
+
+@app.post("/verify-email/resend")
+def resend_verify_email(background: BackgroundTasks, session: Session = Depends(get_session),
+                        me: UUID = Depends(current_user)):
+    user = session.get(User, me)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.email_verified:
+        return {"ok": True, "already_verified": True}
+    now = datetime.utcnow().timestamp()
+    if now - _last_verify_sent.get(user.id, 0) < RESEND_COOLDOWN_S:
+        raise HTTPException(status_code=429, detail="We just sent one. Give it a minute, and check your spam folder.")
+    _last_verify_sent[user.id] = now
+    background.add_task(send_verify_email, user.email, user.full_name, verify_link(user))
+    return {"ok": True, "email": user.email}
 
 
 @app.get("/health")

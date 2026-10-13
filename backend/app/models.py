@@ -36,6 +36,8 @@ class User(SQLModel, table=True):
     fitness_level: str = Field(default="beginner")
     weekly_mileage_avg: float = Field(default=0.0)
     usual_pace_min_km: Optional[float] = None   # easy-run pace from signup (min per km)
+    email_verified: bool = Field(default=False)
+    email_verified_at: Optional[datetime] = None
 
     address: Optional[str] = None
     latitude: Optional[float] = None

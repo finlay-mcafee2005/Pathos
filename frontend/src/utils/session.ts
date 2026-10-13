@@ -14,6 +14,7 @@ export function saveSession(userId: string, token: string) {
 export function clearSession() {
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem(TOKEN_KEY);
+  try { sessionStorage.removeItem("pathos_me"); sessionStorage.removeItem("pathos_verify_hidden"); } catch { /* ignore */ }
 }
 
 export function getToken(): string | null {
