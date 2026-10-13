@@ -46,12 +46,14 @@ function ResetPasswordPage() {
         <form className="vf-form" onSubmit={submit}>
           <label>
             New password
-            <input type={show ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required autoFocus />
+            <input key={show ? "pw-shown" : "pw-hidden"} type={show ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required autoFocus={!show} />
           </label>
           <label>
             Confirm new password
-            <input type={show ? "text" : "password"} value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" required />
+            <input key={show ? "cf-shown" : "cf-hidden"} type={show ? "text" : "password"} value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" required />
           </label>
+          {/* Safari keeps AutoFilled password boxes masked even after switching to text,
+              so the boxes are swapped for fresh ones (same values) when toggled */}
           <label className="vf-show">
             <input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} /> Show passwords
           </label>
