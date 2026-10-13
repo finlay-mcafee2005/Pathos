@@ -161,11 +161,11 @@ function FavoritesPage() {
               <div className="fav-art">
                 {fav.path && fav.path.length > 1 ? (
                   <MapContainer
-                    center={fav.path[0]}
+ center={fav.path[0]}
                     zoom={14}
                     className="fav-map"
                     zoomControl={false}
-                    attributionControl={false}
+                    
                     dragging={false}
                     scrollWheelZoom={false}
                     doubleClickZoom={false}
@@ -174,7 +174,7 @@ function FavoritesPage() {
                     boxZoom={false}
                   >
                     <FitRoute path={fav.path} />
-                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' />
                     <Polyline positions={fav.path} pathOptions={{ color: "#FFFFFF", weight: 8, opacity: 0.95 }} />
                     <Polyline positions={fav.path} pathOptions={{ color: "#2563EB", weight: 4, opacity: 1 }} />
                     <CircleMarker center={fav.path[0]} radius={6}

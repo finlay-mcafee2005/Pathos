@@ -8693,3 +8693,12 @@ body::before {
 [data-theme="dark"] .ac-danger-btn.solid { background: #dc2626; color: #fff; border-color: #dc2626; }
 [data-theme="dark"] .vf-error { background: #3b1219; color: #fecaca !important; }
 [data-theme="dark"] .auth-notice { background: #0f2e22; color: #a7f3d0; }
+
+/* map credits: tiny and quiet in the map corner */
+.leaflet-container .leaflet-control-attribution {
+  font-size: 9px; line-height: 1.4; padding: 0 5px; border-radius: 6px 0 0 0;
+  background: rgba(255, 255, 255, 0.65); color: #64748b;
+}
+.leaflet-container .leaflet-control-attribution a { color: #64748b; text-decoration: none; }
+.cond-credit { display: inline-block; margin-top: 10px; font-size: 11px; color: #94a3b8; text-decoration: none; }
+.cond-credit:hover { text-decoration: underline; }

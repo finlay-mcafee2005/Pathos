@@ -515,10 +515,10 @@ function FollowPage() {
 
   return (
     <div className="follow-page">
-      <MapContainer center={start} zoom={15} zoomControl={false} attributionControl={false} className="follow-map">
+      <MapContainer center={start} zoom={15} zoomControl={false} className="follow-map">
         <FitTo points={focus} trigger={fitTrigger} />
         <MapGrab onMap={grabMap} />
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' />
         <Polyline positions={route} pathOptions={{ color: "#FFFFFF", weight: 11, opacity: 0.95 }} />
         <Polyline positions={route} pathOptions={{ color: "#93C5FD", weight: 6, opacity: 1 }} />
         {started && (

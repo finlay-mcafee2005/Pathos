@@ -440,6 +440,7 @@ function RecommendationsPage() {
                 </span>
               )}
             </div>
+            <a className="cond-credit" href="https://open-meteo.com/" target="_blank" rel="noreferrer">Weather: Open-Meteo</a>
           </section>
         );
       })()}
@@ -455,15 +456,15 @@ function RecommendationsPage() {
               <div className="rec-map-wrap">
                 {rec.path.length > 1 && (
                   <MapContainer
-                    center={rec.path[Math.floor(rec.path.length / 2)]}
+ center={rec.path[Math.floor(rec.path.length / 2)]}
                     zoom={15}
                     scrollWheelZoom={false}
                     zoomControl={false}
-                    attributionControl={false}
+                    
                     className="rec-map"
                   >
                     <MapResizer path={rec.path} />
-                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' />
                     <Polyline positions={rec.path} pathOptions={{ color: "#FFFFFF", weight: 9, opacity: 0.9 }} />
                     <Polyline positions={rec.path} pathOptions={{ color: "#2563EB", weight: 4.5, opacity: 1 }} />
                     <CircleMarker
@@ -595,11 +596,6 @@ function RecommendationsPage() {
         </Link>
       )}
 
-      <footer className="map-attribution">
-        Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors,
-        rendered with <a href="https://leafletjs.com" target="_blank" rel="noreferrer">Leaflet</a>. Weather and air
-        quality by <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a>.
-      </footer>
     </div>
   );
 }

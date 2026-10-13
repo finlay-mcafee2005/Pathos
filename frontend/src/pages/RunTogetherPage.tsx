@@ -69,10 +69,10 @@ function PickCard({ pick, rank }: { pick: GroupPick; rank: number }) {
       <div className="rt-map">
         {pick.path.length > 1 && (
           <MapContainer center={pick.path[0]} zoom={14} className="rt-map-inner" zoomControl={false}
-            attributionControl={false} dragging={false} scrollWheelZoom={false} doubleClickZoom={false}
+ dragging={false} scrollWheelZoom={false} doubleClickZoom={false}
             touchZoom={false} keyboard={false} boxZoom={false}>
             <FitRoute path={pick.path} />
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' />
             <Polyline positions={pick.path} pathOptions={{ color: "#FFFFFF", weight: 8, opacity: 0.95 }} />
             <Polyline positions={pick.path} pathOptions={{ color: "#2563EB", weight: 4, opacity: 1 }} />
             <CircleMarker center={pick.path[0]} radius={6}

@@ -3,6 +3,10 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { installAuthFetch } from './utils/session'
+import L from 'leaflet'
+
+// maps keep the small required OpenStreetMap credit, without the extra "Leaflet" label
+L.Control.Attribution.prototype.options.prefix = false
 
 installAuthFetch()
 
