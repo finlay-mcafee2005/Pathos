@@ -31,7 +31,7 @@ from app.auth import hash_password, verify_password, make_token, read_token, mak
 import hashlib
 from app.emails import send_welcome_email, send_verify_email, send_reset_email, APP_URL
 
-from app.scoring.engine import recommend, diversify
+from app.scoring.engine import recommend, diversify, heat_distance_factor
 from app.scoring.converters import (
     build_user_profile, build_daily_checkin,
     build_recent_runs, build_route_candidates,
@@ -102,6 +102,7 @@ def add_new_columns():
         conn.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE'))
         conn.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP'))
         conn.execute(text("ALTER TABLE route ADD COLUMN IF NOT EXISTS elevation_loss_m FLOAT"))
+        conn.execute(text("ALTER TABLE route ADD COLUMN IF NOT EXISTS shade_pct FLOAT"))
         # recommendation logging
         conn.execute(text("ALTER TABLE recommendation ALTER COLUMN route_id DROP NOT NULL"))
         for col, typ in [("checkin_id", "UUID"), ("rank", "INTEGER"), ("route_name", "VARCHAR"),
@@ -253,7 +254,8 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
         checkin.planned_distance_km and not results[0].distance_matched
     )
     if best_is_weak_match and checkin.planned_distance_km:
-        combined_routes = generate_combined_routes(routes, checkin.planned_distance_km)
+        heat_cut, _ = heat_distance_factor(daily_checkin.conditions)
+        combined_routes = generate_combined_routes(routes, checkin.planned_distance_km * heat_cut)
         if combined_routes:
             combined_candidates = build_route_candidates(combined_routes)
             combined_results = recommend(user_profile, daily_checkin, recent_runs, combined_candidates)
@@ -787,7 +789,11 @@ def get_conditions(user_id: UUID, session: Session = Depends(get_session),
     ).first()
     run_time = (checkin.run_time if checkin else None) or "now"
     cond = fetch_conditions(user.latitude, user.longitude, run_time)
-    return cond.to_dict() if cond else None
+    if not cond:
+        return None
+    cut, _ = heat_distance_factor(cond)
+    cond.heat_cut_pct = round((1 - cut) * 100) if cut < 1 else None
+    return cond.to_dict()
 
 
 @app.get("/routes/{route_id}/path")

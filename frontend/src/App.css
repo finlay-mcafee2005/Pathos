@@ -8702,3 +8702,25 @@ body::before {
 .leaflet-container .leaflet-control-attribution a { color: #64748b; text-decoration: none; }
 .cond-credit { display: inline-block; margin-top: 10px; font-size: 11px; color: #94a3b8; text-decoration: none; }
 .cond-credit:hover { text-decoration: underline; }
+
+/* "Why this route": total line that ties the points to the match % */
+.rec-breakdown-total {
+  display: flex; align-items: baseline; gap: 10px; margin-top: 4px; padding-top: 12px;
+  border-top: 1px solid var(--border); font-weight: 700; color: var(--ink); text-align: left;
+}
+.rec-breakdown-total > span:first-child { flex: 1; }
+.rec-breakdown-total .pts { font-size: 18px; }
+.rec-breakdown-total .pts.plus { color: #2563eb; }
+.rec-breakdown-total .pts.minus { color: #64748b; }
+.rec-breakdown-match { font-size: 14px; color: #2563eb; white-space: nowrap; }
+[data-theme="dark"] .rec-breakdown-total .pts.plus, [data-theme="dark"] .rec-breakdown-match { color: #7fb0ff; }
+.rec-breakdown-total + .rec-breakdown-note { margin-top: 0.6rem; padding-top: 0; border-top: 0; }
+
+/* hot-day notes in the conditions card */
+.cond-heat { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: #fff7ed; border: 1px solid #fed7aa; text-align: left; }
+.cond-heat p { margin: 0; font-size: 14px; line-height: 1.45; color: #7c2d12; }
+.cond-heat p + p { margin-top: 6px; }
+.cond-heat-link { font-weight: 700; color: #c2410c; white-space: nowrap; }
+[data-theme="dark"] .cond-heat { background: #2a1a0f; border-color: #7c3a12; }
+[data-theme="dark"] .cond-heat p { color: #fed7aa; }
+[data-theme="dark"] .cond-heat-link { color: #fdba74; }

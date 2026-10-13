@@ -109,6 +109,7 @@ class Route(SQLModel, table=True):
     distance_km: float
     elevation_gain_m: float
     elevation_loss_m: Optional[float] = None   # total descent along the stored path
+    shade_pct: Optional[float] = None          # 0..1 share of the path near tree cover (scripts/update_shade.py)
     surface_type: str        # "pavement" | "trail" | "track" | "mixed"
     difficulty: str          # "easy" | "moderate" | "hard"
     scenic: bool = Field(default=False)

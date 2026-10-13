@@ -166,6 +166,7 @@ def build_route_candidates(routes: List[Route]) -> List[RouteCandidate]:
             is_loop=is_loop_route(r),
             start_lat=route_start(r)[0],
             start_lon=route_start(r)[1],
+            shade=getattr(r, "shade_pct", None),
         )
         for r in routes
     ]

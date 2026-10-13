@@ -66,6 +66,7 @@ class RouteCandidate:
     is_loop: bool = False
     start_lat: Optional[float] = None
     start_lon: Optional[float] = None
+    shade: Optional[float] = None   # 0..1 share of the path under tree cover (None = unknown)
 
 
 @dataclass
@@ -227,6 +228,13 @@ RAIN_MUDDY_MM = 5             # rain in the last 48h that leaves trails muddy
 W_MUD = 15
 W_DARK_TRAIL = 20             # finishing an unlit trail after sunset
 W_DARK_ROAD = 6
+# heat shortens the target distance: nothing below 82F feels-like,
+# 15% shorter around 90F, 30% shorter at 98F+
+HEAT_CUT_START_F = 82
+HEAT_CUT_FULL_F = 98
+HEAT_CUT_MAX = 0.30
+SHADE_HEAT_RELIEF = 0.6       # a fully shaded route takes 60% less heat penalty
+W_SHADE = 8                   # bonus for a shady route on a hot day
 
 FITNESS_HILL_FACTOR = {"beginner": 0.6, "intermediate": 1.0, "advanced": 1.4}
 DEFAULT_TYPICAL_RUN_KM = {"beginner": 4.0, "intermediate": 7.0, "advanced": 10.0}
@@ -288,6 +296,8 @@ class PersonalContext:
     pace_min_km: float
     long_run_factor: float = 1.0
     long_run_reason: Optional[str] = None
+    heat_cut: float = 1.0               # <1 when heat shortened today's target distance
+    heat_feels_f: Optional[float] = None
 
 
 def build_personal_context(user: UserProfile, checkin: DailyCheckin,
@@ -566,6 +576,12 @@ def score_route(
         if feels is not None and feels > HEAT_START_F:
             heat = clamp((feels - HEAT_START_F) / (HEAT_SEVERE_F - HEAT_START_F))
             pts = -W_HEAT_MAX * heat * (0.3 + 0.7 * length) * (1 + 0.5 * steepness) / 1.5
+            shade = getattr(route, "shade", None)
+            if shade:
+                pts *= 1 - SHADE_HEAT_RELIEF * shade        # trees take the edge off
+                if shade >= 0.35:
+                    add("shade", W_SHADE * heat * shade,
+                        "Shady route for a hot day" if heat * shade >= 0.3 else None)
             reason = None
             if pts <= -4:
                 reason = (f"It'll feel like {feels:.0f}°F - shorter and flatter is the smart call"
@@ -795,7 +811,28 @@ def prepare_context(user: UserProfile, checkin: DailyCheckin, recent: RecentRuns
     if not checkin.planned_distance_km and checkin.available_minutes:
         checkin = replace(checkin, planned_distance_km=round(
             checkin.available_minutes * 0.9 / ctx.pace_min_km, 2))
+    # hot out: aim shorter, whether they gave a distance or not
+    cut, feels = heat_distance_factor(checkin.conditions)
+    if cut < 1:
+        ctx = replace(ctx, heat_cut=cut, heat_feels_f=feels)
+        if checkin.planned_distance_km:
+            checkin = replace(checkin, planned_distance_km=round(checkin.planned_distance_km * cut, 2))
+        else:
+            ctx = replace(ctx, long_run_factor=ctx.long_run_factor * cut)
     return ctx, checkin
+
+
+def heat_distance_factor(conditions) -> tuple:
+    """(multiplier for today's target distance, feels-like °F). 1.0 when it isn't hot."""
+    if conditions is None:
+        return 1.0, None
+    feels = getattr(conditions, "feels_like_f", None)
+    if feels is None:
+        feels = getattr(conditions, "temp_f", None)
+    if feels is None or feels <= HEAT_CUT_START_F:
+        return 1.0, feels
+    frac = min(1.0, (feels - HEAT_CUT_START_F) / (HEAT_CUT_FULL_F - HEAT_CUT_START_F))
+    return round(1 - HEAT_CUT_MAX * frac, 3), feels
 
 
 def target_km(ctx: PersonalContext, checkin: DailyCheckin) -> float:

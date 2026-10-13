@@ -48,10 +48,12 @@ type Recommendation = {
 // Raw scores start at 100 and add or lose points per factor; in practice a
 // weak route lands around 80 and an excellent one around 170. Show that span
 // as a 0-100% match so it reads like every other rating.
-const MATCH_FLOOR = 80;
-const MATCH_CEILING = 170;
+const BASE_SCORE = 100;          // every route's starting score in the engine
+const PERFECT_POINTS = 70;       // points a route that fits everything earns
+// Match % is simply points earned out of a perfect +70, so the number on the
+// card is exactly the total in "Why this route" divided by 70.
 function matchPct(score: number): number {
-  return Math.round(Math.max(0, Math.min(1, (score - MATCH_FLOOR) / (MATCH_CEILING - MATCH_FLOOR))) * 100);
+  return Math.round(Math.max(0, Math.min(1, (score - BASE_SCORE) / PERFECT_POINTS)) * 100);
 }
 
 // Short labels for the "Why this route" breakdown. The section title
@@ -85,6 +87,7 @@ const FACTOR_LABELS: Record<string, [string, string]> = {
   mud: ["Dry trails", "Muddy trails"],
   daylight: ["Daylight", "Daylight"],
   mood: ["Mood", "Mood"],
+  shade: ["Shade", "Little shade"],
   intent: ["Run type", "Run type"],
 };
 
@@ -101,6 +104,8 @@ type Conditions = {
   is_tomorrow?: boolean;
   now_temp_f?: number | null;
   now_feels_like_f?: number | null;
+  heat_cut_pct?: number | null;
+  cooler_option?: { run_time: string; label: string; clock: string; feels_like_f: number; cooler_by_f: number } | null;
 };
 
 function aqiLabel(aqi: number): string {
@@ -442,6 +447,20 @@ function RecommendationsPage() {
                 </span>
               )}
             </div>
+            {(conditions.heat_cut_pct || conditions.cooler_option) && (
+              <div className="cond-heat">
+                {conditions.heat_cut_pct ? (
+                  <p>🌡️ It's hot, so these picks aim about <b>{conditions.heat_cut_pct}% shorter</b> than usual, and shady routes get a boost.</p>
+                ) : null}
+                {conditions.cooler_option && (
+                  <p>
+                    🕖 <b>{conditions.cooler_option.cooler_by_f}°F cooler {conditions.cooler_option.label}</b>
+                    {conditions.cooler_option.clock && ` (around ${conditions.cooler_option.clock})`}: feels like {conditions.cooler_option.feels_like_f}°F.{" "}
+                    <Link to="/checkin" className="cond-heat-link">Change my run time</Link>
+                  </p>
+                )}
+              </div>
+            )}
             <a className="cond-credit" href="https://open-meteo.com/" target="_blank" rel="noreferrer">Weather: Open-Meteo</a>
           </section>
         );
@@ -570,9 +589,24 @@ function RecommendationsPage() {
                           {hurt.map(row)}
                         </div>
                       )}
-                      <p className="rec-breakdown-note">
-                        Every route starts even. These factors add up to a <b>{matchPct(rec.score)}% match</b> with how you feel today.
-                      </p>
+                      {(() => {
+                        const net = Math.round(rec.score - BASE_SCORE);
+                        const perfect = PERFECT_POINTS;
+                        return (
+                          <>
+                            <div className="rec-breakdown-total">
+                              <span>Total</span>
+                              <span className={`pts ${net >= 0 ? "plus" : "minus"}`}>{net >= 0 ? "+" : "−"}{Math.abs(net)}</span>
+                              <span className="rec-breakdown-match">= {matchPct(rec.score)}% match</span>
+                            </div>
+                            <p className="rec-breakdown-note">
+                              Every route starts at 0. Things that fit how you feel today add points, and things that
+                              don't take points away. The match is your total out of <b>+{perfect}</b>, the score of a
+                              route that fits everything: {Math.max(0, net)} ÷ {perfect} = {matchPct(rec.score)}%.
+                            </p>
+                          </>
+                        );
+                      })()}
                     </div>
                   );
                 })()}

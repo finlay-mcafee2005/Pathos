@@ -44,6 +44,8 @@ class Conditions:
     is_tomorrow: bool = False                # the run time has passed today, so this is tomorrow's forecast
     now_temp_f: Optional[float] = None       # right now, for reference
     now_feels_like_f: Optional[float] = None
+    heat_cut_pct: Optional[int] = None       # how much shorter Pathos is aiming because of heat
+    cooler_option: Optional[dict] = None     # a noticeably cooler time slot, if there is one
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -130,7 +132,53 @@ def parse_conditions(forecast: dict, air: Optional[dict], run_time: str,
 
     if air and "hourly" in air:
         cond.us_aqi = _value_at(air["hourly"], "us_aqi", iso)
+    cond.cooler_option = cooler_time(hourly, run_time or "now", now, cond.feels_like_f)
     return cond
+
+
+SLOT_LABELS = {
+    "now": "now", "morning": "this morning", "midday": "at midday", "evening": "this evening",
+    "tomorrow_morning": "tomorrow morning", "tomorrow_midday": "tomorrow at midday",
+    "tomorrow_evening": "tomorrow evening",
+}
+SLOT_CLOCK = {"morning": "7am", "midday": "noon", "evening": "6pm"}
+HOT_FOR_TIP_F = 82            # only suggest another time when it's actually hot
+COOLER_BY_F = 8               # ...and only if the other time is this much cooler
+
+
+def cooler_time(hourly: dict, run_time: str, now: datetime, feels_f: Optional[float]) -> Optional[dict]:
+    """The coolest other run slot (today's later slots, or tomorrow's) if it's
+    meaningfully cooler than the planned time. None when it isn't hot."""
+    if feels_f is None or feels_f < HOT_FOR_TIP_F:
+        return None
+    planned = target_hour(run_time, now)
+    options = []
+    for slot in ("morning", "midday", "evening", "tomorrow_morning", "tomorrow_midday", "tomorrow_evening"):
+        t = target_hour(slot, now)
+        if t == planned or (t - now).total_seconds() > 36 * 3600:
+            continue
+        feels = _value_at(hourly, "apparent_temperature", t.strftime("%Y-%m-%dT%H:00"))
+        if feels is None:
+            continue
+        # a later slot on the same day is "today"; target_hour may roll a passed slot to tomorrow
+        key = slot if slot.startswith("tomorrow_") or t.date() == now.date() else "tomorrow_" + slot
+        options.append((key, feels, t))
+    if not options:
+        return None
+    coolest = min(f for _, f, _ in options)
+    # the soonest slot that's about as cool as the coolest one
+    best = min((o for o in options if o[1] <= coolest + 3), key=lambda o: o[2])
+    if feels_f - best[1] < COOLER_BY_F:
+        return None
+    key, feels, t = best
+    base = key.removeprefix("tomorrow_")
+    return {
+        "run_time": key,
+        "label": SLOT_LABELS.get(key, key),
+        "clock": SLOT_CLOCK.get(base, ""),
+        "feels_like_f": round(feels),
+        "cooler_by_f": round(feels_f - feels),
+    }
 
 
 def fetch_conditions(lat: Optional[float], lon: Optional[float], run_time: str = "now") -> Optional[Conditions]:
