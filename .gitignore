@@ -16,3 +16,4 @@ dist/
 .DS_Store
 
 backend/scripts/.shade_cache/
+backend/scripts/audit_output/

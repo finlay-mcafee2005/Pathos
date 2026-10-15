@@ -37,6 +37,7 @@ from app.scoring.converters import (
     build_recent_runs, build_route_candidates,
 )
 from app.scoring.route_combiner import generate_combined_routes
+from app.scoring.fallbacks import needs_gentler, add_gentler, GENTLE_EXTRA_KM, GENTLE_NOTE
 from app.scoring.engine import build_personal_context, DailyCheckin, normalize_body_part, LOWER_BODY_PARTS
 from app.scoring.groups import GroupSession, RunnerToday, match_groups, best_for_today, KM_PER_MI
 
@@ -265,6 +266,21 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             results = diversify(results + combined_results, 3,
                                 surface_requested=bool(checkin.surface_preference))
 
+    # rough day and nothing nearby but Hard routes: look a little farther for gentler ones
+    if needs_gentler(results, user_profile, daily_checkin, recent_runs):
+        wider_ids = [row[0] for row in session.exec(routes_query, params={
+            "lon": user.longitude, "lat": user.latitude,
+            "max_distance_m": (effective_radius_km + GENTLE_EXTRA_KM) * 1000,
+        }).all()]
+        extra = [r for r in session.exec(select(Route).where(Route.id.in_(wider_ids))).all()
+                 if str(r.id) not in route_by_id]
+        if extra:
+            results = add_gentler(results, user_profile, daily_checkin, recent_runs,
+                                  build_route_candidates(extra))
+            for r in extra:
+                route_by_id[str(r.id)] = r
+            real_route_ids |= {str(r.id) for r in extra}
+
     # log exactly what was shown for this check-in (a refresh replaces it)
     # (picks that already have a run logged against them are kept)
     for old_rec in session.exec(select(Recommendation).where(Recommendation.checkin_id == checkin.id,
@@ -303,6 +319,7 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             "repeat_count": r.repeat_count,
             "effective_distance_km": round(r.effective_distance_km, 2),
             "reasons": r.reasons,
+            "notice": GENTLE_NOTE if GENTLE_NOTE in r.reasons else None,
             "distance_km": r.route.distance_km,
             "elevation_gain_m": r.run_gain_m if r.run_gain_m is not None
                                 else run_climb_m(route_by_id[r.route.id], r.run_format, r.repeat_count),

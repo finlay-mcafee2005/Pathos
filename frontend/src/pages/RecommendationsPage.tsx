@@ -31,6 +31,7 @@ type Recommendation = {
   route_name: string;
   score: number;
   reasons: string[];
+  notice?: string | null;   // e.g. a gentler route a little beyond the travel limit
   distance_km: number;
   elevation_gain_m: number;
   difficulty: string;
@@ -65,7 +66,7 @@ const FACTOR_LABELS: Record<string, [string, string]> = {
   surface_relief: ["Softer surface", "Rough surface"],
   soreness_history: ["Recovery history", "Recovery history"],
   scenic: ["Scenic", "Not scenic"],
-  surface_pref: ["Surface", "Surface"],
+  surface_pref: ["Surface", "Not your surface"],
   adventure: ["Somewhere new", "Run recently"],
   taste_surface: ["Surface you like", "Surface you rate low"],
   taste_scenic: ["Scenery you like", "Scenery"],
@@ -475,7 +476,7 @@ function RecommendationsPage() {
           const miles = kmToMiles(rec.effective_distance_km ?? rec.distance_km);
           const surface = rec.surface_type && rec.surface_type !== "unknown" ? SURFACE_LABELS[rec.surface_type] ?? rec.surface_type : null;
           const saved = rec.route_id ? favoriteIds.has(rec.route_id) : false;
-          const headline = buildHeadline(rec.score_breakdown, rec.reasons[0]);
+          const headline = rec.notice ? `${rec.notice}.` : buildHeadline(rec.score_breakdown, rec.reasons[0]);
           return (
             <article key={i} className={`rec-card ${i === 0 ? "top" : ""}`}>
               <div className="rec-map-wrap">

@@ -399,7 +399,11 @@ def score_route(
 
     # --- 1. safety: soreness / injury vs. surface -------------------------
     sore_weight, sore_part = surface_strain(surface, checkin.sore_body_parts)
+    wanted_surface = {"road": "pavement"}.get(checkin.surface_preference, checkin.surface_preference)
     if sore_weight > 0:
+        # they know they're sore and still asked for this surface: warn, but count it half
+        if wanted_surface and surface == wanted_surface:
+            sore_weight *= 0.5
         add("soreness", -SORENESS_SURFACE_PENALTY * sore_weight,
             f"Caution: {SURFACE_NOUN[surface]} is harder on your sore {pretty_part(sore_part)}")
 
@@ -412,7 +416,9 @@ def score_route(
             f"Caution: {SURFACE_NOUN[surface]} strains your {pretty_part(injury_part)} injury")
 
     relief_part = surface_relief(surface, checkin.sore_body_parts + user.active_injury_body_parts)
-    if relief_part and sore_weight == 0 and injury_weight == 0:
+    # (no "gentler surface" bonus for a surface other than the one they asked for)
+    if relief_part and sore_weight == 0 and injury_weight == 0 \
+            and not (wanted_surface and surface != wanted_surface):
         add("surface_relief", FRIENDLY_SURFACE_BONUS,
             f"{surface_label} surface is easier on your {pretty_part(relief_part)}")
 
@@ -442,6 +448,8 @@ def score_route(
             add("surface_pref", W_SURFACE_PREF, f"{surface_label} route, as requested")
         elif surface == "mixed":
             add("surface_pref", W_SURFACE_PREF / 2, f"Partly {checkin.surface_preference}, as requested")
+        elif surface != "unknown":
+            add("surface_pref", -W_SURFACE_PREF / 2)     # the other surface: they asked for this one
 
     days_since = recent.days_since_last_run_by_route_id.get(route.id)
     if checkin.wants_adventure and (days_since is None or days_since > 14) \
@@ -508,7 +516,12 @@ def score_route(
             learned = taste.preferred_hill * (0.6 + 0.8 * ready)
             ideal = (1 - taste.confidence) * ideal + taste.confidence * learned
         ideal *= ctx.recovery.hill_tolerance * goal["hill_factor"]
+        if checkin.run_intent == "easy":
+            ideal = min(ideal, 8.0)                 # an easy run is a flat run, however fresh you feel
         scale = max(ideal, 15)
+        if hill > ideal:
+            # on a tired day, climbing above the ideal costs more, sooner
+            scale *= 0.5 + 0.5 * ready
         pts = clamp(W_TERRAIN * (1 - abs(hill - ideal) / scale), W_TERRAIN_FLOOR, W_TERRAIN)
         reason = None
         if hill < FLAT_HILL_M_PER_KM and ctx.recovery.hill_reason:
