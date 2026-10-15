@@ -461,7 +461,11 @@ function RecommendationsPage() {
                 )}
               </div>
             )}
-            <a className="cond-credit" href="https://open-meteo.com/" target="_blank" rel="noreferrer">Weather: Open-Meteo</a>
+            <span className="cond-credit">
+              <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Weather: Open-Meteo</a>
+              {" · "}
+              <a href="https://registry.opendata.aws/dataforgood-fb-forestsv2" target="_blank" rel="noreferrer">Tree canopy: Meta &amp; WRI (CC BY 4.0)</a>
+            </span>
           </section>
         );
       })()}

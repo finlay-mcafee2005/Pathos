@@ -54,7 +54,7 @@ The engine lives in [`backend/app/scoring/`](backend/app/scoring). `scripts/test
 | Frontend | React, TypeScript, Vite, React Leaflet |
 | Backend | Python, FastAPI, SQLModel |
 | Database | PostgreSQL + PostGIS |
-| Routing & data | OSRM (foot profile), OpenStreetMap, Open-Meteo (weather and air quality), Nominatim (geocoding) |
+| Routing & data | OSRM (foot profile), OpenStreetMap, Open-Meteo (weather and air quality), Nominatim (geocoding), Meta & WRI Global Canopy Height (route shade, CC BY 4.0) |
 | Hosting | Vercel (frontend), Render (API), Supabase (database) |
 
 ## Project structure

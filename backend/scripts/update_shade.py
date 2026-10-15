@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import httpx
 from geoalchemy2.shape import to_shape
 from shapely.geometry import LineString, Point, Polygon
-from shapely.ops import unary_union
+from shapely.ops import linemerge, polygonize, unary_union
 from shapely.prepared import prep
 from sqlalchemy import text
 from sqlmodel import Session, create_engine, select
@@ -89,12 +89,43 @@ def _download(s, w, n, e):
             time.sleep(1.5)                   # be polite to the free servers
             return r.json()
         except (httpx.HTTPError, ValueError) as ex:
-            print(f"    {url.split('/')[2]} error ({type(ex).__name__}), trying another server")
+            code = getattr(getattr(ex, "response", None), "status_code", None)
+            print(f"    {url.split('/')[2]} error ({type(ex).__name__}{' ' + str(code) if code else ''}), trying another server")
             time.sleep(4 + 3 * attempt)
     return None
 
 
+LOCAL_FILE = os.path.join(CACHE_DIR, "osm_local.json")   # made by extract_shade_osm.py
+_local = None
+
+
+def _local_elements():
+    """Tree data from the local OSM file, with a bounding box per shape. None if not extracted."""
+    global _local
+    if _local is None and os.path.exists(LOCAL_FILE):
+        with open(LOCAL_FILE) as f:
+            els = json.load(f)["elements"]
+        _local = []
+        for el in els:
+            if el["type"] == "node":
+                pts = [(el["lon"], el["lat"])]
+            elif el["type"] == "way":
+                pts = [(p["lon"], p["lat"]) for p in el["geometry"]]
+            else:
+                pts = [(p["lon"], p["lat"]) for m in el["members"] for p in m["geometry"]]
+            lons, lats = [p[0] for p in pts], [p[1] for p in pts]
+            _local.append(((min(lats), min(lons), max(lats), max(lons)), el))
+    return _local
+
+
 def fetch_tile(s, w, n, e, depth=0):
+    local = _local_elements()
+    if local is not None:          # no internet needed
+        return {"elements": [el for (a, b, c, d), el in local if a <= n and c >= s and b <= e and d >= w]}
+    return _fetch_tile_online(s, w, n, e, depth)
+
+
+def _fetch_tile_online(s, w, n, e, depth=0):
     """OSM tree data for a tile (cached). A tile that keeps timing out is split
     into 4 smaller ones. Returns None if it still can't be downloaded."""
     os.makedirs(CACHE_DIR, exist_ok=True)
@@ -106,7 +137,7 @@ def fetch_tile(s, w, n, e, depth=0):
     if data is None and depth < 1:
         print(f"    splitting this tile into 4 smaller pieces")
         mid_lat, mid_lon = (s + n) / 2, (w + e) / 2
-        parts = [fetch_tile(a, b, c, d, depth + 1) for a, b, c, d in (
+        parts = [_fetch_tile_online(a, b, c, d, depth + 1) for a, b, c, d in (
             (s, w, mid_lat, mid_lon), (s, mid_lon, mid_lat, e),
             (mid_lat, w, n, mid_lon), (mid_lat, mid_lon, n, e))]
         if any(p is None for p in parts):
@@ -131,17 +162,21 @@ def shade_shapes(data, lat0):
                 if tags.get("natural") == "tree_row":
                     if len(pts) >= 2:
                         shapes.append(LineString(pts).buffer(TREE_ROW_M))
-                elif len(pts) >= 4:
+                elif len(pts) >= 4 and el["geometry"][0] == el["geometry"][-1]:   # closed outlines only
                     poly = Polygon(pts)
                     if poly.area <= MAX_WOOD_M2:
                         shapes.append(poly.buffer(NEAR_WOOD_M))
             elif el["type"] == "relation":
-                for m in el.get("members", []):
-                    if m.get("role") == "outer" and m.get("geometry") and len(m["geometry"]) >= 4:
-                        pts = [to_m(p["lon"], p["lat"], lat0) for p in m["geometry"]]
-                        poly = Polygon(pts)
-                        if poly.area <= MAX_WOOD_M2:
-                            shapes.append(poly.buffer(NEAR_WOOD_M))
+                # a big wood area is drawn as many outline pieces; join them into
+                # whole rings first (closing each piece on its own makes fake slivers)
+                lines = [LineString([to_m(p["lon"], p["lat"], lat0) for p in m["geometry"]])
+                         for m in el.get("members", [])
+                         if m.get("role") == "outer" and m.get("geometry") and len(m["geometry"]) >= 2]
+                if not lines:
+                    continue
+                polys = list(polygonize(linemerge(lines)))
+                if polys and sum(pg.area for pg in polys) <= MAX_WOOD_M2:
+                    shapes.extend(pg.buffer(NEAR_WOOD_M) for pg in polys)
         except Exception:
             continue             # skip broken geometry
     return [g for g in shapes if g.is_valid and not g.is_empty]

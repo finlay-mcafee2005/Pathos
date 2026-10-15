@@ -8724,3 +8724,8 @@ body::before {
 [data-theme="dark"] .cond-heat { background: #2a1a0f; border-color: #7c3a12; }
 [data-theme="dark"] .cond-heat p { color: #fed7aa; }
 [data-theme="dark"] .cond-heat-link { color: #fdba74; }
+
+/* credits line under the conditions card: links inherit the muted style */
+.cond-credit a { color: inherit; text-decoration: none; }
+.cond-credit a:hover { text-decoration: underline; }
+.cond-credit:hover { text-decoration: none; }
