@@ -14,3 +14,5 @@ dist/
 
 # macOS
 .DS_Store
+
+backend/scripts/.shade_cache/

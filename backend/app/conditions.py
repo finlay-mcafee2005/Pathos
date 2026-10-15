@@ -175,7 +175,8 @@ def cooler_time(hourly: dict, run_time: str, now: datetime, feels_f: Optional[fl
     return {
         "run_time": key,
         "label": SLOT_LABELS.get(key, key),
-        "clock": SLOT_CLOCK.get(base, ""),
+        # the actual hour (a window that's already started means "from now", e.g. 10am, not 7am)
+        "clock": (t.strftime("%I%p").lstrip("0").lower() if t.minute == 0 else SLOT_CLOCK.get(base, "")),
         "feels_like_f": round(feels),
         "cooler_by_f": round(feels_f - feels),
     }

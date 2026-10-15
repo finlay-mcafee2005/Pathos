@@ -9,6 +9,7 @@ Run from backend/:
     python3 scripts/cleanup_test_accounts.py --yes            # delete it
     python3 scripts/cleanup_test_accounts.py --email p3@pathos.test --yes   # just one account
     python3 scripts/cleanup_test_accounts.py --pattern "%@test.com" --yes   # a different pattern
+    python3 scripts/cleanup_test_accounts.py --pattern "%" --keep me@x.com --yes   # everyone except me@x.com
 
 Give interview participants emails like p1@pathos.test, p2@pathos.test, ...
 """
@@ -39,6 +40,8 @@ def main():
         else:
             users = conn.execute(text('SELECT id, email, full_name FROM "user" WHERE email ILIKE :p ORDER BY email'),
                                  {"p": pattern}).all()
+        keep = {e.strip().lower() for e in (arg("--keep") or "").split(",") if e.strip()}
+        users = [u for u in users if u[1].lower() not in keep]
         if not users:
             print("No matching test accounts. Nothing to do.")
             return
