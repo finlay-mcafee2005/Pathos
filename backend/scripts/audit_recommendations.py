@@ -32,6 +32,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:devpassword@loca
 OUT_DIR = os.path.join(os.path.dirname(__file__), "audit_output")
 MAX_DISTANCE_KM = 15          # same as main.py
 MI = 1.60934
+PERFECT_POINTS = 85          # same as the app's match % (RecommendationsPage.tsx)
 
 HOMES = {
     "Eagle Rock (Oxy)": (34.1270, -118.2110),
@@ -184,7 +185,7 @@ def main():
             appear[r.name] += 1
             climb_ft = (s.run_gain_m or 0) * 3.281
             top = sorted(s.breakdown.items(), key=lambda kv: -abs(kv[1]))[:4]
-            match = max(0, min(100, round((s.score - 100) / 70 * 100)))
+            match = max(0, min(100, round((s.score - 100) / PERFECT_POINTS * 100)))
             lines.append(
                 f"{rank}. **{r.name}** - {s.effective_distance_km / MI:.1f} mi ({s.run_format}"
                 f"{' x' + str(s.repeat_count) if s.run_format == 'repeat' else ''}), "

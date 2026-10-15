@@ -50,9 +50,11 @@ type Recommendation = {
 // weak route lands around 80 and an excellent one around 170. Show that span
 // as a 0-100% match so it reads like every other rating.
 const BASE_SCORE = 100;          // every route's starting score in the engine
-const PERFECT_POINTS = 70;       // points a route that fits everything earns
-// Match % is simply points earned out of a perfect +70, so the number on the
-// card is exactly the total in "Why this route" divided by 70.
+const PERFECT_POINTS = 85;       // points a route that fits everything earns
+// Match % is simply points earned out of a perfect +85, so the number on the
+// card is exactly the total in "Why this route" divided by 85. (85 leaves room
+// at the top: in a 192-pick audit the best routes scored +75 to +78, so strong
+// picks read in the 80s-90s instead of piling up at 100%.)
 function matchPct(score: number): number {
   return Math.round(Math.max(0, Math.min(1, (score - BASE_SCORE) / PERFECT_POINTS)) * 100);
 }

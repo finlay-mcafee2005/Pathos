@@ -302,9 +302,73 @@ def check_difficulty():
     print("  all difficulty checks passed")
 
 
+def check_audit_regressions():
+    """Guards for the bugs the recommendation audit found (Oct 2026)."""
+    print("\n=== Audit regression checks ===")
+    from app.scoring.engine import climb_per_km
+    from app.scoring.fallbacks import needs_gentler, add_gentler
+    me = UserProfile(fitness_level="intermediate", weekly_km_avg=40, usual_pace_min_km=5.6)
+    recent = RecentRuns(last_7_days_km=32)
+    rough = dict(energy_score=3, sleep_hours=5.0, sleep_quality=2,
+                 sore_body_parts=["left_quad", "right_hamstring", "left_calf", "right_knee", "lower_back"])
+
+    # 1. climbing counts both ways: a route stored summit-first isn't "flat"
+    assert abs(climb_per_km(3.55, 30, 412) - climb_per_km(3.55, 412, 30)) < 1e-9
+    assert climb_per_km(3.55, 30, 412) > 50
+    down = RouteCandidate(id="down", name="Fire road stored downhill", distance_km=3.55,
+                          elevation_gain_m=30, elevation_loss_m=412, difficulty="hard", surface_type="trail")
+    s = recommend(me, DailyCheckin(energy_score=6, planned_distance_km=7.1), recent, [down])[0]
+    assert s.difficulty == "hard" and s.run_gain_m > 400 and s.estimated_minutes > 50, \
+        (s.difficulty, s.run_gain_m, s.estimated_minutes)
+    print("  summit-first fire road: hard, ~440 m climb, realistic time")
+
+    # 2. tired days: a steep route loses to a flat one of the same length
+    steep = RouteCandidate(id="steep", name="Steep loop", distance_km=8, elevation_gain_m=300,
+                           elevation_loss_m=300, difficulty="hard", surface_type="trail", is_loop=True)
+    flat = RouteCandidate(id="flat", name="Flat loop", distance_km=8, elevation_gain_m=20,
+                          elevation_loss_m=20, difficulty="moderate", surface_type="trail", is_loop=True)
+    r = recommend(me, DailyCheckin(planned_distance_km=8, **rough), recent, [steep, flat])
+    assert r[0].route.id == "flat", [x.route.id for x in r]
+    print("  rough day: flat beats steep")
+
+    # 3. easy run is flat even when fresh
+    r = recommend(me, DailyCheckin(energy_score=9, sleep_hours=8.5, planned_distance_km=8,
+                                   run_intent="easy"), recent, [steep, flat])
+    assert r[0].route.id == "flat", [x.route.id for x in r]
+    print("  easy run when fresh: flat first")
+
+    # 4. an explicit surface request wins over a sore-calf preference for pavement
+    road = RouteCandidate(id="road", name="Scenic road loop", distance_km=8, elevation_gain_m=60,
+                          elevation_loss_m=60, difficulty="moderate", surface_type="pavement",
+                          scenic=True, is_loop=True)
+    trail = RouteCandidate(id="trail", name="Scenic trail loop", distance_km=8, elevation_gain_m=60,
+                           elevation_loss_m=60, difficulty="moderate", surface_type="trail",
+                           scenic=True, is_loop=True)
+    r = recommend(me, DailyCheckin(energy_score=6, sore_body_parts=["left_calf"], planned_distance_km=8,
+                                   wants_scenic=True, surface_preference="trail"), recent, [road, trail])
+    assert r[0].route.id == "trail", [x.route.id for x in r]
+    print("  'trail' requested with a sore calf: trail first")
+
+    # 5. rough day, only steep routes nearby: gentler ones from a bit farther get mixed in
+    near = [RouteCandidate(id=f"near{i}", name=f"Steep nearby {i}", distance_km=5, elevation_gain_m=280,
+                           elevation_loss_m=280, difficulty="hard", surface_type="trail", is_loop=True)
+            for i in range(3)]
+    far = [RouteCandidate(id=f"far{i}", name=f"Flat farther {i}", distance_km=5, elevation_gain_m=20,
+                          elevation_loss_m=20, difficulty="moderate", surface_type="pavement", is_loop=True)
+           for i in range(3)]
+    ck = DailyCheckin(planned_distance_km=5, **rough)
+    picks = recommend(me, ck, recent, near)
+    assert needs_gentler(picks, me, ck, recent)
+    picks = add_gentler(picks, me, ck, recent, far)
+    assert [p.route.id.startswith("far") for p in picks][:2] == [True, True], [p.route.id for p in picks]
+    print("  rough day near the mountains: two gentler routes first, one nearby kept")
+    print("  all audit regression checks passed")
+
+
 if __name__ == "__main__":
     for title, user, checkin in SCENARIOS:
         print_results(title, run(user, checkin))
     check_scoring()
     check_personalization()
     check_difficulty()
+    check_audit_regressions()

@@ -449,7 +449,7 @@ def score_route(
         elif surface == "mixed":
             add("surface_pref", W_SURFACE_PREF / 2, f"Partly {checkin.surface_preference}, as requested")
         elif surface != "unknown":
-            add("surface_pref", -W_SURFACE_PREF / 2)     # the other surface: they asked for this one
+            add("surface_pref", -W_SURFACE_PREF * 0.75)  # the other surface: they asked for this one
 
     days_since = recent.days_since_last_run_by_route_id.get(route.id)
     if checkin.wants_adventure and (days_since is None or days_since > 14) \
