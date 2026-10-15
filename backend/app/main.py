@@ -304,7 +304,8 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             "effective_distance_km": round(r.effective_distance_km, 2),
             "reasons": r.reasons,
             "distance_km": r.route.distance_km,
-            "elevation_gain_m": run_climb_m(route_by_id[r.route.id], r.run_format, r.repeat_count),
+            "elevation_gain_m": r.run_gain_m if r.run_gain_m is not None
+                                else run_climb_m(route_by_id[r.route.id], r.run_format, r.repeat_count),
             "difficulty": r.difficulty,
             "surface_type": r.route.surface_type,
             "path": [
@@ -1350,7 +1351,8 @@ def run_group_recommendations(group_id: UUID, user_id: UUID, session: Session = 
             "effective_distance_km": round(p.effective_distance_km, 2),
             "run_format": p.run_format,
             "repeat_count": p.repeat_count,
-            "elevation_gain_m": run_climb_m(route_by_id[p.route.id], p.run_format, p.repeat_count),
+            "elevation_gain_m": getattr(p, "run_gain_m", None) if getattr(p, "run_gain_m", None) is not None
+                                else run_climb_m(route_by_id[p.route.id], p.run_format, p.repeat_count),
             "surface_type": p.route.surface_type,
             "difficulty": p.difficulty,
             "minutes_range": [min(p.estimated_minutes), max(p.estimated_minutes)],

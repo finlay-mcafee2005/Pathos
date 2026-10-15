@@ -67,6 +67,22 @@ class RouteCandidate:
     start_lat: Optional[float] = None
     start_lon: Optional[float] = None
     shade: Optional[float] = None   # 0..1 share of the path under tree cover (None = unknown)
+    elevation_loss_m: Optional[float] = None   # descent along the stored path (None = assume = gain)
+
+
+def climb_per_km(distance_km: float, gain_m: float, loss_m: Optional[float] = None) -> float:
+    """Average climbing per km of running the route both ways.
+
+    Uses up AND down: a path stored running downhill (start at the summit)
+    has almost no "gain" in its stored direction, but anyone running it still
+    has to climb back up. Averaging gain and loss makes the number the same
+    whichever end the path happens to start from. For a loop gain ~= loss,
+    so this is just gain / distance."""
+    if not distance_km or distance_km <= 0:
+        return 0.0
+    gain = gain_m or 0.0
+    loss = gain if loss_m is None else loss_m
+    return (gain + loss) / 2 / distance_km
 
 
 @dataclass
@@ -87,6 +103,7 @@ class ScoredRoute:
     target_explicit: bool = False   # True when the runner set miles/minutes
     base_score: float = 0.0                          # score before the variety adjustment
     estimated_minutes: Optional[float] = None
+    run_gain_m: Optional[float] = None    # total climbing for the run as recommended (both ways, all laps)
     difficulty: str = "moderate"   # of the run as actually run (out-and-back / laps included)
 
 
@@ -378,7 +395,7 @@ def score_route(
     surface = route.surface_type
     surface_label = SURFACE_LABEL.get(surface, "")
     ready = ctx.readiness
-    hill = route.elevation_gain_m / route.distance_km if route.distance_km > 0 else 0.0
+    hill = climb_per_km(route.distance_km, route.elevation_gain_m, route.elevation_loss_m)
 
     # --- 1. safety: soreness / injury vs. surface -------------------------
     sore_weight, sore_part = surface_strain(surface, checkin.sore_body_parts)
@@ -689,6 +706,7 @@ def score_route(
         breakdown={k: round(v, 1) for k, v in parts.items()},
         base_score=score,
         estimated_minutes=round(minutes),
+        run_gain_m=round(run_gain, 1),
         difficulty=run_difficulty,
     )
 

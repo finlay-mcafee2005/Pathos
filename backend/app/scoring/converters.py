@@ -11,6 +11,7 @@ from sqlmodel import Session, select
 
 from app.models import User, Checkin, Run, Route, Injury
 from app.scoring.engine import (
+    climb_per_km,
     UserProfile, DailyCheckin, RecentRuns, RouteCandidate,
 )
 from app.scoring.personalization import RunRecord
@@ -106,7 +107,8 @@ def build_recent_runs(session: Session, user_id) -> RecentRuns:
             post_run_soreness=r.post_run_soreness,
             route_id=str(r.route_id) if r.route_id else None,
             surface_type=rt.surface_type if rt else None,
-            hill_m_per_km=(rt.elevation_gain_m / rt.distance_km) if rt and rt.distance_km else None,
+            hill_m_per_km=climb_per_km(rt.distance_km, rt.elevation_gain_m,
+                                       getattr(rt, "elevation_loss_m", None)) if rt and rt.distance_km else None,
             scenic=rt.scenic if rt else None,
             is_loop=is_loop_route(rt) if rt else None,
         ))
@@ -167,6 +169,7 @@ def build_route_candidates(routes: List[Route]) -> List[RouteCandidate]:
             start_lat=route_start(r)[0],
             start_lon=route_start(r)[1],
             shade=getattr(r, "shade_pct", None),
+            elevation_loss_m=getattr(r, "elevation_loss_m", None),
         )
         for r in routes
     ]
