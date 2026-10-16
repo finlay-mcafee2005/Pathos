@@ -70,6 +70,8 @@ EXTRAS = {
     "wants hills":         dict(hills_pref="want"),
     "scenic + trail":      dict(wants_scenic=True, surface_preference="trail"),
     "easy recovery run":   dict(run_intent="easy"),
+    "great day, close to home": dict(day="great", willing_to_drive_km=2 * MI),
+    "average day, close to home": dict(day="average", willing_to_drive_km=2 * MI),
     "knee injury (severe)": dict(runner=dict(fitness_level="intermediate", weekly_km_avg=40.0, usual_pace_min_km=5.6,
                                              active_injury_body_parts=["left_knee"], injury_severity={"left_knee": "severe"})),
 }
@@ -151,6 +153,18 @@ def flags_for(s, day, dist_mi, extra, home):
     return f
 
 
+def _fam(name):
+    from app.scoring.engine import route_family
+    return route_family(name)
+
+
+def _by_scn(rows):
+    out = {}
+    for r in rows:
+        out.setdefault((r["home"], r["scenario"]), []).append(r)
+    return out
+
+
 def responsiveness(rows):
     by = {}
     for r in rows:
@@ -168,6 +182,12 @@ def responsiveness(rows):
             out.append(f"- {home}, {d} mi: average/great share {ag}/3, rough/average share {ra}/3; "
                        f"avg climb rough {climb['rough']:.0f} ft, average {climb['average']:.0f} ft, "
                        f"great {climb['great']:.0f} ft")
+    for home in HOMES:
+        names = {k: {x["route"] for x in by.get((home, k), [])} for k in
+                 ("rough day, 5 mi", "average day, close to home, 5 mi", "great day, close to home, 5 mi")}
+        out.append(f"- {home}, 5 mi, everyone staying close to home: rough/great share "
+                   f"{len(names['rough day, 5 mi'] & names['great day, close to home, 5 mi'])}/3, "
+                   f"average/great share {len(names['average day, close to home, 5 mi'] & names['great day, close to home, 5 mi'])}/3")
     out.insert(0, f"**Overall: average vs great share {shared_ag / max(1, n):.1f} of 3 routes; "
                   f"rough vs average {shared_ra / max(1, n):.1f} of 3.**")
     out.insert(1, "")
@@ -189,7 +209,8 @@ def main():
             for d in DISTANCES_MI:
                 scenarios.append((f"{day} day, {d} mi", home, day, d, {}))
         for name, extra in EXTRAS.items():
-            scenarios.append((f"{name}, 5 mi", home, "average", 5, extra))
+            day = extra.get("day", "average")
+            scenarios.append((f"{name}, 5 mi", home, day, 5, {k: v for k, v in extra.items() if k != "day"}))
 
     rows, sections, appear, flag_count = [], [], Counter(), Counter()
     for i, (label, home, day, d, extra) in enumerate(scenarios, 1):
@@ -246,6 +267,12 @@ def main():
         "", "## Does the day change the picks? (same home and distance)", "",
         "Shared routes in the top 3 (0/3 = completely different, 3/3 = identical), and average climb.", "",
     ] + responsiveness(rows) + [
+        "", "## What kind of routes get picked", "",
+        f"- Pavement: {sum(1 for r in rows if r['surface'] == 'pavement')} of {len(rows)} picks; "
+        f"trail: {sum(1 for r in rows if r['surface'] == 'trail')}; mixed: {sum(1 for r in rows if r['surface'] == 'mixed')}",
+        f"- Generated street loops ('... via ...'): {sum(1 for r in rows if ' via ' in r['route'])} of {len(rows)}",
+        f"- Top 3 lists with two loops from the same family (e.g. two 'Oxy Loop via ...'): "
+        f"{sum(1 for v in _by_scn(rows).values() if len({_fam(x['route']) for x in v}) < len(v))} of {len(_by_scn(rows))}",
         "", f"{len(appear)} different routes were recommended at least once "
             f"({len(appear) / max(1, len(routes)):.0%} of the catalog).", "",
         "## Every scenario", "",

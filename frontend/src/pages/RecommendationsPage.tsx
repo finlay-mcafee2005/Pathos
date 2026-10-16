@@ -62,6 +62,7 @@ function matchPct(score: number): number {
 // Short labels for the "Why this route" breakdown. The section title
 // ("What helped" / "What held it back") already says which way each one went.
 const FACTOR_LABELS: Record<string, [string, string]> = {
+  appeal: ["Nice surroundings", "Plain streets"],
   hills: ["Hills", "Too hilly"],
   soreness: ["Easy on soreness", "Hard on soreness"],
   injury: ["Easy on injury", "Hard on injury"],
@@ -143,6 +144,7 @@ function conditionsVerdict(c: Conditions): string {
 
 // Clause for each factor, used to build a one-line headline from a route's top strengths
 const HEADLINE_CLAUSES: Record<string, string> = {
+  appeal: "it runs through parks, trees or along water",
   novelty: "you haven't run it in a while",
   proximity: "it starts right near home",
   terrain: "the climbing suits your energy today",

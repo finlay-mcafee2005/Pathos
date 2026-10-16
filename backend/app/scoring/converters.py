@@ -169,6 +169,7 @@ def build_route_candidates(routes: List[Route]) -> List[RouteCandidate]:
             start_lat=route_start(r)[0],
             start_lon=route_start(r)[1],
             shade=getattr(r, "shade_pct", None),
+            scenic_pct=getattr(r, "scenic_pct", None),
             elevation_loss_m=getattr(r, "elevation_loss_m", None),
         )
         for r in routes

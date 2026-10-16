@@ -106,6 +106,9 @@ def main():
     if not HIDE:
         print("\nReport only. Run with --hide to hide the extras (nothing is deleted).")
         return
+    if not to_hide:
+        print("\nNothing to hide.")
+        return
     with engine.begin() as conn:
         conn.execute(text("UPDATE route SET hidden = TRUE WHERE id = :id"), [{"id": r.id} for r in to_hide])
     print(f"\nHid {len(to_hide)} look-alike routes.")

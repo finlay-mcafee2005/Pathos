@@ -68,6 +68,7 @@ class RouteCandidate:
     start_lon: Optional[float] = None
     shade: Optional[float] = None   # 0..1 share of the path under tree cover (None = unknown)
     elevation_loss_m: Optional[float] = None   # descent along the stored path (None = assume = gain)
+    scenic_pct: Optional[float] = None         # 0..1 share near parks/nature/water/trees (None = unknown)
 
 
 def climb_per_km(distance_km: float, gain_m: float, loss_m: Optional[float] = None) -> float:
@@ -140,7 +141,8 @@ SURFACE_STRAIN = {
 
 SORENESS_SURFACE_PENALTY = 30
 INJURY_SURFACE_PENALTY = 50
-FRIENDLY_SURFACE_BONUS = 5
+FRIENDLY_SURFACE_BONUS = 2   # was 5: soreness now compares against the gentlest surface on offer,
+                             # so this only rewarded being sore (a sore day out-scored a fresh one)
 SURFACE_PREFERENCE_BONUS = 20      # same weight as scenic: explicit preference
 TIRED_TRAIL_PENALTY = 10           # inferred signal, stays below explicit ones
 
@@ -212,6 +214,7 @@ W_DISTANCE_FLOOR = -15       # very far off
 INFERRED_DISTANCE_SCALE = 0.6  # no planned distance -> length fit counts less
 W_TERRAIN = 15               # hilliness suits today's readiness
 W_TERRAIN_FLOOR = -10
+W_APPEAL = 8                  # always-on: parks, water and trees beat plain street grids
 TERRAIN_TIGHTNESS = 0.7       # <1 = hill fit falls off faster away from today's ideal
 W_NOVELTY = 8                # never run / not run in 30+ days
 W_RATING_PER_STAR = 5        # around a neutral 3-star rating
@@ -316,6 +319,7 @@ class PersonalContext:
     long_run_reason: Optional[str] = None
     heat_cut: float = 1.0               # <1 when heat shortened today's target distance
     heat_feels_f: Optional[float] = None
+    sore_baseline: Optional[float] = None   # strain of the gentlest surface among today's options
 
 
 def build_personal_context(user: UserProfile, checkin: DailyCheckin,
@@ -400,6 +404,12 @@ def score_route(
 
     # --- 1. safety: soreness / injury vs. surface -------------------------
     sore_weight, sore_part = surface_strain(surface, checkin.sore_body_parts)
+    # Only count the EXTRA strain versus the gentlest surface actually on offer today.
+    # Sore knees + sore calves strain both road and trail; penalising every route
+    # the same just drags every match down on a rough day without changing the order.
+    baseline = ctx.sore_baseline if ctx.sore_baseline is not None else \
+        min(surface_strain(s, checkin.sore_body_parts)[0] for s in SURFACE_STRAIN)
+    sore_weight = max(0.0, sore_weight - baseline)
     wanted_surface = {"road": "pavement"}.get(checkin.surface_preference, checkin.surface_preference)
     if sore_weight > 0:
         # they know they're sore and still asked for this surface: warn, but count it half
@@ -512,7 +522,7 @@ def score_route(
 
     # --- 5. terrain: hilliness vs. readiness, taste, recovery, goal -------
     if route.distance_km > 0:
-        ideal = (5 + 35 * ready) * FITNESS_HILL_FACTOR.get(user.fitness_level, 1.0)
+        ideal = (5 + 30 * ready) * FITNESS_HILL_FACTOR.get(user.fitness_level, 1.0)
         if taste.preferred_hill is not None and taste.confidence > 0:
             learned = taste.preferred_hill * (0.6 + 0.8 * ready)
             ideal = (1 - taste.confidence) * ideal + taste.confidence * learned
@@ -525,7 +535,9 @@ def score_route(
         if hill > ideal:
             # on a tired day, climbing above the ideal costs more, sooner
             scale *= 0.5 + 0.5 * ready
-        pts = clamp(W_TERRAIN * (1 - abs(hill - ideal) / scale), W_TERRAIN_FLOOR, W_TERRAIN)
+        # too steep on a run-down day can cost more than the usual floor
+        floor = W_TERRAIN_FLOOR - (12 * (1 - ready) if hill > ideal else 0)
+        pts = clamp(W_TERRAIN * (1 - abs(hill - ideal) / scale), floor, W_TERRAIN)
         reason = None
         if hill < FLAT_HILL_M_PER_KM and ctx.recovery.hill_reason:
             reason = ctx.recovery.hill_reason
@@ -580,12 +592,20 @@ def score_route(
         add("footing", -TIRED_TRAIL_PENALTY * (1.0 if surface == "trail" else 0.5),
             "Suggested: even footing (poor sleep raises trip risk on trails)")
 
+    # --- 6b. surroundings: how pleasant the route itself is --------------
+    # Separate from the "scenic" request: this is a small, always-on nudge so a
+    # path through a park or along the river beats a loop of plain streets.
+    if route.scenic_pct is not None or route.shade is not None:
+        appeal = 0.6 * (route.scenic_pct or 0.0) + 0.4 * (route.shade or 0.0)
+        add("appeal", W_APPEAL * clamp((appeal - 0.15) / 0.6),
+            "Runs through parks, trees or along water" if appeal >= 0.6 else None)
+
     # --- 7. proximity to home ---------------------------------------------
     if None not in (user.home_lat, user.home_lon, route.start_lat, route.start_lon):
         d = haversine_km(user.home_lat, user.home_lon, route.start_lat, route.start_lon)
         radius = checkin.willing_to_drive_km or DEFAULT_RADIUS_KM
         # close-to-home matters most on a tired day; on a fresh day they're up for going farther
-        near_weight = W_PROXIMITY * (1.2 - 0.6 * ctx.readiness)
+        near_weight = W_PROXIMITY * (1.1 - 0.3 * ctx.readiness)
         add("proximity", near_weight * clamp(1 - d / radius),
             "Starts close to home" if d < 1.0 else None)
 
@@ -764,7 +784,18 @@ def similarity(a: ScoredRoute, b: ScoredRoute, count_surface: bool = True) -> fl
         if haversine_km(a.route.start_lat, a.route.start_lon,
                         b.route.start_lat, b.route.start_lon) <= 1.5:
             sim += 0.40
-    return sim
+    # same family of generated loops ("Oxy Loop via A St" / "Oxy Loop via B St")
+    if route_family(a.route.name) == route_family(b.route.name):
+        sim += 0.30
+    return min(sim, 1.0)
+
+
+def route_family(name: str) -> str:
+    """'Oxy Loop via Avenue 53' -> 'oxy loop'; 'Los Feliz North Loop (5.0 mi)' -> 'los feliz north loop'."""
+    n = (name or "").lower()
+    for sep in (" via ", " (", " & back", " to "):
+        n = n.split(sep)[0]
+    return n.strip()
 
 
 # Distance is a band, not just a score: routes far from the target only show
@@ -823,6 +854,9 @@ def recommend(
     top_n: int = 3,
 ) -> List[ScoredRoute]:
     ctx, checkin = prepare_context(user, checkin, recent)
+    surfaces = {c.surface_type for c in candidates if c.surface_type in SURFACE_STRAIN or c.surface_type == "track"}
+    if surfaces:
+        ctx.sore_baseline = min(surface_strain(s, checkin.sore_body_parts)[0] for s in surfaces)
     scored = [score_route(r, user, checkin, recent, ctx) for r in candidates]
     # gate on the difficulty of the run as it would actually be run
     scored = [s for s in scored if passes_difficulty_gate(s.difficulty, user)]
