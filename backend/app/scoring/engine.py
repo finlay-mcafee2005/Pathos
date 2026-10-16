@@ -212,6 +212,7 @@ W_DISTANCE_FLOOR = -15       # very far off
 INFERRED_DISTANCE_SCALE = 0.6  # no planned distance -> length fit counts less
 W_TERRAIN = 15               # hilliness suits today's readiness
 W_TERRAIN_FLOOR = -10
+TERRAIN_TIGHTNESS = 0.7       # <1 = hill fit falls off faster away from today's ideal
 W_NOVELTY = 8                # never run / not run in 30+ days
 W_RATING_PER_STAR = 5        # around a neutral 3-star rating
 W_OUT_AND_BACK = -2          # small nudge toward true loops
@@ -516,9 +517,11 @@ def score_route(
             learned = taste.preferred_hill * (0.6 + 0.8 * ready)
             ideal = (1 - taste.confidence) * ideal + taste.confidence * learned
         ideal *= ctx.recovery.hill_tolerance * goal["hill_factor"]
-        if checkin.run_intent == "easy":
-            ideal = min(ideal, 8.0)                 # an easy run is a flat run, however fresh you feel
-        scale = max(ideal, 15)
+        if checkin.run_intent == "easy" or ctx.rhythm.recovery_day:
+            ideal = min(ideal, 8.0)                 # an easy / day-after-a-hard-effort run is a flat run
+        # how forgiving the fit is: tighter than before so a fresh day and an
+        # ordinary day actually prefer different amounts of climbing
+        scale = max(ideal, 15) * TERRAIN_TIGHTNESS
         if hill > ideal:
             # on a tired day, climbing above the ideal costs more, sooner
             scale *= 0.5 + 0.5 * ready
@@ -581,7 +584,9 @@ def score_route(
     if None not in (user.home_lat, user.home_lon, route.start_lat, route.start_lon):
         d = haversine_km(user.home_lat, user.home_lon, route.start_lat, route.start_lon)
         radius = checkin.willing_to_drive_km or DEFAULT_RADIUS_KM
-        add("proximity", W_PROXIMITY * clamp(1 - d / radius),
+        # close-to-home matters most on a tired day; on a fresh day they're up for going farther
+        near_weight = W_PROXIMITY * (1.2 - 0.6 * ctx.readiness)
+        add("proximity", near_weight * clamp(1 - d / radius),
             "Starts close to home" if d < 1.0 else None)
 
     # --- 8. history: novelty and past ratings -----------------------------

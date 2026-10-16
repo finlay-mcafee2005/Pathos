@@ -40,6 +40,10 @@ from app.models import Route
 from app.scoring.difficulty import classify_difficulty
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:devpassword@localhost:5432/run_recommender")
+
+if "DATABASE_URL" not in os.environ:
+    sys.exit("DATABASE_URL isn't set, so this would use your local database. In this Terminal window, run:\n"
+             '  export DATABASE_URL="<your Supabase link>"\nthen run this script again.')
 DRY_RUN = "--dry-run" in sys.argv
 STEP_M = 20                 # sample spacing along the path
 NOISE_M = 3.0               # ignore ups/downs smaller than this

@@ -29,6 +29,10 @@ from app.scoring.route_combiner import generate_combined_routes
 from app.scoring.fallbacks import needs_gentler, add_gentler, GENTLE_EXTRA_KM
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:devpassword@localhost:5432/run_recommender")
+
+if "DATABASE_URL" not in os.environ:
+    sys.exit("DATABASE_URL isn't set, so this would use your local database. In this Terminal window, run:\n"
+             '  export DATABASE_URL="<your Supabase link>"\nthen run this script again.')
 OUT_DIR = os.path.join(os.path.dirname(__file__), "audit_output")
 MAX_DISTANCE_KM = 15          # same as main.py
 MI = 1.60934
@@ -147,6 +151,29 @@ def flags_for(s, day, dist_mi, extra, home):
     return f
 
 
+def responsiveness(rows):
+    by = {}
+    for r in rows:
+        by.setdefault((r["home"], r["scenario"]), []).append(r)
+    out, shared_ag, shared_ra, n = [], 0, 0, 0
+    for home in HOMES:
+        for d in DISTANCES_MI:
+            day = {k: by.get((home, f"{k} day, {d} mi"), []) for k in DAYS}
+            names = {k: {x["route"] for x in v} for k, v in day.items()}
+            climb = {k: (sum(x["climb_ft"] for x in v) / len(v) if v else 0) for k, v in day.items()}
+            ag, ra = len(names["average"] & names["great"]), len(names["rough"] & names["average"])
+            shared_ag += ag
+            shared_ra += ra
+            n += 1
+            out.append(f"- {home}, {d} mi: average/great share {ag}/3, rough/average share {ra}/3; "
+                       f"avg climb rough {climb['rough']:.0f} ft, average {climb['average']:.0f} ft, "
+                       f"great {climb['great']:.0f} ft")
+    out.insert(0, f"**Overall: average vs great share {shared_ag / max(1, n):.1f} of 3 routes; "
+                  f"rough vs average {shared_ra / max(1, n):.1f} of 3.**")
+    out.insert(1, "")
+    return out
+
+
 def main():
     engine = create_engine(DATABASE_URL, pool_pre_ping=True)
     with Session(engine) as session:
@@ -216,6 +243,9 @@ def main():
     ] + [f"- {k}: {v}" for k, v in flag_count.most_common()] + [
         "", "## Routes that show up most (same route everywhere = possible bias)", "",
     ] + [f"- {name}: {n} of {len(scenarios)} scenarios" for name, n in appear.most_common(12)] + [
+        "", "## Does the day change the picks? (same home and distance)", "",
+        "Shared routes in the top 3 (0/3 = completely different, 3/3 = identical), and average climb.", "",
+    ] + responsiveness(rows) + [
         "", f"{len(appear)} different routes were recommended at least once "
             f"({len(appear) / max(1, len(routes)):.0%} of the catalog).", "",
         "## Every scenario", "",
