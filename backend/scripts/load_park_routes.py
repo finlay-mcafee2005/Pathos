@@ -11,6 +11,7 @@ Run from backend/:
     DATABASE_URL=... python3 scripts/load_park_routes.py --dry-run
     DATABASE_URL=... python3 scripts/load_park_routes.py
     DATABASE_URL=... python3 scripts/load_park_routes.py --undo      # hide everything it added
+    DATABASE_URL=... python3 scripts/load_park_routes.py --src more_routes.json --max 400   # round 2
 Afterwards, fill in climb, shade and scenic for the new routes:
     python3 scripts/update_elevation_dem.py
     python3 scripts/update_shade_canopy.py
@@ -40,7 +41,11 @@ if "DATABASE_URL" not in os.environ:
     sys.exit("DATABASE_URL isn't set, so this would use your local database. In this Terminal window, run:\n"
              '  export DATABASE_URL="<your Supabase link>"\nthen run this script again.')
 HERE = os.path.dirname(os.path.abspath(__file__))
-SRC = os.path.join(HERE, ".shade_cache", "park_routes.json")
+SRC = os.path.join(HERE, ".shade_cache",
+                   sys.argv[sys.argv.index("--src") + 1] if "--src" in sys.argv else "park_routes.json")
+# names that make a poor route title (landfills, agency names, admin areas)
+BAD_NAME_WORDS = ("landfill", "ladwp", "mrca", "authority", "mitigation", "maintenance", "closed",
+                  "unmaintained", "easement", "parcel")
 LOG = os.path.join(HERE, ".shade_cache", "park_routes_inserted.json")
 DRY_RUN = "--dry-run" in sys.argv
 MAX = int(sys.argv[sys.argv.index("--max") + 1]) if "--max" in sys.argv else 300
@@ -99,6 +104,8 @@ def main():
     for c in cands:
         if len(kept) >= MAX:
             break
+        if any(w in c["name"].lower() for w in BAD_NAME_WORDS):
+            continue
         if per_park[c["park"]] >= PER_PARK:
             continue
         line = mline(c["coords"])
@@ -132,7 +139,8 @@ def main():
     kinds = Counter(c["kind"] for c in kept)
     surf = Counter(c["surface"] for c in kept)
     print(f"\nAdding {len(kept)} routes ({kinds.get('park_loop', 0)} park loops, "
-          f"{kinds.get('greenway', 0)} river/greenway runs); surfaces {dict(surf)}")
+          f"{kinds.get('greenway', 0)} river/greenway runs, {kinds.get('park_pair', 0)} park-to-park loops, "
+          f"{kinds.get('trail_run', 0)} trail runs); surfaces {dict(surf)}")
     print(f"Skipped {skipped_existing} that duplicate routes you already have, "
           f"{skipped_new} look-alikes among the new ones.")
     for c in kept[:20]:

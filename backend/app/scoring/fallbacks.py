@@ -28,7 +28,8 @@ GENTLE_NOTE = "A little farther than you wanted to go, but much gentler for toda
 
 def needs_gentler(results: List[ScoredRoute], user: UserProfile,
                   checkin: DailyCheckin, recent: RecentRuns) -> bool:
-    return bool(results) and all(too_steep(r) for r in results) \
+    # any steep pick on a run-down day is worth replacing, not only when all three are
+    return bool(results) and any(too_steep(r) for r in results) \
         and readiness(user, checkin, recent) < LOW_READINESS
 
 
@@ -41,8 +42,12 @@ def add_gentler(results: List[ScoredRoute], user: UserProfile, checkin: DailyChe
               if climb_rate(s) < GENTLE_M_PER_KM]   # long but flat is fine; steep isn't
     if not gentle:
         return results
+    keep = [r for r in results if not too_steep(r)]          # nearby picks that already suit today
+    steep = [r for r in results if too_steep(r)]
+    need = top_n - len(keep)
+    if not keep:
+        need = top_n - 1                                      # keep the best nearby option as a choice
     for s in gentle:
         s.reasons.insert(0, GENTLE_NOTE)
-    # gentler routes first; keep the best nearby pick as an option too
-    merged = diversify(gentle, min(top_n - 1, len(gentle)), surface_requested=bool(checkin.surface_preference))
-    return (merged + results)[:top_n]
+    extra = diversify(gentle, min(need, len(gentle)), surface_requested=bool(checkin.surface_preference))
+    return (keep + extra + steep)[:top_n]
