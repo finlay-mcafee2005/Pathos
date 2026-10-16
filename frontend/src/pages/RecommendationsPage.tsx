@@ -63,6 +63,7 @@ function matchPct(score: number): number {
 // ("What helped" / "What held it back") already says which way each one went.
 const FACTOR_LABELS: Record<string, [string, string]> = {
   appeal: ["Nice surroundings", "Plain streets"],
+  energy: ["Energy", "Tough for low energy"],
   hills: ["Hills", "Too hilly"],
   soreness: ["Easy on soreness", "Hard on soreness"],
   injury: ["Easy on injury", "Hard on injury"],

@@ -214,6 +214,8 @@ W_DISTANCE_FLOOR = -15       # very far off
 INFERRED_DISTANCE_SCALE = 0.6  # no planned distance -> length fit counts less
 W_TERRAIN = 15               # hilliness suits today's readiness
 W_TERRAIN_FLOOR = -10
+LOW_ENERGY = 4                # mental energy at or below this (0-10) counts as low
+W_LOW_ENERGY_HARD = 15        # max penalty for a Hard run on a low-energy day
 W_APPEAL = 8                  # always-on: parks, water and trees beat plain street grids
 TERRAIN_TIGHTNESS = 0.7       # <1 = hill fit falls off faster away from today's ideal
 W_NOVELTY = 8                # never run / not run in 30+ days
@@ -283,7 +285,7 @@ def load_ratio(user: UserProfile, recent: RecentRuns) -> Optional[float]:
 
 def readiness(user: UserProfile, checkin: DailyCheckin, recent: RecentRuns) -> float:
     """0 (run-down) .. 1 (fresh). Weighted blend of whatever signals we have."""
-    signals = [(checkin.energy_score / 10, 1.0)]
+    signals = [(checkin.energy_score / 10, 1.5)]      # energy counts as much as sleep
     if checkin.sleep_hours is not None:
         signals.append((clamp((checkin.sleep_hours - 4) / 4), 1.5))   # 4h -> 0, 8h+ -> 1
     if checkin.sleep_quality is not None:
@@ -295,6 +297,10 @@ def readiness(user: UserProfile, checkin: DailyCheckin, recent: RecentRuns) -> f
 
     sore_legs = {normalize_body_part(p) for p in checkin.sore_body_parts} & LOWER_BODY_PARTS
     r -= 0.05 * min(len(sore_legs), 4)
+    # very low mental energy caps readiness, however well they slept:
+    # a 2/10 day is not an average day just because sleep was fine
+    if checkin.energy_score <= LOW_ENERGY:
+        r = min(r, 0.25 + 0.05 * checkin.energy_score)
     return clamp(r)
 
 
@@ -723,6 +729,10 @@ def score_route(
     # doubles / triples both the distance and the climbing
     run_gain = hill * effective_distance
     run_difficulty = classify_difficulty(effective_distance, run_gain)
+    # low mental energy: a Hard run (long, steep, or both) is a hard sell today
+    if checkin.energy_score <= LOW_ENERGY and run_difficulty == "hard":
+        add("energy", -W_LOW_ENERGY_HARD * (LOW_ENERGY + 1 - checkin.energy_score) / (LOW_ENERGY + 1),
+            "A tough run for a low-energy day")
 
     # estimated time: their pace, plus ~5 min per 100 m of climbing
     minutes = effective_distance * ctx.pace_min_km + hill * effective_distance * 0.05

@@ -43,6 +43,18 @@ HOMES = {
     "Pasadena (Old Town)": (34.1460, -118.1500),
     "Glendale (downtown)": (34.1460, -118.2550),
     "Altadena": (34.1900, -118.1310),
+    "Highland Park": (34.1110, -118.1920),
+    "Silver Lake": (34.0870, -118.2700),
+    "Echo Park": (34.0780, -118.2600),
+    "Los Feliz": (34.1070, -118.2870),
+    "Atwater Village": (34.1180, -118.2620),
+    "South Pasadena": (34.1160, -118.1500),
+    "East Pasadena": (34.1500, -118.0800),
+    "La Canada Flintridge": (34.2000, -118.2000),
+    "Montrose / La Crescenta": (34.2070, -118.2350),
+    "Burbank": (34.1810, -118.3090),
+    "Toluca Lake": (34.1520, -118.3500),
+    "Sunland-Tujunga": (34.2550, -118.3000),
 }
 
 # app check-in travel chips: close to home = 2 mi, 15/30/45 min at ~20 mph
@@ -254,6 +266,12 @@ def main():
             print(f"  {i}/{len(scenarios)} scenarios")
 
     total_picks = len(rows)
+    max_reach = max(d.get("willing_to_drive_km") or MAX_DISTANCE_KM for d in DAYS.values())
+    reachable = 0
+    for r in routes:
+        lat, lon = route_start(r)
+        if lat is not None and any(haversine_km(hl, hn, lat, lon) <= max_reach for hl, hn in HOMES.values()):
+            reachable += 1
     flagged = sum(1 for r in rows if r["flags"])
     summary = [
         "# Recommendation audit", "",
@@ -273,6 +291,9 @@ def main():
         f"- Generated street loops ('... via ...'): {sum(1 for r in rows if ' via ' in r['route'])} of {len(rows)}",
         f"- Top 3 lists with two loops from the same family (e.g. two 'Oxy Loop via ...'): "
         f"{sum(1 for v in _by_scn(rows).values() if len({_fam(x['route']) for x in v}) < len(v))} of {len(_by_scn(rows))}",
+        "", f"Catalog coverage: {len(appear)} different routes were picked; "
+            f"{reachable} routes start within reach of at least one test home "
+            f"({len(appear) / max(1, reachable):.0%} of those got picked).",
         "", f"{len(appear)} different routes were recommended at least once "
             f"({len(appear) / max(1, len(routes)):.0%} of the catalog).", "",
         "## Every scenario", "",

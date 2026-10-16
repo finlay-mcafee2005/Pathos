@@ -365,6 +365,13 @@ def check_audit_regressions():
     picks = add_gentler(picks, me, ck, recent, far)
     assert [p.route.id.startswith("far") for p in picks][:2] == [True, True], [p.route.id for p in picks]
     print("  rough day near the mountains: two gentler routes first, one nearby kept")
+    # 6. very low energy but a good night's sleep: still treated as a tough day
+    from app.scoring.engine import readiness
+    low = DailyCheckin(energy_score=2, sleep_hours=8.5, sleep_quality=4, planned_distance_km=8)
+    assert readiness(me, low, recent) <= 0.4, readiness(me, low, recent)
+    r = recommend(me, low, recent, [steep, flat])
+    assert r[0].route.id == "flat" and "energy" in r[1].breakdown, [(x.route.id, x.breakdown) for x in r]
+    print("  energy 2/10 after a good sleep: flat first, Hard route penalised")
     print("  all audit regression checks passed")
 
 
