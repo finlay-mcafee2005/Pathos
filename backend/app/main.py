@@ -355,7 +355,8 @@ def run_climb_m(route, run_format: str, repeat_count: int) -> float:
 
 def unique_titles(cards: list) -> list:
     """Never show two picks with the same title: tell look-alikes apart by
-    length ("Short" / "Long"), or by distance if there are three."""
+    length ("Short" / "Long", or "Short" / "Medium" / "Long") - never by a
+    distance, which the card already shows."""
     groups = {}
     for c in cards:
         groups.setdefault(c["route_name"], []).append(c)
@@ -363,12 +364,11 @@ def unique_titles(cards: list) -> list:
         if len(same) < 2:
             continue
         same.sort(key=lambda c: c["distance_km"])
-        if len(same) == 2 and same[1]["distance_km"] - same[0]["distance_km"] >= 1.0:
-            same[0]["route_name"] = f"{name} (Short)"
-            same[1]["route_name"] = f"{name} (Long)"
-        else:
-            for c in same:
-                c["route_name"] = f"{name} \u00b7 {c['distance_km'] * 0.621371:.1f} mi"
+        labels = ["Short", "Long"] if len(same) == 2 else ["Short", "Medium", "Long"]
+        for c, lab in zip(same, labels):
+            c["route_name"] = f"{name} ({lab})"
+        for c in same[len(labels):]:
+            c["route_name"] = f"{name} (Long)"
     return cards
 
 class InjuryInput(BaseModel):
