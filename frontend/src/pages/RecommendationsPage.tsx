@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { MapContainer, TileLayer, Polyline, CircleMarker, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useRouteActions } from "../components/RouteExportButtons";
@@ -17,7 +17,8 @@ function MapResizer({ path }: { path: [number, number][] }) {
           (b, [lat, lon]) => b.extend([lat, lon]),
           L.latLngBounds([path[0]])
         );
-        map.fitBounds(bounds, { padding: [20, 20] });
+        // extra room top-left so the rank badge never covers the start marker
+        map.fitBounds(bounds, { paddingTopLeft: [70, 70], paddingBottomRight: [30, 40] });
       }
     }, 100);
   }, [map, path]);
@@ -176,6 +177,20 @@ function buildHeadline(breakdown: Record<string, number> | undefined, fallback?:
   if (top.length === 0) return fallback ?? null;
   const sentence = top.length === 2 ? `${top[0]}, and ${top[1]}` : top[0];
   return sentence.charAt(0).toUpperCase() + sentence.slice(1) + ".";
+}
+
+// Plain instructions for how to run the pick, so a loop, laps or an
+// out-and-back is never a surprise.
+function runPlan(rec: Recommendation): string {
+  const total = kmToMiles(rec.effective_distance_km ?? rec.distance_km);
+  const base = kmToMiles(rec.distance_km);
+  if (rec.run_format === "out_and_back") {
+    return `Out and back: start at the blue dot, run ${(total / 2).toFixed(1)} mi to the white dot, then turn around and come back the same way.`;
+  }
+  if (rec.run_format === "repeat" && (rec.repeat_count ?? 1) > 1) {
+    return `${rec.repeat_count} laps: run this ${base.toFixed(1)} mi loop ${rec.repeat_count} times, starting and finishing at the blue dot.`;
+  }
+  return `One loop: start at the blue dot and follow the line back to where you began.`;
 }
 
 function factorLabel(key: string, pts: number): string {
@@ -499,16 +514,24 @@ function RecommendationsPage() {
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' />
                     <Polyline positions={rec.path} pathOptions={{ color: "#FFFFFF", weight: 9, opacity: 0.9 }} />
                     <Polyline positions={rec.path} pathOptions={{ color: "#2563EB", weight: 4.5, opacity: 1 }} />
+                    {rec.run_format === "out_and_back" && (
+                      <CircleMarker
+                        center={rec.path[rec.path.length - 1]}
+                        radius={6}
+                        pathOptions={{ color: "#1D4ED8", weight: 3, fillColor: "#FFFFFF", fillOpacity: 1 }}
+                      >
+                        <Tooltip permanent direction="top" offset={[0, -6]} className="map-pin-label">Turn around</Tooltip>
+                      </CircleMarker>
+                    )}
                     <CircleMarker
                       center={rec.path[0]}
-                      radius={7}
+                      radius={8}
                       pathOptions={{ color: "#FFFFFF", weight: 3, fillColor: "#1D4ED8", fillOpacity: 1 }}
-                    />
-                    <CircleMarker
-                      center={rec.path[rec.path.length - 1]}
-                      radius={5}
-                      pathOptions={{ color: "#1D4ED8", weight: 3, fillColor: "#FFFFFF", fillOpacity: 1 }}
-                    />
+                    >
+                      <Tooltip permanent direction="top" offset={[0, -8]} className="map-pin-label">
+                        {rec.run_format === "out_and_back" ? "Start" : "Start / finish"}
+                      </Tooltip>
+                    </CircleMarker>
                   </MapContainer>
                 )}
                 <span className="rec-rank">{String(i + 1).padStart(2, "0")}</span>
@@ -525,6 +548,12 @@ function RecommendationsPage() {
                 </div>
 
                 {headline && <p className="rec-why">{headline}</p>}
+                <p className="rec-plan">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+                  </svg>
+                  <span>{runPlan(rec)} Use <b>Directions</b> below to get to the start.</span>
+                </p>
 
                 <div className="rec-splits">
                   <div>

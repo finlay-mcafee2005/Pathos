@@ -168,7 +168,12 @@ def main():
         from geoalchemy2.elements import WKBElement
         g = to_shape(WKBElement(bytes(geom)))
         c = g.centroid
-        items.append(dict(id=rid, old=title, new=shorten(title), km=km or 0, xy=(c.x, c.y)))
+        new = shorten(title)
+        (x1, y1), (x2, y2) = g.coords[0], g.coords[-1]
+        closed = abs(y1 - y2) < 0.0015 and abs(x1 - x2) < 0.0018          # same rule as the app
+        if not closed and new.endswith(" Loop"):
+            new = new[: -len(" Loop")] + " Out-and-Back"   # the app runs open routes out and back
+        items.append(dict(id=rid, old=title, new=new, km=km or 0, xy=(c.x, c.y)))
 
     # look-alikes: direction words first, then Short / Long
     groups = defaultdict(list)
