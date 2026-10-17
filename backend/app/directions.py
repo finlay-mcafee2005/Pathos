@@ -232,3 +232,24 @@ def directions_for(path: List[Point]) -> Optional[dict]:
     result = {"source": source, "cues": steps_to_cues(steps)}
     _cache[key] = result
     return result
+
+
+def walk_path(a: Point, b: Point) -> Tuple[List[Point], float]:
+    """Foot route from a to b (lat, lon) as (path, metres). Falls back to a
+    straight line (x1.3) if the routing server is slow or unavailable."""
+    key = ("walk", round(a[0], 5), round(a[1], 5), round(b[0], 5), round(b[1], 5))
+    if key in _cache:
+        return _cache[key]
+    url = (f"{OSRM_URL}/route/v1/foot/{a[1]:.6f},{a[0]:.6f};{b[1]:.6f},{b[0]:.6f}"
+           "?overview=full&geometries=geojson")
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(req, timeout=4) as r:
+            data = json.load(r)
+        route = data["routes"][0]
+        path = [(lat, lon) for lon, lat in route["geometry"]["coordinates"]]
+        out = (path, float(route["distance"]))
+    except Exception:
+        out = ([a, b], meters(a, b) * 1.3)
+    _cache[key] = out
+    return out

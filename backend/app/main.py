@@ -18,7 +18,7 @@ from datetime import date as date_type
 from pydantic import BaseModel, Field
 from app.geocoding import geocode_address, geocode_la
 from app.conditions import fetch_conditions
-from app.directions import directions_for
+from app.directions import directions_for, walk_path
 from app.activity_import import parse_activity, match_route, ImportProblem
 import base64
 from zoneinfo import ZoneInfo
@@ -329,6 +329,8 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             "distance_km": r.route.distance_km,
             "elevation_gain_m": r.run_gain_m if r.run_gain_m is not None
                                 else run_climb_m(route_by_id[r.route.id], r.run_format, r.repeat_count),
+            # run from home: the streets from home to the start, drawn on the card
+            **approach_fields(user, r),
             "difficulty": r.difficulty,
             # a long, flat run is "Hard" by length only: say so instead of just "Hard"
             "difficulty_label": "Long, gentle" if r.difficulty == "hard"
@@ -346,6 +348,15 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
         for i, r in enumerate(results)
     ]
     return unique_titles(response)
+
+
+def approach_fields(user, r) -> dict:
+    """For a route that starts within about a mile of home: the way there."""
+    if not getattr(r, "approach_km", 0) or user.latitude is None or r.route.start_lat is None:
+        return {"approach_km": 0, "approach_path": []}
+    path, metres = walk_path((user.latitude, user.longitude), (r.route.start_lat, r.route.start_lon))
+    return {"approach_km": round(r.approach_km, 2), "approach_path": [[lat, lon] for lat, lon in path],
+            "home": [user.latitude, user.longitude]}
 
 
 def run_climb_m(route, run_format: str, repeat_count: int) -> float:

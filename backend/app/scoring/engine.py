@@ -105,6 +105,7 @@ class ScoredRoute:
     base_score: float = 0.0                          # score before the variety adjustment
     estimated_minutes: Optional[float] = None
     run_gain_m: Optional[float] = None    # total climbing for the run as recommended (both ways, all laps)
+    approach_km: float = 0.0              # each way, home -> start, when the run starts from home
     difficulty: str = "moderate"   # of the run as actually run (out-and-back / laps included)
 
 
@@ -217,6 +218,8 @@ W_TERRAIN_FLOOR = -10
 LOW_ENERGY = 4                # mental energy at or below this (0-10) counts as low
 W_LOW_ENERGY_HARD = 15        # max penalty for a Hard run on a low-energy day
 LONG_GENTLE_M_PER_KM = 20     # 'Hard' only because it's long: averages under ~2% climb
+RUN_FROM_HOME_KM = 1.6        # starts within ~1 mile (straight line): run there from home and back
+STREET_DETOUR = 1.3           # streets are ~30% longer than a straight line (the app draws the real way)
 W_APPEAL = 8                  # always-on: parks, water and trees beat plain street grids
 TERRAIN_TIGHTNESS = 0.7       # <1 = hill fit falls off faster away from today's ideal
 W_NOVELTY = 8                # never run / not run in 30+ days
@@ -494,10 +497,19 @@ def score_route(
         add("goal", goal["scenic_bonus"])
 
     # --- 4. distance fit (explicit target, or inferred) --------------------
+    # A route that starts close to home is run *from home*: the run there and
+    # back counts toward today's distance, so the route part is that much shorter.
+    approach = 0.0
+    if None not in (user.home_lat, user.home_lon, route.start_lat, route.start_lon):
+        straight = haversine_km(user.home_lat, user.home_lon, route.start_lat, route.start_lon)
+        if straight <= RUN_FROM_HOME_KM:
+            approach = straight * STREET_DETOUR
     typical = ctx.typical_km
     if checkin.planned_distance_km:
         target = checkin.planned_distance_km
-        err, run_format, repeat_count, effective_distance = choose_format(route, target, MAX_REPEATS)
+        err, run_format, repeat_count, effective_distance = choose_format(route, max(0.5, target - 2 * approach), MAX_REPEATS)
+        effective_distance += 2 * approach
+        err = abs(effective_distance - target)
         tol = max(0.5, target * 0.25)
         distance_matched = err <= tol
         add("distance", distance_points(err, tol) * goal["distance_weight"])
@@ -513,7 +525,9 @@ def score_route(
         # no plan: aim for THEIR normal run, shorter when run-down, longer when
         # fresh, longer still on a weekend
         target = typical * (0.7 + 0.5 * ready) * ctx.long_run_factor
-        err, run_format, repeat_count, effective_distance = choose_format(route, target, 1)
+        err, run_format, repeat_count, effective_distance = choose_format(route, max(0.5, target - 2 * approach), 1)
+        effective_distance += 2 * approach
+        err = abs(effective_distance - target)
         tol = max(0.8, target * 0.3)
         distance_matched = True
         pts = distance_points(err, tol) * INFERRED_DISTANCE_SCALE
@@ -728,7 +742,7 @@ def score_route(
 
     # difficulty of the run as actually run: an out-and-back or 3 laps
     # doubles / triples both the distance and the climbing
-    run_gain = hill * effective_distance
+    run_gain = hill * max(0.0, effective_distance - 2 * approach)   # the streets to the start are counted flat
     run_difficulty = classify_difficulty(effective_distance, run_gain)
     # low mental energy: a Hard *climbing* run is a hard sell today. A run that's Hard only
     # because of the distance they chose isn't penalised (every option at that length is).
@@ -738,7 +752,7 @@ def score_route(
             "A tough run for a low-energy day")
 
     # estimated time: their pace, plus ~5 min per 100 m of climbing
-    minutes = effective_distance * ctx.pace_min_km + hill * effective_distance * 0.05
+    minutes = effective_distance * ctx.pace_min_km + run_gain * 0.05
 
     score = round(BASE_SCORE + sum(parts.values()), 1)
     return ScoredRoute(
@@ -758,6 +772,7 @@ def score_route(
         base_score=score,
         estimated_minutes=round(minutes),
         run_gain_m=round(run_gain, 1),
+        approach_km=round(approach, 2),
         difficulty=run_difficulty,
     )
 

@@ -7,13 +7,13 @@ import { useRouteActions } from "../components/RouteExportButtons";
 import { type GroupMatch, formatMeetTime, sessionTitle } from "./GroupsPage";
 import { API_URL } from "../utils/format";
 
-function MapResizer({ path }: { path: [number, number][] }) {
+function MapResizer({ path, extra = [] }: { path: [number, number][]; extra?: [number, number][] }) {
   const map = useMap();
   useEffect(() => {
     setTimeout(() => {
       map.invalidateSize();
       if (path.length > 1) {
-        const bounds = path.reduce(
+        const bounds = [...path, ...extra].reduce(
           (b, [lat, lon]) => b.extend([lat, lon]),
           L.latLngBounds([path[0]])
         );
@@ -21,7 +21,7 @@ function MapResizer({ path }: { path: [number, number][] }) {
         map.fitBounds(bounds, { paddingTopLeft: [70, 70], paddingBottomRight: [30, 40] });
       }
     }, 100);
-  }, [map, path]);
+  }, [map, path, extra]);
   return null;
 }
 
@@ -33,7 +33,10 @@ type Recommendation = {
   score: number;
   reasons: string[];
   notice?: string | null;
-  difficulty_label?: string;   // e.g. "Long, gentle" for a flat run that's Hard only by length   // e.g. a gentler route a little beyond the travel limit
+  difficulty_label?: string;
+  approach_km?: number;                 // each way, home -> start (0 = travel there instead)
+  approach_path?: [number, number][];   // the streets from home to the start
+  home?: [number, number];   // e.g. "Long, gentle" for a flat run that's Hard only by length   // e.g. a gentler route a little beyond the travel limit
   distance_km: number;
   elevation_gain_m: number;
   difficulty: string;
@@ -182,15 +185,22 @@ function buildHeadline(breakdown: Record<string, number> | undefined, fallback?:
 // Plain instructions for how to run the pick, so a loop, laps or an
 // out-and-back is never a surprise.
 function runPlan(rec: Recommendation): string {
-  const total = kmToMiles(rec.effective_distance_km ?? rec.distance_km);
+  const approach = kmToMiles(rec.approach_km ?? 0);
+  const fromHome = approach > 0.05;
+  const total = kmToMiles(rec.effective_distance_km ?? rec.distance_km) - 2 * approach;   // the route part
   const base = kmToMiles(rec.distance_km);
+  let main: string;
   if (rec.run_format === "out_and_back") {
-    return `Out and back: start at the blue dot, run ${(total / 2).toFixed(1)} mi to the white dot, then turn around and come back the same way.`;
+    main = `run ${(total / 2).toFixed(1)} mi to the "Turn around" point and come back the same way`;
+  } else if (rec.run_format === "repeat" && (rec.repeat_count ?? 1) > 1) {
+    main = `run the ${base.toFixed(1)} mi loop ${rec.repeat_count} times`;
+  } else {
+    main = "run the loop back to the start";
   }
-  if (rec.run_format === "repeat" && (rec.repeat_count ?? 1) > 1) {
-    return `${rec.repeat_count} laps: run this ${base.toFixed(1)} mi loop ${rec.repeat_count} times, starting and finishing at the blue dot.`;
+  if (fromHome) {
+    return `From home: run ${approach.toFixed(1)} mi to the start (dotted line), ${main}, then run back home. The total includes both trips.`;
   }
-  return `One loop: start at the blue dot and follow the line back to where you began.`;
+  return `Start at the blue dot, ${main}. Use Directions below to get to the start.`;
 }
 
 function factorLabel(key: string, pts: number): string {
@@ -510,8 +520,19 @@ function RecommendationsPage() {
                     
                     className="rec-map"
                   >
-                    <MapResizer path={rec.path} />
+                    <MapResizer path={rec.path} extra={rec.approach_path ?? []} />
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' />
+                    {rec.approach_path && rec.approach_path.length > 1 && (
+                      <>
+                        <Polyline positions={rec.approach_path} pathOptions={{ color: "#FFFFFF", weight: 7, opacity: 0.9 }} />
+                        <Polyline positions={rec.approach_path} pathOptions={{ color: "#2563EB", weight: 3.5, opacity: 0.9, dashArray: "2 8", lineCap: "round" }} />
+                        {rec.home && (
+                          <CircleMarker center={rec.home} radius={6} pathOptions={{ color: "#FFFFFF", weight: 3, fillColor: "#0f172a", fillOpacity: 1 }}>
+                            <Tooltip permanent direction="bottom" offset={[0, 6]} className="map-pin-label home">Home</Tooltip>
+                          </CircleMarker>
+                        )}
+                      </>
+                    )}
                     <Polyline positions={rec.path} pathOptions={{ color: "#FFFFFF", weight: 9, opacity: 0.9 }} />
                     <Polyline positions={rec.path} pathOptions={{ color: "#2563EB", weight: 4.5, opacity: 1 }} />
                     {rec.run_format === "out_and_back" && (
@@ -552,7 +573,7 @@ function RecommendationsPage() {
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
                   </svg>
-                  <span>{runPlan(rec)} Use <b>Directions</b> below to get to the start.</span>
+                  <span>{runPlan(rec)}</span>
                 </p>
 
                 <div className="rec-splits">
