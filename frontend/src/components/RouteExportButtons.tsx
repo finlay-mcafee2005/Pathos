@@ -11,11 +11,12 @@ type Props = {
   format?: RunFormat;
   repeatCount?: number;
   surface?: string | null;
+  approachPath?: [number, number][];
   compact?: boolean;
 };
 
 // eslint-disable-next-line react-refresh/only-export-components
-export function useRouteActions({ routeId, recommendationId, name, loadPath, format, repeatCount, surface }: Omit<Props, "compact">) {
+export function useRouteActions({ routeId, recommendationId, name, loadPath, format, repeatCount, surface, approachPath }: Omit<Props, "compact">) {
   const navigate = useNavigate();
   const [busy, setBusy] = useState<"gpx" | "maps" | "follow" | null>(null);
 
@@ -23,7 +24,7 @@ export function useRouteActions({ routeId, recommendationId, name, loadPath, for
     setBusy("follow");
     try {
       const path = await loadPath();
-      navigate("/follow", { state: { routeId, recommendationId, name, path, format, repeatCount, surface } });
+      navigate("/follow", { state: { routeId, recommendationId, name, path, format, repeatCount, surface, approachPath } });
     } finally {
       setBusy(null);
     }

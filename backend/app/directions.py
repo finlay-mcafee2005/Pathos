@@ -253,3 +253,24 @@ def walk_path(a: Point, b: Point) -> Tuple[List[Point], float]:
         out = ([a, b], meters(a, b) * 1.3)
     _cache[key] = out
     return out
+
+
+def to_start(a: Point, b: Point) -> Optional[dict]:
+    """Walking/jogging directions from where the runner is to the start of the route:
+    {path: [(lat, lon)...], distance_m, cues: [...]}. None if routing is unavailable."""
+    key = ("tostart", round(a[0], 4), round(a[1], 4), round(b[0], 5), round(b[1], 5))
+    if key in _cache:
+        return _cache[key]
+    params = urllib.parse.urlencode({"steps": "true", "overview": "full", "geometries": "geojson"})
+    data = _get(f"{OSRM_URL}/route/v1/foot/{a[1]:.6f},{a[0]:.6f};{b[1]:.6f},{b[0]:.6f}?{params}")
+    if not data or data.get("code") != "Ok" or not data.get("routes"):
+        return None
+    route = data["routes"][0]
+    steps = [st for leg in route.get("legs", []) for st in leg.get("steps", [])]
+    cues = steps_to_cues(steps)
+    if cues and cues[-1]["icon"] == "finish":
+        cues[-1]["text"] = "You're at the start of the route"
+    out = {"path": [(lat, lon) for lon, lat in route["geometry"]["coordinates"]],
+           "distance_m": round(float(route.get("distance", 0))), "cues": cues}
+    _cache[key] = out
+    return out

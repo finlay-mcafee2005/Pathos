@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { MapContainer, TileLayer, Polyline, CircleMarker, Circle, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { runPath, cumulativeMeters, metersBetween, formatNote, googleMapsUrl, type RunFormat } from "../utils/routeExport";
+import { runPath, cumulativeMeters, metersBetween, formatNote, type RunFormat } from "../utils/routeExport";
 import { API_URL } from "../utils/format";
 
 type Cue = { text: string; street: string; icon: string; lat: number; lon: number };
@@ -65,7 +65,12 @@ type FollowState = {
   format?: RunFormat;
   repeatCount?: number;
   surface?: string | null;
+  approachPath?: [number, number][];   // home -> start, from the card (shown until GPS is ready)
 };
+
+type GetThere = { path: [number, number][]; distance_m: number; cues: Cue[] };
+const AT_START_M = 60;            // closer than this to the start = no "getting there" directions
+const REROUTE_M = 400;            // re-plan the way to the start after moving this far
 
 const OFF_ROUTE_M = 60;          // farther than this from the line = off route
 const MAX_ACCURACY_M = 50;       // ignore fixes worse than this for progress
@@ -129,6 +134,9 @@ function FollowPage() {
     }
   });
   const announced = useRef<Set<string>>(new Set());
+  const [getThere, setGetThere] = useState<GetThere | null>(null);
+  const [showGetThere, setShowGetThere] = useState(true);
+  const getThereFrom = useRef<[number, number] | null>(null);
 
   // fetch turn cues once, then pin each one to a distance along the route
   useEffect(() => {
@@ -460,6 +468,32 @@ function FollowPage() {
     }
   }, [progressIdx, cues, cum, voiceOn]);
 
+  // directions from where the runner is to the start of the route (re-planned if they move a lot)
+  useEffect(() => {
+    if (!me || route.length < 2 || progressIdx > 0) return;
+    const startPt = route[0];
+    if (metersBetween(me.pos, startPt) < AT_START_M) {
+      setGetThere(null);
+      return;
+    }
+    if (getThereFrom.current && metersBetween(getThereFrom.current, me.pos) < REROUTE_M) return;
+    getThereFrom.current = me.pos;
+    fetch(`${API_URL}/directions/to-start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ origin: me.pos, start: startPt }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: GetThere | null) => {
+        if (d && d.path?.length > 1) {
+          setGetThere(d);
+          setFocus([...d.path, ...route]);
+          setFitTrigger((t) => t + 1);
+        }
+      })
+      .catch(() => {});
+  }, [me, route, progressIdx]);
+
   if (!state || route.length < 2) {
     return (
       <div className="follow-empty">
@@ -488,7 +522,6 @@ function FollowPage() {
   const nextCue = cues?.find((c) => (started ? c.at > done + 8 : true)) ?? null;
   const nextIn = nextCue ? Math.max(0, nextCue.at - done) : null;
   const note = formatNote(state.format, state.repeatCount);
-  const directions = googleMapsUrl(state.path, state.format, "trail"); // directions to the start
 
   const icons = {
     voiceOn: (
@@ -519,6 +552,13 @@ function FollowPage() {
         <FitTo points={focus} trigger={fitTrigger} />
         <MapGrab onMap={grabMap} />
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' />
+        {!started && (getThere?.path ?? state.approachPath) && (
+          <>
+            <Polyline positions={getThere?.path ?? state.approachPath ?? []} pathOptions={{ color: "#FFFFFF", weight: 8, opacity: 0.9 }} />
+            <Polyline positions={getThere?.path ?? state.approachPath ?? []}
+              pathOptions={{ color: "#0f172a", weight: 4, opacity: 0.85, dashArray: "1 9", lineCap: "round" }} />
+          </>
+        )}
         <Polyline positions={route} pathOptions={{ color: "#FFFFFF", weight: 11, opacity: 0.95 }} />
         <Polyline positions={route} pathOptions={{ color: "#93C5FD", weight: 6, opacity: 1 }} />
         {started && (
@@ -630,10 +670,26 @@ function FollowPage() {
             <p className="follow-warn">Weak GPS signal. Progress will resume when it sharpens.</p>
           )}
 
-          {!started && directions && toStart != null && toStart > 300 && (
-            <a className="follow-directions" href={directions} target="_blank" rel="noreferrer">
-              Directions to the start
-            </a>
+          {!started && getThere && toStart != null && toStart >= AT_START_M && (
+            <div className="follow-turns-wrap follow-getthere">
+              <button className="follow-turns-toggle" onClick={() => setShowGetThere(!showGetThere)} aria-expanded={showGetThere}>
+                <span>Getting to the start</span>
+                <span className="follow-turns-count">
+                  {(getThere.distance_m / 1609.34).toFixed(1)} mi · dotted line
+                </span>
+                <span className={`chevron ${showGetThere ? "open" : ""}`}>▾</span>
+              </button>
+              {showGetThere && (
+                <ol className="follow-turns">
+                  {getThere.cues.map((c, i) => (
+                    <li key={i}>
+                      <span className="follow-turn-icon"><TurnIcon icon={c.icon} size={16} /></span>
+                      <span className="follow-turn-text">{c.text}</span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
           )}
 
           {cueStatus === "ready" && cues && (

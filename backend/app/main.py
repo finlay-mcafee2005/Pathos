@@ -18,7 +18,7 @@ from datetime import date as date_type
 from pydantic import BaseModel, Field
 from app.geocoding import geocode_address, geocode_la
 from app.conditions import fetch_conditions
-from app.directions import directions_for, walk_path
+from app.directions import directions_for, walk_path, to_start
 from app.activity_import import parse_activity, match_route, ImportProblem
 import base64
 from zoneinfo import ZoneInfo
@@ -1001,6 +1001,19 @@ def leave_club(user_id: UUID, session: Session = Depends(get_session),
 
 class DirectionsRequest(BaseModel):
     path: List[List[float]]     # [[lat, lon], ...] as it will be run (out-and-backs already doubled)
+
+
+class ToStartRequest(BaseModel):
+    origin: List[float]          # [lat, lon] where the runner is now
+    start: List[float]           # [lat, lon] start of the route
+
+
+@app.post("/directions/to-start")
+def get_directions_to_start(payload: ToStartRequest):
+    """How to get from the runner's current spot to the start of the route."""
+    if len(payload.origin) < 2 or len(payload.start) < 2:
+        raise HTTPException(status_code=400, detail="origin and start are [lat, lon]")
+    return to_start((payload.origin[0], payload.origin[1]), (payload.start[0], payload.start[1]))
 
 
 @app.post("/directions")

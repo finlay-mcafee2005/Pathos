@@ -251,6 +251,7 @@ function RecActions({ rec, saved, onSave, onLog }: {
     format: rec.run_format,
     repeatCount: rec.repeat_count,
     surface: rec.surface_type,
+    approachPath: rec.approach_path,
   });
   const hasPath = rec.path.length > 1;
   return (
