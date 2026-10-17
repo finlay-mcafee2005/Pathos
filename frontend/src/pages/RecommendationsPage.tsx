@@ -36,7 +36,8 @@ type Recommendation = {
   difficulty_label?: string;
   approach_km?: number;                 // each way, home -> start (0 = travel there instead)
   approach_path?: [number, number][];   // the streets from home to the start
-  home?: [number, number];   // e.g. "Long, gentle" for a flat run that's Hard only by length   // e.g. a gentler route a little beyond the travel limit
+  home?: [number, number];
+  travel_km?: number | null;            // home -> start, when it's farther than a run-there   // e.g. "Long, gentle" for a flat run that's Hard only by length   // e.g. a gentler route a little beyond the travel limit
   distance_km: number;
   elevation_gain_m: number;
   difficulty: string;
@@ -200,7 +201,10 @@ function runPlan(rec: Recommendation): string {
   if (fromHome) {
     return `From home: run ${approach.toFixed(1)} mi to the start (dotted line), ${main}, then run back home. The total includes both trips.`;
   }
-  return `Start at the blue dot, ${main}. Use Directions below to get to the start.`;
+  if (rec.travel_km) {
+    return `The start is ${kmToMiles(rec.travel_km).toFixed(1)} mi from home (dotted line). Get there, then ${main}.`;
+  }
+  return `Start at the blue dot, ${main}.`;
 }
 
 function factorLabel(key: string, pts: number): string {
@@ -231,7 +235,7 @@ function RecActions({ rec, saved, onSave, onLog }: {
   onSave: () => void;
   onLog: () => void;
 }) {
-  const { busy, handleFollow, handleGpx, handleMaps } = useRouteActions({
+  const { busy, handleFollow, handleGpx } = useRouteActions({
     routeId: rec.route_id,
     recommendationId: rec.recommendation_id,
     name: rec.route_name,
@@ -285,17 +289,6 @@ function RecActions({ rec, saved, onSave, onLog }: {
               <span className="rec-tile-text">
                 <strong>{busy === "gpx" ? "Preparing..." : "GPX file"}</strong>
                 <small>For your watch or running app</small>
-              </span>
-            </button>
-            <button className="rec-tile" onClick={handleMaps} disabled={busy !== null}>
-              <span className="rec-tile-icon" aria-hidden="true">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 11l18-8-8 18-2-8-8-2z" />
-                </svg>
-              </span>
-              <span className="rec-tile-text">
-                <strong>{busy === "maps" ? "Opening..." : "Directions"}</strong>
-                <small>Get to the start in Google Maps</small>
               </span>
             </button>
           </div>
@@ -525,7 +518,12 @@ function RecommendationsPage() {
                     {rec.approach_path && rec.approach_path.length > 1 && (
                       <>
                         <Polyline positions={rec.approach_path} pathOptions={{ color: "#FFFFFF", weight: 7, opacity: 0.9 }} />
-                        <Polyline positions={rec.approach_path} pathOptions={{ color: "#2563EB", weight: 3.5, opacity: 0.9, dashArray: "2 8", lineCap: "round" }} />
+                        <Polyline
+                          positions={rec.approach_path}
+                          pathOptions={(rec.approach_km ?? 0) > 0
+                            ? { color: "#2563EB", weight: 3.5, opacity: 0.9, dashArray: "2 8", lineCap: "round" }
+                            : { color: "#64748B", weight: 3, opacity: 0.85, dashArray: "6 8", lineCap: "round" }}
+                        />
                         {rec.home && (
                           <CircleMarker center={rec.home} radius={6} pathOptions={{ color: "#FFFFFF", weight: 3, fillColor: "#0f172a", fillOpacity: 1 }}>
                             <Tooltip permanent direction="bottom" offset={[0, 6]} className="map-pin-label home">Home</Tooltip>

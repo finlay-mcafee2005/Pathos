@@ -351,11 +351,15 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
 
 
 def approach_fields(user, r) -> dict:
-    """For a route that starts within about a mile of home: the way there."""
-    if not getattr(r, "approach_km", 0) or user.latitude is None or r.route.start_lat is None:
-        return {"approach_km": 0, "approach_path": []}
+    """The way from home to the start of the route, drawn on every card.
+    approach_km > 0 = close enough that it's run as part of today's run;
+    otherwise travel_km is how far away the start is (the user gets there first)."""
+    if user.latitude is None or r.route.start_lat is None:
+        return {"approach_km": 0, "approach_path": [], "travel_km": None}
     path, metres = walk_path((user.latitude, user.longitude), (r.route.start_lat, r.route.start_lon))
-    return {"approach_km": round(r.approach_km, 2), "approach_path": [[lat, lon] for lat, lon in path],
+    return {"approach_km": round(getattr(r, "approach_km", 0) or 0, 2),
+            "approach_path": [[lat, lon] for lat, lon in path],
+            "travel_km": round(metres / 1000, 2),
             "home": [user.latitude, user.longitude]}
 
 
