@@ -140,8 +140,8 @@ def flags_for(s, day, dist_mi, extra, home):
     beginner = extra.get("runner", {}).get("fitness_level") == "beginner"
     if abs(run_mi - target_mi) > max(0.5, 0.2 * target_mi):
         f.append(f"DISTANCE {run_mi:.1f} mi vs {target_mi:.1f} target")
-    if day == "rough" and s.difficulty == "hard":
-        f.append("HARD on a rough day")
+    if day == "rough" and s.difficulty == "hard" and per_km >= 20:
+        f.append("HARD (steep) on a rough day")
     if day == "rough" and per_km >= 30:
         f.append(f"STEEP on a rough day ({per_km:.0f} m/km)")
     if beginner and s.difficulty == "hard":

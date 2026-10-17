@@ -216,6 +216,7 @@ W_TERRAIN = 15               # hilliness suits today's readiness
 W_TERRAIN_FLOOR = -10
 LOW_ENERGY = 4                # mental energy at or below this (0-10) counts as low
 W_LOW_ENERGY_HARD = 15        # max penalty for a Hard run on a low-energy day
+LONG_GENTLE_M_PER_KM = 20     # 'Hard' only because it's long: averages under ~2% climb
 W_APPEAL = 8                  # always-on: parks, water and trees beat plain street grids
 TERRAIN_TIGHTNESS = 0.7       # <1 = hill fit falls off faster away from today's ideal
 W_NOVELTY = 8                # never run / not run in 30+ days
@@ -729,8 +730,10 @@ def score_route(
     # doubles / triples both the distance and the climbing
     run_gain = hill * effective_distance
     run_difficulty = classify_difficulty(effective_distance, run_gain)
-    # low mental energy: a Hard run (long, steep, or both) is a hard sell today
-    if checkin.energy_score <= LOW_ENERGY and run_difficulty == "hard":
+    # low mental energy: a Hard *climbing* run is a hard sell today. A run that's Hard only
+    # because of the distance they chose isn't penalised (every option at that length is).
+    if checkin.energy_score <= LOW_ENERGY and run_difficulty == "hard" \
+            and not long_but_gentle(effective_distance, run_gain):
         add("energy", -W_LOW_ENERGY_HARD * (LOW_ENERGY + 1 - checkin.energy_score) / (LOW_ENERGY + 1),
             "A tough run for a low-energy day")
 
@@ -798,6 +801,12 @@ def similarity(a: ScoredRoute, b: ScoredRoute, count_surface: bool = True) -> fl
     if route_family(a.route.name) == route_family(b.route.name):
         sim += 0.30
     return min(sim, 1.0)
+
+
+def long_but_gentle(distance_km: float, climb_m: float) -> bool:
+    """Rated Hard only because of length: flat enough that it isn't a hard effort per mile."""
+    return bool(distance_km) and (climb_m or 0) / distance_km < LONG_GENTLE_M_PER_KM \
+        and classify_difficulty(distance_km, climb_m) == "hard"
 
 
 def route_family(name: str) -> str:

@@ -31,7 +31,8 @@ type Recommendation = {
   route_name: string;
   score: number;
   reasons: string[];
-  notice?: string | null;   // e.g. a gentler route a little beyond the travel limit
+  notice?: string | null;
+  difficulty_label?: string;   // e.g. "Long, gentle" for a flat run that's Hard only by length   // e.g. a gentler route a little beyond the travel limit
   distance_km: number;
   elevation_gain_m: number;
   difficulty: string;
@@ -541,11 +542,11 @@ function RecommendationsPage() {
                     <span className="rec-split-label">Climb</span>
                   </div>
                   <div>
-                    <span className={`rec-difficulty ${rec.difficulty}`}>
+                    <span className={`rec-difficulty ${rec.difficulty_label === "Long, gentle" ? "moderate long" : rec.difficulty}`}>
                       <span className="rec-difficulty-bars" aria-hidden="true">
                         <i /><i /><i />
                       </span>
-                      {rec.difficulty}
+                      {rec.difficulty_label ?? rec.difficulty}
                     </span>
                     <span className="rec-split-label">{surface ?? "Effort"}</span>
                   </div>

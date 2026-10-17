@@ -31,7 +31,8 @@ from app.auth import hash_password, verify_password, make_token, read_token, mak
 import hashlib
 from app.emails import send_welcome_email, send_verify_email, send_reset_email, APP_URL
 
-from app.scoring.engine import recommend, diversify, heat_distance_factor
+from app.scoring.engine import recommend, diversify, heat_distance_factor, readiness, long_but_gentle
+LONG_ROUGH_NOTE = "A long run for how you feel today - keep the pace easy and cut it short if you need to"
 from app.scoring.converters import (
     build_user_profile, build_daily_checkin,
     build_recent_runs, build_route_candidates,
@@ -282,6 +283,8 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
                 route_by_id[str(r.id)] = r
             real_route_ids |= {str(r.id) for r in extra}
 
+    rough_today = readiness(user_profile, daily_checkin, recent_runs) < 0.45
+
     # log exactly what was shown for this check-in (a refresh replaces it)
     # (picks that already have a run logged against them are kept)
     for old_rec in session.exec(select(Recommendation).where(Recommendation.checkin_id == checkin.id,
@@ -320,11 +323,16 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             "repeat_count": r.repeat_count,
             "effective_distance_km": round(r.effective_distance_km, 2),
             "reasons": r.reasons,
-            "notice": GENTLE_NOTE if GENTLE_NOTE in r.reasons else None,
+            "notice": GENTLE_NOTE if GENTLE_NOTE in r.reasons else (
+                LONG_ROUGH_NOTE if rough_today and long_but_gentle(r.effective_distance_km, r.run_gain_m or 0)
+                else None),
             "distance_km": r.route.distance_km,
             "elevation_gain_m": r.run_gain_m if r.run_gain_m is not None
                                 else run_climb_m(route_by_id[r.route.id], r.run_format, r.repeat_count),
             "difficulty": r.difficulty,
+            # a long, flat run is "Hard" by length only: say so instead of just "Hard"
+            "difficulty_label": "Long, gentle" if r.difficulty == "hard"
+                and long_but_gentle(r.effective_distance_km, r.run_gain_m or 0) else r.difficulty,
             "surface_type": r.route.surface_type,
             "path": [
                 [lat, lon]
