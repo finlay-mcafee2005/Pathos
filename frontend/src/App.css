@@ -8741,3 +8741,19 @@ body::before {
 
 /* only the GPX tile is left (Directions removed): let it use the full width */
 .rec-take-tiles { grid-template-columns: 1fr; }
+
+/* map key under each card map (replaces labels drawn on the map) */
+.map-legend { position: absolute; left: 12px; bottom: 10px; z-index: 450; display: flex; flex-wrap: wrap; gap: 6px;
+  pointer-events: none; }
+.map-legend span { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 999px;
+  background: color-mix(in srgb, var(--card-bg, #fff) 92%, transparent); box-shadow: 0 1px 3px rgba(15,23,42,.15);
+  font-size: 11px; font-weight: 600; color: var(--text, #0f172a); }
+.map-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.map-legend .lg-start { background: #1d4ed8; box-shadow: 0 0 0 2px #fff inset; border: 1px solid #1d4ed8; }
+.map-legend .lg-turn { background: #fff; border: 2.5px solid #1d4ed8; }
+.map-legend .lg-home { background: #0f172a; }
+.map-legend .lg-way { width: 16px; height: 0; border-radius: 0; border-top: 3px dotted #475569; }
+.map-home-pin { background: none; border: none; }
+/* CARTO light tiles are already calm: don't wash them out further */
+.rec-map .leaflet-tile-pane { filter: none; }
+[data-theme="dark"] .rec-map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) saturate(0.4) brightness(0.9); }

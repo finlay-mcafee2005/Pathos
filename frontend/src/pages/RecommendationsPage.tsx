@@ -1,11 +1,19 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Polyline, CircleMarker, Marker, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useRouteActions } from "../components/RouteExportButtons";
 import { type GroupMatch, formatMeetTime, sessionTitle } from "./GroupsPage";
 import { API_URL } from "../utils/format";
+
+// small house pin for "home" (no text labels on the map: they collided with each other)
+const HOME_ICON = L.divIcon({
+  className: "map-home-pin",
+  html: '<svg width="22" height="22" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#0f172a" stroke="#fff" stroke-width="2"/><path d="M7 12.5 12 8l5 4.5V17h-3.2v-3h-3.6v3H7z" fill="#fff"/></svg>',
+  iconSize: [22, 22],
+  iconAnchor: [11, 11],
+});
 
 function MapResizer({ path, extra = [] }: { path: [number, number][]; extra?: [number, number][] }) {
   const map = useMap();
@@ -199,10 +207,10 @@ function runPlan(rec: Recommendation): string {
     main = "run the loop back to the start";
   }
   if (fromHome) {
-    return `From home: run ${approach.toFixed(1)} mi to the start (dotted line), ${main}, then run back home. The total includes both trips.`;
+    return `From home: run ${approach.toFixed(1)} mi to the start (dotted line on the map), ${main}, then run back home. The total includes both trips.`;
   }
   if (rec.travel_km) {
-    return `The start is ${kmToMiles(rec.travel_km).toFixed(1)} mi from home (dotted line). Get there, then ${main}.`;
+    return `The start is ${kmToMiles(rec.travel_km).toFixed(1)} mi from home (dotted line on the map). Get there, then ${main}.`;
   }
   return `Start at the blue dot, ${main}.`;
 }
@@ -514,44 +522,46 @@ function RecommendationsPage() {
                     className="rec-map"
                   >
                     <MapResizer path={rec.path} extra={rec.approach_path ?? []} />
-                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' />
+                    <TileLayer
+                      url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                    />
                     {rec.approach_path && rec.approach_path.length > 1 && (
-                      <>
-                        <Polyline positions={rec.approach_path} pathOptions={{ color: "#FFFFFF", weight: 7, opacity: 0.9 }} />
-                        <Polyline
-                          positions={rec.approach_path}
-                          pathOptions={(rec.approach_km ?? 0) > 0
-                            ? { color: "#2563EB", weight: 3.5, opacity: 0.9, dashArray: "2 8", lineCap: "round" }
-                            : { color: "#64748B", weight: 3, opacity: 0.85, dashArray: "6 8", lineCap: "round" }}
-                        />
-                        {rec.home && (
-                          <CircleMarker center={rec.home} radius={6} pathOptions={{ color: "#FFFFFF", weight: 3, fillColor: "#0f172a", fillOpacity: 1 }}>
-                            <Tooltip permanent direction="bottom" offset={[0, 6]} className="map-pin-label home">Home</Tooltip>
-                          </CircleMarker>
-                        )}
-                      </>
+                      <Polyline
+                        positions={rec.approach_path}
+                        pathOptions={{ color: "#475569", weight: 3, opacity: 0.8, dashArray: "1 7", lineCap: "round" }}
+                      />
                     )}
-                    <Polyline positions={rec.path} pathOptions={{ color: "#FFFFFF", weight: 9, opacity: 0.9 }} />
+                    <Polyline positions={rec.path} pathOptions={{ color: "#FFFFFF", weight: 8, opacity: 0.95 }} />
                     <Polyline positions={rec.path} pathOptions={{ color: "#2563EB", weight: 4.5, opacity: 1 }} />
                     {rec.run_format === "out_and_back" && (
                       <CircleMarker
                         center={rec.path[rec.path.length - 1]}
                         radius={6}
                         pathOptions={{ color: "#1D4ED8", weight: 3, fillColor: "#FFFFFF", fillOpacity: 1 }}
-                      >
-                        <Tooltip permanent direction="top" offset={[0, -6]} className="map-pin-label">Turn around</Tooltip>
-                      </CircleMarker>
+                      />
                     )}
                     <CircleMarker
                       center={rec.path[0]}
                       radius={8}
                       pathOptions={{ color: "#FFFFFF", weight: 3, fillColor: "#1D4ED8", fillOpacity: 1 }}
-                    >
-                      <Tooltip permanent direction="top" offset={[0, -8]} className="map-pin-label">
-                        {rec.run_format === "out_and_back" ? "Start" : "Start / finish"}
-                      </Tooltip>
-                    </CircleMarker>
+                    />
+                    {rec.home && rec.approach_path && rec.approach_path.length > 1 && (
+                      <Marker position={rec.home} icon={HOME_ICON} interactive={false} />
+                    )}
                   </MapContainer>
+                )}
+                {rec.path.length > 1 && (
+                  <div className="map-legend" aria-label="Map key">
+                    <span><i className="lg-start" />Start</span>
+                    {rec.run_format === "out_and_back" && <span><i className="lg-turn" />Turn around</span>}
+                    {rec.home && rec.approach_path && rec.approach_path.length > 1 && (
+                      <>
+                        <span><i className="lg-home" />Home</span>
+                        <span><i className="lg-way" />{(rec.approach_km ?? 0) > 0 ? "Run there" : "Way there"}</span>
+                      </>
+                    )}
+                  </div>
                 )}
                 <span className="rec-rank">{String(i + 1).padStart(2, "0")}</span>
                 {i === 0 && <span className="rec-best">Best match today</span>}
