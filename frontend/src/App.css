@@ -8752,8 +8752,8 @@ body::before {
 .map-legend .lg-start { background: #1d4ed8; box-shadow: 0 0 0 2px #fff inset; border: 1px solid #1d4ed8; }
 .map-legend .lg-turn { background: #fff; border: 2.5px solid #1d4ed8; }
 .map-legend .lg-home { background: #0f172a; }
-.map-legend .lg-way { width: 16px; height: 0; border-radius: 0; border-top: 3px dotted #475569; }
+.map-legend .lg-way { width: 16px; height: 0; border-radius: 0; border-top: 3px dotted #0f172a; }
 .map-home-pin { background: none; border: none; }
-/* CARTO light tiles are already calm: don't wash them out further */
-.rec-map .leaflet-tile-pane { filter: none; }
-[data-theme="dark"] .rec-map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) saturate(0.4) brightness(0.9); }
+/* calm the OpenStreetMap tiles a bit more so the route, home and dotted line stand out */
+.rec-map .leaflet-tile-pane { filter: saturate(0.2) contrast(0.85) brightness(1.1); }
+[data-theme="dark"] .rec-map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) saturate(0.25) brightness(0.85) contrast(0.9); }

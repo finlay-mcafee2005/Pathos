@@ -523,13 +523,13 @@ function RecommendationsPage() {
                   >
                     <MapResizer path={rec.path} extra={rec.approach_path ?? []} />
                     <TileLayer
-                      url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                     />
                     {rec.approach_path && rec.approach_path.length > 1 && (
                       <Polyline
                         positions={rec.approach_path}
-                        pathOptions={{ color: "#475569", weight: 3, opacity: 0.8, dashArray: "1 7", lineCap: "round" }}
+                        pathOptions={{ color: "#0f172a", weight: 4, opacity: 0.85, dashArray: "1 8", lineCap: "round" }}
                       />
                     )}
                     <Polyline positions={rec.path} pathOptions={{ color: "#FFFFFF", weight: 8, opacity: 0.95 }} />
