@@ -139,8 +139,8 @@ function formatClockTime(iso: string): string {
   return `${hour12}:${String(m).padStart(2, "0")} ${h < 12 ? "am" : "pm"}`;
 }
 
-// Conditions card: each stat gets its own color, and the color follows the value
-// (cool blue -> green -> orange -> red for temperature, green -> yellow -> red for air).
+// Conditions card: stat tiles in the app's blue, turning orange / red when a value
+// is worth watching (heat, bad air, strong wind, lots of rain, little daylight left).
 const COND_ICONS: Record<string, string[]> = {
   temp: ["M14 14.8V4a2 2 0 0 0-4 0v10.8a4 4 0 1 0 4 0z"],
   air: ["M3 8h11a3 3 0 1 0-3-3", "M3 12h15a3 3 0 1 1-3 3", "M3 16h7"],
@@ -150,8 +150,12 @@ const COND_ICONS: Record<string, string[]> = {
   sunset: ["M17 18a5 5 0 0 0-10 0", "M12 9V3M4.2 10.2l1.4 1.4M1 18h2M21 18h2M18.4 11.6l1.4-1.4M23 22H1", "M16 6l-4 3-4-3"],
 };
 
-function tempTone(f: number) { return f < 60 ? "#0EA5E9" : f < 78 ? "#10B981" : f < 90 ? "#F97316" : "#EF4444"; }
-function aqiTone(a: number) { return a <= 50 ? "#10B981" : a <= 100 ? "#EAB308" : a <= 150 ? "#F97316" : "#EF4444"; }
+// The app's blue by default; orange / red only when a value is worth watching.
+const TONE = "var(--accent)";
+const WARM = "#EA580C";
+const BAD = "#DC2626";
+function tempTone(f: number) { return f < 85 ? TONE : f < 95 ? WARM : BAD; }
+function aqiTone(a: number) { return a <= 100 ? TONE : a <= 150 ? WARM : BAD; }
 
 function condStats(c: Conditions) {
   const out: { label: string; value: string; unit?: string; tone: string; icon: string }[] = [];
@@ -159,14 +163,14 @@ function condStats(c: Conditions) {
   if (feels != null) out.push({ label: "Feels like", value: String(Math.round(feels)), unit: "°F", tone: tempTone(feels), icon: "temp" });
   if (c.us_aqi != null) out.push({ label: `Air · ${aqiLabel(c.us_aqi)}`, value: String(Math.round(c.us_aqi)), tone: aqiTone(c.us_aqi), icon: "air" });
   if (c.uv_index != null && c.uv_index >= 6)
-    out.push({ label: `UV · ${c.uv_index >= 8 ? "Very high" : "High"}`, value: String(Math.round(c.uv_index)), tone: "#8B5CF6", icon: "uv" });
+    out.push({ label: `UV · ${c.uv_index >= 8 ? "Very high" : "High"}`, value: String(Math.round(c.uv_index)), tone: c.uv_index >= 8 ? WARM : TONE, icon: "uv" });
   if (c.wind_mph != null && c.wind_mph >= 12)
-    out.push({ label: "Wind", value: String(Math.round(c.wind_mph)), unit: "mph", tone: "#14B8A6", icon: "wind" });
+    out.push({ label: "Wind", value: String(Math.round(c.wind_mph)), unit: "mph", tone: c.wind_mph >= 20 ? WARM : TONE, icon: "wind" });
   if (c.rain_last_48h_mm >= 1)
-    out.push({ label: "Rain, last 48h", value: String(c.rain_last_48h_mm), unit: "mm", tone: "#3B82F6", icon: "rain" });
+    out.push({ label: "Rain, last 48h", value: String(c.rain_last_48h_mm), unit: "mm", tone: c.rain_last_48h_mm >= 5 ? WARM : TONE, icon: "rain" });
   if (c.sunset) {
     const t = formatClockTime(c.sunset);
-    out.push({ label: "Sunset", value: t.slice(0, -3), unit: t.slice(-2), tone: "#EC4899", icon: "sunset" });
+    out.push({ label: "Sunset", value: t.slice(0, -3), unit: t.slice(-2), tone: c.minutes_until_sunset != null && c.minutes_until_sunset < 75 ? WARM : TONE, icon: "sunset" });
   }
   return out;
 }
@@ -593,7 +597,8 @@ function RecommendationsPage() {
             </div>
             <div className="cond-stats">
               {condStats(conditions).map((st) => (
-                <div className="cond-stat" key={st.label} style={{ "--tone": st.tone } as React.CSSProperties}>
+                <div className={`cond-stat ${st.tone === TONE ? "" : "alert"}`} key={st.label}
+                     style={{ "--tone": st.tone } as React.CSSProperties}>
                   <span className="cond-stat-icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2"
                          strokeLinecap="round" strokeLinejoin="round">
@@ -608,7 +613,7 @@ function RecommendationsPage() {
             {(conditions.heat_cut_pct || conditions.cooler_option) && (
               <ul className="cond-notes">
                 {conditions.heat_cut_pct ? (
-                  <li style={{ "--tone": "#F97316" } as React.CSSProperties}>
+                  <li className="warm">
                     <span className="cond-note-icon" aria-hidden="true">
                       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 14.8V4a2 2 0 0 0-4 0v10.8a4 4 0 1 0 4 0z" /></svg>
                     </span>
@@ -616,7 +621,7 @@ function RecommendationsPage() {
                   </li>
                 ) : null}
                 {conditions.cooler_option && (
-                  <li style={{ "--tone": "#6366F1" } as React.CSSProperties}>
+                  <li>
                     <span className="cond-note-icon" aria-hidden="true">
                       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
                     </span>

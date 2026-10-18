@@ -8820,7 +8820,8 @@ body::before {
 .why-item.good .why-fact { color: var(--why-good); background: color-mix(in srgb, var(--why-good) 10%, transparent); }
 .why-item.watch .why-fact { color: var(--why-watch); background: color-mix(in srgb, var(--why-watch) 12%, transparent); }
 
-/* conditions card: colorful stat tiles + short notes. Each tile/note sets --tone. */
+/* conditions card: stat tiles + short notes in the app's blue (like the cards and
+   "Why this route"); a tile turns orange/red only when its value needs attention. */
 .conditions { gap: 1rem; }
 .cond-stats {
   display: grid;
@@ -8829,39 +8830,38 @@ body::before {
 }
 .cond-stat {
   --tone: var(--accent);
-  position: relative;
   display: flex; flex-direction: column; gap: 0.3rem;
   padding: 0.8rem 0.9rem 0.75rem;
   border-radius: 14px;
-  background: color-mix(in srgb, var(--tone) 10%, var(--card-bg));
-  border: 1px solid color-mix(in srgb, var(--tone) 22%, transparent);
+  background: color-mix(in srgb, var(--tone) 5%, var(--card-bg));
+  border: 1px solid color-mix(in srgb, var(--tone) 15%, var(--border));
 }
 .cond-stat-icon {
-  width: 26px; height: 26px; border-radius: 8px;
+  width: 28px; height: 28px; border-radius: 9px;
   display: grid; place-items: center;
   color: #fff;
-  background: var(--tone);
-  margin-bottom: 0.2rem;
+  background: linear-gradient(140deg, color-mix(in srgb, var(--tone) 80%, #000), var(--tone));
+  margin-bottom: 0.25rem;
 }
+.cond-stat:not(.alert) .cond-stat-icon { background: linear-gradient(140deg, #1D4ED8, #3B82F6); }
 .cond-stat-num {
   font-family: var(--display);
   font-style: italic;
   font-weight: 800;
   font-size: 1.6rem;
   line-height: 1;
-  color: color-mix(in srgb, var(--tone) 75%, var(--ink));
+  color: var(--ink);
 }
-.cond-stat-num small { font-size: 0.55em; font-style: normal; font-weight: 700; margin-left: 2px; opacity: 0.7; }
+.cond-stat.alert .cond-stat-num { color: var(--tone); }
+.cond-stat-num small { font-size: 0.55em; font-style: normal; font-weight: 700; margin-left: 2px; opacity: 0.6; }
 .cond-stat-label {
   font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--ink);
-  opacity: 0.6;
+  opacity: 0.55;
 }
-[data-theme="dark"] .cond-stat { background: color-mix(in srgb, var(--tone) 14%, var(--card-bg)); }
-[data-theme="dark"] .cond-stat-num { color: color-mix(in srgb, var(--tone) 70%, #fff); }
 
 .cond-notes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
 .cond-notes li {
@@ -8869,30 +8869,33 @@ body::before {
   display: flex; align-items: center; gap: 0.7rem;
   padding: 0.55rem 0.7rem;
   border-radius: 12px;
-  background: color-mix(in srgb, var(--tone) 6%, var(--card-bg));
+  background: color-mix(in srgb, var(--accent) 5%, var(--card-bg));
+  border: 1px solid color-mix(in srgb, var(--accent) 12%, var(--border));
   font-size: 0.88rem; line-height: 1.4; color: var(--ink);
 }
+.cond-notes li.warm { --tone: #EA580C; }
 .cond-notes li > span:nth-child(2) { flex: 1; }
-.cond-notes b { color: color-mix(in srgb, var(--tone) 70%, var(--ink)); }
-[data-theme="dark"] .cond-notes b { color: color-mix(in srgb, var(--tone) 60%, #fff); }
+.cond-notes b { color: var(--ink); }
 .cond-note-icon {
   flex-shrink: 0;
   width: 30px; height: 30px; border-radius: 9px;
   display: grid; place-items: center;
   color: var(--tone);
-  background: color-mix(in srgb, var(--tone) 16%, transparent);
+  background: color-mix(in srgb, var(--tone) 12%, transparent);
 }
 .cond-note-action {
   flex-shrink: 0;
   font-size: 0.8rem; font-weight: 700;
   color: #fff;
-  background: var(--tone);
+  background: linear-gradient(100deg, #1D4ED8, #3B82F6);
   text-decoration: none;
-  padding: 0.4rem 0.8rem;
+  padding: 0.42rem 0.85rem;
   border-radius: 999px;
   white-space: nowrap;
+  box-shadow: 0 4px 12px color-mix(in srgb, #2563EB 25%, transparent);
 }
-.cond-note-action:hover { filter: brightness(1.08); }
+.cond-note-action:hover { filter: brightness(1.06); }
+[data-theme="dark"] .cond-stat-num small, [data-theme="dark"] .cond-stat-label { opacity: 0.65; }
 @media (max-width: 520px) {
   .cond-notes li { flex-wrap: wrap; }
   .cond-note-action { margin-left: 2.4rem; }
