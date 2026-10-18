@@ -237,6 +237,32 @@ const WHY_PHRASES: Record<string, [string, string]> = {
   daylight: ["Plenty of daylight", "You might finish after dark"],
 };
 
+// small line icons for each "Why this route" category (24x24, drawn with currentColor)
+const WHY_ICONS: Record<string, string[]> = {
+  "Distance": ["M8 19h7a3.5 3.5 0 0 0 0-7H9a3.5 3.5 0 0 1 0-7h7", "M6 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4z", "M18 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"],
+  "Climbing": ["M3 20l6-10 4 6 3-4 5 8z"],
+  "Soreness": ["M3 12h4l2.5-5 4 10 2.5-5H21"],
+  "Energy & sleep": ["M13 2L4 14h7l-1 8 9-12h-7z"],
+  "Surface": ["M12 3l9 5-9 5-9-5 9-5z", "M3 13l9 5 9-5"],
+  "Scenery": ["M12 3l6 8h-3.5l4.5 6H5l4.5-6H6z", "M12 17v4"],
+  "Location": ["M12 21s-7-6.5-7-12a7 7 0 0 1 14 0c0 5.5-7 12-7 12z", "M12 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"],
+  "Something new": ["M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6"],
+  "Your ratings": ["M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3l-5.5 2.9 1-6.2L3 9.6l6.2-.9z"],
+  "Run type & mood": ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z", "M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "M12 12.5a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1z"],
+  "Weather": ["M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"],
+};
+
+function WhyIcon({ title }: { title: string }) {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+         strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {(WHY_ICONS[title] ?? []).map((d, n) => <path key={n} d={d} />)}
+    </svg>
+  );
+}
+
+const WHY_WORDS = ["", "Works against it", "A bit against it", "Okay", "Good", "Great"];
+
 function whyGroups(breakdown: Record<string, number> | undefined) {
   const b = breakdown ?? {};
   return WHY_GROUPS.map((g) => {
@@ -632,23 +658,41 @@ function RecommendationsPage() {
                   <span className={`chevron ${openReasoning[i] ? "open" : ""}`}>▾</span>
                 </button>
 
-                {openReasoning[i] && (
-                  <div className="rec-reasoning">
-                    {whyGroups(rec.score_breakdown).map((g) => (
-                      <div className="why-row" key={g.title}>
-                        <div className="why-head">
+                {openReasoning[i] && (() => {
+                  const groups = whyGroups(rec.score_breakdown);
+                  const good = groups.filter((g) => g.dots >= 3).sort((x, y) => y.dots - x.dots);
+                  const watch = groups.filter((g) => g.dots <= 2).sort((x, y) => x.dots - y.dots);
+                  const item = (g: { title: string; dots: number; line: string }) => (
+                    <li className={`why-item ${g.dots <= 2 ? "watch" : "good"}`} key={g.title}>
+                      <span className="why-icon"><WhyIcon title={g.title} /></span>
+                      <span className="why-text">
+                        <span className="why-head">
                           <span className="why-title">{g.title}</span>
-                          <span className="why-dots" aria-label={`${g.dots} out of 5`}>
-                            {[1, 2, 3, 4, 5].map((n) => (
-                              <span key={n} className={n <= g.dots ? `on d${g.dots}` : ""} />
-                            ))}
+                          <span className="why-dots" role="img" aria-label={`${WHY_WORDS[g.dots]} (${g.dots} of 5)`}>
+                            {[1, 2, 3, 4, 5].map((n) => <span key={n} className={n <= g.dots ? "on" : ""} />)}
                           </span>
-                        </div>
-                        <p className="why-line">{g.line}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                        </span>
+                        <span className="why-line">{g.line}</span>
+                      </span>
+                    </li>
+                  );
+                  return (
+                    <div className="rec-reasoning why-panel">
+                      {good.length > 0 && (
+                        <section>
+                          <h4 className="why-section">Working for it</h4>
+                          <ul className="why-list">{good.map(item)}</ul>
+                        </section>
+                      )}
+                      {watch.length > 0 && (
+                        <section>
+                          <h4 className="why-section">Worth knowing</h4>
+                          <ul className="why-list">{watch.map(item)}</ul>
+                        </section>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </article>
           );

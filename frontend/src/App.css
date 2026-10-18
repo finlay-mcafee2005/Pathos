@@ -8775,13 +8775,35 @@ body::before {
 .rec-match-pill.good  { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
 .rec-match-pill.look  { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); opacity: 0.75; }
 
-/* "Why this route": one row per category, rated out of 5 */
-.why-row { padding: 0.7rem 0; }
-.why-row + .why-row { border-top: 1px solid var(--border); }
-.why-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-.why-title { font-weight: 700; font-size: 0.95rem; color: var(--ink); }
-.why-dots { display: inline-flex; gap: 4px; flex-shrink: 0; }
-.why-dots span { width: 18px; height: 6px; border-radius: 3px; background: var(--border); }
-.why-dots span.on { background: var(--accent); }
-.why-dots span.on.d1, .why-dots span.on.d2 { background: #94A3B8; }
-.why-line { margin: 0.3rem 0 0; font-size: 0.85rem; color: var(--ink); opacity: 0.7; line-height: 1.4; }
+/* "Why this route": categories with an icon, a 5-step rating and one plain line */
+.why-panel { --why-good: var(--accent); --why-watch: #D97706; padding: 0.4rem 1rem 0.6rem; }
+[data-theme="dark"] .why-panel { --why-watch: #FBBF24; }
+.why-panel section + section { margin-top: 0.4rem; }
+.why-section {
+  margin: 0.8rem 0 0.2rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink);
+  opacity: 0.5;
+}
+.why-list { list-style: none; margin: 0; padding: 0; }
+.why-item { display: flex; gap: 0.8rem; align-items: flex-start; padding: 0.65rem 0; }
+.why-item + .why-item { border-top: 1px solid color-mix(in srgb, var(--ink) 7%, transparent); }
+.why-icon {
+  flex-shrink: 0;
+  width: 34px; height: 34px;
+  border-radius: 10px;
+  display: grid; place-items: center;
+}
+.why-item.good .why-icon { color: var(--why-good); background: color-mix(in srgb, var(--why-good) 12%, transparent); }
+.why-item.watch .why-icon { color: var(--why-watch); background: color-mix(in srgb, var(--why-watch) 14%, transparent); }
+.why-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+.why-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.why-title { font-weight: 700; font-size: 0.92rem; color: var(--ink); }
+.why-dots { display: inline-flex; gap: 3px; flex-shrink: 0; }
+.why-dots span { width: 14px; height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--ink) 10%, transparent); }
+.why-item.good .why-dots span.on { background: var(--why-good); }
+.why-item.watch .why-dots span.on { background: var(--why-watch); }
+.why-line { font-size: 0.84rem; line-height: 1.4; color: var(--ink); opacity: 0.68; }
