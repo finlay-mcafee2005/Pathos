@@ -36,6 +36,14 @@ const YOU_ICON = L.divIcon({
   iconAnchor: [11, 11],
 });
 
+// The whole thing as one line: origin -> (streets) -> route start -> route. The
+// street path is pinned to the exact origin and start so there's never a gap or jump.
+function fullLine(rec: Recommendation): [number, number][] {
+  const way = rec.approach_path ?? [];
+  if (way.length < 2 || !rec.home) return rec.path;
+  return [rec.home, ...way, rec.path[0], ...rec.path];
+}
+
 function MapResizer({ path, extra = [] }: { path: [number, number][]; extra?: [number, number][] }) {
   const map = useMap();
   useEffect(() => {
@@ -231,11 +239,11 @@ function runPlan(rec: Recommendation): string {
   const here = rec.origin_source === "current";
   if (fromHome) {
     return here
-      ? `From where you are: run ${approach.toFixed(1)} mi to the start (dotted line on the map), ${main}, then run back. The total includes both trips.`
-      : `From home: run ${approach.toFixed(1)} mi to the start (dotted line on the map), ${main}, then run back home. The total includes both trips.`;
+      ? `From where you are: run ${approach.toFixed(1)} mi to the start (on the map), ${main}, then run back. The total includes both trips.`
+      : `From home: run ${approach.toFixed(1)} mi to the start (on the map), ${main}, then run back home. The total includes both trips.`;
   }
   if (rec.travel_km) {
-    return `The start is ${kmToMiles(rec.travel_km).toFixed(1)} mi from ${here ? "you" : "home"} (dotted line on the map). Get there, then ${main}.`;
+    return `The start is ${kmToMiles(rec.travel_km).toFixed(1)} mi from ${here ? "you" : "home"} (on the map). Get there, then ${main}.`;
   }
   return `Start at the blue dot, ${main}.`;
 }
@@ -555,14 +563,9 @@ function RecommendationsPage() {
                       url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                       attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                     />
-                    {rec.approach_path && rec.approach_path.length > 1 && (
-                      <Polyline
-                        positions={rec.approach_path}
-                        pathOptions={{ color: "#0f172a", weight: 4, opacity: 0.85, dashArray: "1 8", lineCap: "round" }}
-                      />
-                    )}
-                    <Polyline positions={rec.path} pathOptions={{ color: "#FFFFFF", weight: 8, opacity: 0.95 }} />
-                    <Polyline positions={rec.path} pathOptions={{ color: "#2563EB", weight: 4.5, opacity: 1 }} />
+                    {/* one continuous line: from you (or home) along the streets to the start, then the route */}
+                    <Polyline positions={fullLine(rec)} pathOptions={{ color: "#FFFFFF", weight: 8, opacity: 0.95, lineJoin: "round", lineCap: "round" }} />
+                    <Polyline positions={fullLine(rec)} pathOptions={{ color: "#2563EB", weight: 4.5, opacity: 1, lineJoin: "round", lineCap: "round" }} />
                     {rec.run_format === "out_and_back" && (
                       <CircleMarker
                         center={rec.path[rec.path.length - 1]}
@@ -587,7 +590,6 @@ function RecommendationsPage() {
                     {rec.home && rec.approach_path && rec.approach_path.length > 1 && (
                       <>
                         <span><i className="lg-home" />{rec.origin_source === "current" ? "You" : "Home"}</span>
-                        <span><i className="lg-way" />{(rec.approach_km ?? 0) > 0 ? "Run there" : "Way there"}</span>
                       </>
                     )}
                   </div>

@@ -504,6 +504,10 @@ function FollowPage() {
   }
 
   const start = route[0];
+  const wayRaw = getThere?.path ?? state.approachPath ?? [];
+  const wayThere: [number, number][] = wayRaw.length > 1
+    ? [...(me ? [me.pos] : []), ...wayRaw, start]
+    : [];
   const turnaround = state.format === "out_and_back" ? state.path[state.path.length - 1] : null;
   const done = cum[progressIdx] ?? 0;
   const started = progressIdx > 0;
@@ -554,9 +558,9 @@ function FollowPage() {
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' />
         {!started && (getThere?.path ?? state.approachPath) && (
           <>
-            <Polyline positions={getThere?.path ?? state.approachPath ?? []} pathOptions={{ color: "#FFFFFF", weight: 8, opacity: 0.9 }} />
-            <Polyline positions={getThere?.path ?? state.approachPath ?? []}
-              pathOptions={{ color: "#0f172a", weight: 4, opacity: 0.85, dashArray: "1 9", lineCap: "round" }} />
+            {/* same style as the route, joined exactly to you and to the start: one continuous line */}
+            <Polyline positions={wayThere} pathOptions={{ color: "#FFFFFF", weight: 11, opacity: 0.95, lineJoin: "round", lineCap: "round" }} />
+            <Polyline positions={wayThere} pathOptions={{ color: "#93C5FD", weight: 6, opacity: 1, lineJoin: "round", lineCap: "round" }} />
           </>
         )}
         <Polyline positions={route} pathOptions={{ color: "#FFFFFF", weight: 11, opacity: 0.95 }} />
@@ -675,7 +679,7 @@ function FollowPage() {
               <button className="follow-turns-toggle" onClick={() => setShowGetThere(!showGetThere)} aria-expanded={showGetThere}>
                 <span>Getting to the start</span>
                 <span className="follow-turns-count">
-                  {(getThere.distance_m / 1609.34).toFixed(1)} mi · dotted line
+                  {(getThere.distance_m / 1609.34).toFixed(1)} mi
                 </span>
                 <span className={`chevron ${showGetThere ? "open" : ""}`}>▾</span>
               </button>
