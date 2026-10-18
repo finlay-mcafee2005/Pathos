@@ -182,18 +182,20 @@ function buildHeadline(breakdown: Record<string, number> | undefined, fallback?:
 }
 
 
-// "Why this route": the score factors grouped into a few plain categories, each
+// "Why this route": the score factors grouped into plain categories, each
 // rated out of 5 with the one or two things that mattered most. No points or
 // math - the card's label (Great / Good / Worth a look) is the overall answer.
 const WHY_GROUPS: { title: string; keys: string[]; full: number }[] = [
-  { title: "Your plan", full: 25,
-    keys: ["distance", "format", "intent", "goal", "surface_pref", "scenic", "adventure", "hills"] },
-  { title: "How you feel", full: 20,
-    keys: ["terrain", "feel", "soreness", "injury", "surface_relief", "soreness_history", "energy",
-           "footing", "rhythm", "overload", "mood"] },
-  { title: "Getting there", full: 12, keys: ["proximity", "approach"] },
-  { title: "The route", full: 14,
-    keys: ["appeal", "novelty", "rating", "taste_surface", "taste_scenic", "taste_loop", "variety"] },
+  { title: "Distance", full: 25, keys: ["distance", "format"] },
+  { title: "Climbing", full: 20, keys: ["terrain", "hills", "feel"] },
+  { title: "Soreness", full: 4, keys: ["soreness", "injury", "surface_relief", "soreness_history"] },
+  { title: "Energy & sleep", full: 4, keys: ["energy", "footing", "rhythm", "overload"] },
+  { title: "Surface", full: 15, keys: ["surface_pref", "taste_surface"] },
+  { title: "Scenery", full: 8, keys: ["appeal", "scenic", "taste_scenic"] },
+  { title: "Location", full: 12, keys: ["proximity", "approach"] },
+  { title: "Something new", full: 8, keys: ["novelty", "adventure", "variety"] },
+  { title: "Your ratings", full: 8, keys: ["rating", "taste_loop"] },
+  { title: "Run type & mood", full: 6, keys: ["intent", "goal", "mood"] },
   { title: "Weather", full: 6, keys: ["heat", "shade", "air", "wind", "mud", "daylight"] },
 ];
 
@@ -246,6 +248,7 @@ function whyGroups(breakdown: Record<string, number> | undefined) {
     // what mattered most, bad news first when the group came out negative
     const ordered = [...items].sort((x, y) => Math.abs(y[1]) - Math.abs(x[1]));
     const line = ordered.slice(0, 2)
+      .filter(([, v], n) => n === 0 || Math.abs(v) >= 3)      // a second reason only if it mattered
       .map(([k, v]) => (WHY_PHRASES[k] ?? [k, k])[v >= 0 ? 0 : 1])
       .join(". ");
     return { title: g.title, dots, line: line + "." };
