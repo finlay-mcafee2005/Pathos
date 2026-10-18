@@ -35,6 +35,8 @@ from sqlmodel import Session, create_engine, select
 
 from app.models import Route
 from app.scoring.difficulty import classify_difficulty
+sys.path.insert(0, os.path.dirname(__file__))
+from route_shape import mess_score, MESSY   # skip jumbled lines (crossing / retracing / zig-zagging)
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:devpassword@localhost:5432/run_recommender")
 if "DATABASE_URL" not in os.environ:
@@ -107,6 +109,8 @@ def main():
         if any(w in c["name"].lower() for w in BAD_NAME_WORDS):
             continue
         if per_park[c["park"]] >= PER_PARK:
+            continue
+        if mess_score(c["coords"], c.get("surface", c.get("surface_type", "pavement"))) >= MESSY:
             continue
         line = mline(c["coords"])
         km = c["length_m"] / 1000
