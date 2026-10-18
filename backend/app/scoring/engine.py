@@ -218,7 +218,8 @@ W_TERRAIN_FLOOR = -10
 LOW_ENERGY = 4                # mental energy at or below this (0-10) counts as low
 W_LOW_ENERGY_HARD = 15        # max penalty for a Hard run on a low-energy day
 LONG_GENTLE_M_PER_KM = 20     # 'Hard' only because it's long: averages under ~2% climb
-RUN_FROM_HOME_KM = 1.6        # starts within ~1 mile (straight line): run there from home and back
+CLOSE_TO_HOME_KM = 3.5        # check-in travel limit at or under this = "close to home" (the app sends 2 mi)
+RUN_FROM_HOME_KM = 4.0        # ...then every route starting within this (straight line) is run from where they are
 STREET_DETOUR = 1.3           # streets are ~30% longer than a straight line (the app draws the real way)
 W_APPEAL = 8                  # always-on: parks, water and trees beat plain street grids
 TERRAIN_TIGHTNESS = 0.7       # <1 = hill fit falls off faster away from today's ideal
@@ -497,10 +498,12 @@ def score_route(
         add("goal", goal["scenic_bonus"])
 
     # --- 4. distance fit (explicit target, or inferred) --------------------
-    # A route that starts close to home is run *from home*: the run there and
-    # back counts toward today's distance, so the route part is that much shorter.
+    # "Close to home" in the check-in = they run from where they are: the run to the
+    # start and back counts toward today's distance, so the route part is that much
+    # shorter. Any other travel choice (15/30/45 min) = they get to the start first.
     approach = 0.0
-    if None not in (user.home_lat, user.home_lon, route.start_lat, route.start_lon):
+    close_to_home = checkin.willing_to_drive_km is not None and checkin.willing_to_drive_km <= CLOSE_TO_HOME_KM
+    if close_to_home and None not in (user.home_lat, user.home_lon, route.start_lat, route.start_lon):
         straight = haversine_km(user.home_lat, user.home_lon, route.start_lat, route.start_lon)
         if straight <= RUN_FROM_HOME_KM:
             approach = straight * STREET_DETOUR
