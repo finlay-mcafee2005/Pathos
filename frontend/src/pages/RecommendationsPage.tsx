@@ -1,3 +1,4 @@
+import type React from "react";
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { MapContainer, TileLayer, Polyline, CircleMarker, useMap } from "react-leaflet";
@@ -136,6 +137,38 @@ function formatClockTime(iso: string): string {
   const [h, m] = time.split(":").map(Number);
   const hour12 = ((h + 11) % 12) + 1;
   return `${hour12}:${String(m).padStart(2, "0")} ${h < 12 ? "am" : "pm"}`;
+}
+
+// Conditions card: each stat gets its own color, and the color follows the value
+// (cool blue -> green -> orange -> red for temperature, green -> yellow -> red for air).
+const COND_ICONS: Record<string, string[]> = {
+  temp: ["M14 14.8V4a2 2 0 0 0-4 0v10.8a4 4 0 1 0 4 0z"],
+  air: ["M3 8h11a3 3 0 1 0-3-3", "M3 12h15a3 3 0 1 1-3 3", "M3 16h7"],
+  uv: ["M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"],
+  wind: ["M3 8h11a3 3 0 1 0-3-3", "M3 12h15a3 3 0 1 1-3 3"],
+  rain: ["M7 15a4 4 0 0 1 .5-8 5.5 5.5 0 0 1 10.5 2 3.5 3.5 0 0 1 0 6", "M9 18l-1 2M13 18l-1 2M17 18l-1 2"],
+  sunset: ["M17 18a5 5 0 0 0-10 0", "M12 9V3M4.2 10.2l1.4 1.4M1 18h2M21 18h2M18.4 11.6l1.4-1.4M23 22H1", "M16 6l-4 3-4-3"],
+};
+
+function tempTone(f: number) { return f < 60 ? "#0EA5E9" : f < 78 ? "#10B981" : f < 90 ? "#F97316" : "#EF4444"; }
+function aqiTone(a: number) { return a <= 50 ? "#10B981" : a <= 100 ? "#EAB308" : a <= 150 ? "#F97316" : "#EF4444"; }
+
+function condStats(c: Conditions) {
+  const out: { label: string; value: string; unit?: string; tone: string; icon: string }[] = [];
+  const feels = c.feels_like_f ?? c.temp_f;
+  if (feels != null) out.push({ label: "Feels like", value: String(Math.round(feels)), unit: "°F", tone: tempTone(feels), icon: "temp" });
+  if (c.us_aqi != null) out.push({ label: `Air · ${aqiLabel(c.us_aqi)}`, value: String(Math.round(c.us_aqi)), tone: aqiTone(c.us_aqi), icon: "air" });
+  if (c.uv_index != null && c.uv_index >= 6)
+    out.push({ label: `UV · ${c.uv_index >= 8 ? "Very high" : "High"}`, value: String(Math.round(c.uv_index)), tone: "#8B5CF6", icon: "uv" });
+  if (c.wind_mph != null && c.wind_mph >= 12)
+    out.push({ label: "Wind", value: String(Math.round(c.wind_mph)), unit: "mph", tone: "#14B8A6", icon: "wind" });
+  if (c.rain_last_48h_mm >= 1)
+    out.push({ label: "Rain, last 48h", value: String(c.rain_last_48h_mm), unit: "mm", tone: "#3B82F6", icon: "rain" });
+  if (c.sunset) {
+    const t = formatClockTime(c.sunset);
+    out.push({ label: "Sunset", value: t.slice(0, -3), unit: t.slice(-2), tone: "#EC4899", icon: "sunset" });
+  }
+  return out;
 }
 
 // one short sentence about how conditions are shaping today's picks
@@ -539,7 +572,6 @@ function RecommendationsPage() {
       {error && error !== "checkin" && <p className="error">Error: {error}</p>}
 
       {conditions && count > 0 && (() => {
-        const feels = conditions.feels_like_f ?? conditions.temp_f;
         const rt = conditions.run_time.replace("tomorrow_", "");
         const base = { now: "Right now", morning: "morning", midday: "midday", evening: "evening" }[rt] ?? "today";
         const when = conditions.run_time === "now"
@@ -560,47 +592,23 @@ function RecommendationsPage() {
               <p>{conditionsVerdict(conditions)}</p>
             </div>
             <div className="cond-stats">
-              {feels != null && (
-                <div className={`cond-stat ${feels >= 85 ? "warn" : ""}`}>
-                  <span className="cond-stat-num">{Math.round(feels)}<small>°F</small></span>
-                  <span className="cond-stat-label">Feels like</span>
+              {condStats(conditions).map((st) => (
+                <div className="cond-stat" key={st.label} style={{ "--tone": st.tone } as React.CSSProperties}>
+                  <span className="cond-stat-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2"
+                         strokeLinecap="round" strokeLinejoin="round">
+                      {COND_ICONS[st.icon].map((d, n) => <path key={n} d={d} />)}
+                    </svg>
+                  </span>
+                  <span className="cond-stat-num">{st.value}{st.unit && <small>{st.unit}</small>}</span>
+                  <span className="cond-stat-label">{st.label}</span>
                 </div>
-              )}
-              {conditions.us_aqi != null && (
-                <div className={`cond-stat ${conditions.us_aqi > 100 ? "warn" : ""}`}>
-                  <span className="cond-stat-num">{Math.round(conditions.us_aqi)}</span>
-                  <span className="cond-stat-label">Air · {aqiLabel(conditions.us_aqi)}</span>
-                </div>
-              )}
-              {conditions.uv_index != null && conditions.uv_index >= 6 && (
-                <div className={`cond-stat ${conditions.uv_index >= 8 ? "warn" : ""}`}>
-                  <span className="cond-stat-num">{Math.round(conditions.uv_index)}</span>
-                  <span className="cond-stat-label">UV · {conditions.uv_index >= 8 ? "Very high" : "High"}</span>
-                </div>
-              )}
-              {conditions.wind_mph != null && conditions.wind_mph >= 12 && (
-                <div className={`cond-stat ${conditions.wind_mph >= 20 ? "warn" : ""}`}>
-                  <span className="cond-stat-num">{Math.round(conditions.wind_mph)}<small>mph</small></span>
-                  <span className="cond-stat-label">Wind</span>
-                </div>
-              )}
-              {conditions.rain_last_48h_mm >= 1 && (
-                <div className={`cond-stat ${conditions.rain_last_48h_mm >= 5 ? "warn" : ""}`}>
-                  <span className="cond-stat-num">{conditions.rain_last_48h_mm}<small>mm</small></span>
-                  <span className="cond-stat-label">Rain, last 48h</span>
-                </div>
-              )}
-              {conditions.sunset && (
-                <div className={`cond-stat ${conditions.minutes_until_sunset != null && conditions.minutes_until_sunset < 75 ? "warn" : ""}`}>
-                  <span className="cond-stat-num">{formatClockTime(conditions.sunset).replace(/ (am|pm)$/, "")}<small>{formatClockTime(conditions.sunset).slice(-2)}</small></span>
-                  <span className="cond-stat-label">Sunset</span>
-                </div>
-              )}
+              ))}
             </div>
             {(conditions.heat_cut_pct || conditions.cooler_option) && (
               <ul className="cond-notes">
                 {conditions.heat_cut_pct ? (
-                  <li>
+                  <li style={{ "--tone": "#F97316" } as React.CSSProperties}>
                     <span className="cond-note-icon" aria-hidden="true">
                       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 14.8V4a2 2 0 0 0-4 0v10.8a4 4 0 1 0 4 0z" /></svg>
                     </span>
@@ -608,7 +616,7 @@ function RecommendationsPage() {
                   </li>
                 ) : null}
                 {conditions.cooler_option && (
-                  <li>
+                  <li style={{ "--tone": "#6366F1" } as React.CSSProperties}>
                     <span className="cond-note-icon" aria-hidden="true">
                       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
                     </span>

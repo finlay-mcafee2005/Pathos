@@ -8820,66 +8820,79 @@ body::before {
 .why-item.good .why-fact { color: var(--why-good); background: color-mix(in srgb, var(--why-good) 10%, transparent); }
 .why-item.watch .why-fact { color: var(--why-watch); background: color-mix(in srgb, var(--why-watch) 12%, transparent); }
 
-/* conditions card: a clean stat row + short notes (replaces chips and the orange box) */
+/* conditions card: colorful stat tiles + short notes. Each tile/note sets --tone. */
+.conditions { gap: 1rem; }
 .cond-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  overflow: hidden;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 0.6rem;
 }
 .cond-stat {
-  display: flex; flex-direction: column; gap: 0.2rem;
-  padding: 0.75rem 0.9rem;
-  border-left: 1px solid var(--border);
-  margin-left: -1px;
+  --tone: var(--accent);
+  position: relative;
+  display: flex; flex-direction: column; gap: 0.3rem;
+  padding: 0.8rem 0.9rem 0.75rem;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--tone) 10%, var(--card-bg));
+  border: 1px solid color-mix(in srgb, var(--tone) 22%, transparent);
+}
+.cond-stat-icon {
+  width: 26px; height: 26px; border-radius: 8px;
+  display: grid; place-items: center;
+  color: #fff;
+  background: var(--tone);
+  margin-bottom: 0.2rem;
 }
 .cond-stat-num {
   font-family: var(--display);
   font-style: italic;
   font-weight: 800;
-  font-size: 1.55rem;
+  font-size: 1.6rem;
   line-height: 1;
-  color: var(--ink);
+  color: color-mix(in srgb, var(--tone) 75%, var(--ink));
 }
-.cond-stat-num small { font-size: 0.55em; font-style: normal; font-weight: 600; margin-left: 2px; opacity: 0.6; }
+.cond-stat-num small { font-size: 0.55em; font-style: normal; font-weight: 700; margin-left: 2px; opacity: 0.7; }
 .cond-stat-label {
-  font-size: 0.68rem;
+  font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--ink);
-  opacity: 0.55;
+  opacity: 0.6;
 }
-.cond-stat.warn .cond-stat-num { color: #C2410C; }
-[data-theme="dark"] .cond-stat.warn .cond-stat-num { color: #FDBA74; }
+[data-theme="dark"] .cond-stat { background: color-mix(in srgb, var(--tone) 14%, var(--card-bg)); }
+[data-theme="dark"] .cond-stat-num { color: color-mix(in srgb, var(--tone) 70%, #fff); }
 
-.cond-notes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.55rem; }
+.cond-notes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
 .cond-notes li {
+  --tone: var(--accent);
   display: flex; align-items: center; gap: 0.7rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--tone) 6%, var(--card-bg));
   font-size: 0.88rem; line-height: 1.4; color: var(--ink);
 }
-.cond-notes li > span:nth-child(2) { flex: 1; opacity: 0.85; }
-.cond-notes b { font-weight: 700; opacity: 1; }
+.cond-notes li > span:nth-child(2) { flex: 1; }
+.cond-notes b { color: color-mix(in srgb, var(--tone) 70%, var(--ink)); }
+[data-theme="dark"] .cond-notes b { color: color-mix(in srgb, var(--tone) 60%, #fff); }
 .cond-note-icon {
   flex-shrink: 0;
   width: 30px; height: 30px; border-radius: 9px;
   display: grid; place-items: center;
-  color: #C2410C;
-  background: color-mix(in srgb, #F97316 12%, transparent);
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 16%, transparent);
 }
-[data-theme="dark"] .cond-note-icon { color: #FDBA74; }
 .cond-note-action {
   flex-shrink: 0;
   font-size: 0.8rem; font-weight: 700;
-  color: var(--accent);
+  color: #fff;
+  background: var(--tone);
   text-decoration: none;
-  padding: 0.35rem 0.75rem;
+  padding: 0.4rem 0.8rem;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
   white-space: nowrap;
 }
-.cond-note-action:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.cond-note-action:hover { filter: brightness(1.08); }
 @media (max-width: 520px) {
   .cond-notes li { flex-wrap: wrap; }
   .cond-note-action { margin-left: 2.4rem; }
