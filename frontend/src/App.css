@@ -8774,3 +8774,14 @@ body::before {
 .rec-match-pill.great { background: var(--accent); color: #fff; }
 .rec-match-pill.good  { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
 .rec-match-pill.look  { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); opacity: 0.75; }
+
+/* "Why this route": one row per category, rated out of 5 */
+.why-row { padding: 0.7rem 0; }
+.why-row + .why-row { border-top: 1px solid var(--border); }
+.why-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.why-title { font-weight: 700; font-size: 0.95rem; color: var(--ink); }
+.why-dots { display: inline-flex; gap: 4px; flex-shrink: 0; }
+.why-dots span { width: 18px; height: 6px; border-radius: 3px; background: var(--border); }
+.why-dots span.on { background: var(--accent); }
+.why-dots span.on.d1, .why-dots span.on.d2 { background: #94A3B8; }
+.why-line { margin: 0.3rem 0 0; font-size: 0.85rem; color: var(--ink); opacity: 0.7; line-height: 1.4; }

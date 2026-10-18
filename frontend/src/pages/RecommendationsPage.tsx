@@ -90,7 +90,7 @@ function matchPct(score: number): number {
 
 // The card shows a plain label instead of the raw %: the % is points out of a
 // "fits everything" route, so 45% reads like a failing grade when it's really
-// "decent, with one thing off". The exact % stays in "Why this route".
+// "decent, with one thing off". The exact % is in the label's tooltip.
 function matchLabel(score: number): { text: string; tone: "great" | "good" | "look" } {
   const pct = matchPct(score);
   if (pct >= 70) return { text: "Great match", tone: "great" };
@@ -98,42 +98,6 @@ function matchLabel(score: number): { text: string; tone: "great" | "good" | "lo
   return { text: "Worth a look", tone: "look" };
 }
 
-// Short labels for the "Why this route" breakdown. The section title
-// ("What helped" / "What held it back") already says which way each one went.
-const FACTOR_LABELS: Record<string, [string, string]> = {
-  appeal: ["Nice surroundings", "Plain streets"],
-  energy: ["Energy", "Tough for low energy"],
-  hills: ["Hills", "Too hilly"],
-  soreness: ["Easy on soreness", "Hard on soreness"],
-  injury: ["Easy on injury", "Hard on injury"],
-  surface_relief: ["Softer surface", "Rough surface"],
-  soreness_history: ["Recovery history", "Recovery history"],
-  scenic: ["Scenic", "Not scenic"],
-  surface_pref: ["Surface", "Not your surface"],
-  adventure: ["Somewhere new", "Run recently"],
-  taste_surface: ["Surface you like", "Surface you rate low"],
-  taste_scenic: ["Scenery you like", "Scenery"],
-  taste_loop: ["Loop", "Not a loop"],
-  goal: ["Training goal", "Training goal"],
-  distance: ["Distance", "Distance"],
-  format: ["Simple route", "Extra laps"],
-  terrain: ["Climbing", "Climbing"],
-  rhythm: ["Recovery day", "Recovery day"],
-  overload: ["Weekly mileage", "Weekly mileage"],
-  footing: ["Footing", "Footing"],
-  proximity: ["Close to home", "Far from home"],
-  novelty: ["Fresh route", "Run recently"],
-  rating: ["Rated well", "Rated low"],
-  variety: ["Variety", "Similar to another pick"],
-  heat: ["Temperature", "Heat"],
-  air: ["Air quality", "Air quality"],
-  wind: ["Wind", "Wind"],
-  mud: ["Dry trails", "Muddy trails"],
-  daylight: ["Daylight", "Daylight"],
-  mood: ["Mood", "Mood"],
-  shade: ["Shade", "Little shade"],
-  intent: ["Run type", "Run type"],
-};
 
 type Conditions = {
   run_time: string;
@@ -217,10 +181,75 @@ function buildHeadline(breakdown: Record<string, number> | undefined, fallback?:
   return sentence.charAt(0).toUpperCase() + sentence.slice(1) + ".";
 }
 
-function factorLabel(key: string, pts: number): string {
-  const pair = FACTOR_LABELS[key];
-  if (!pair) return key.replace(/_/g, " ");
-  return pts >= 0 ? pair[0] : pair[1];
+
+// "Why this route": the score factors grouped into a few plain categories, each
+// rated out of 5 with the one or two things that mattered most. No points or
+// math - the card's label (Great / Good / Worth a look) is the overall answer.
+const WHY_GROUPS: { title: string; keys: string[]; full: number }[] = [
+  { title: "Your plan", full: 25,
+    keys: ["distance", "format", "intent", "goal", "surface_pref", "scenic", "adventure", "hills"] },
+  { title: "How you feel", full: 20,
+    keys: ["terrain", "feel", "soreness", "injury", "surface_relief", "soreness_history", "energy",
+           "footing", "rhythm", "overload", "mood"] },
+  { title: "Getting there", full: 12, keys: ["proximity", "approach"] },
+  { title: "The route", full: 14,
+    keys: ["appeal", "novelty", "rating", "taste_surface", "taste_scenic", "taste_loop", "variety"] },
+  { title: "Weather", full: 6, keys: ["heat", "shade", "air", "wind", "mud", "daylight"] },
+];
+
+// [when it helped, when it hurt]
+const WHY_PHRASES: Record<string, [string, string]> = {
+  distance: ["Right around the distance you wanted", "Off from the distance you wanted"],
+  format: ["Simple to follow", "Takes laps or doubling back to reach your distance"],
+  intent: ["Fits the kind of run you wanted", "Not quite the kind of run you wanted"],
+  goal: ["Fits your training goal", "Doesn't help your training goal much"],
+  surface_pref: ["On the surface you picked", "Not the surface you picked"],
+  scenic: ["Has the views you asked for", "Not very scenic"],
+  adventure: ["Somewhere new, like you asked", "You've run it recently"],
+  hills: ["The amount of climbing you asked for", "Not the amount of climbing you asked for"],
+  terrain: ["The climbing suits your energy today", "The climbing doesn't suit how you feel today"],
+  feel: ["The right kind of run for how you feel", "Not the kind of run you need today"],
+  soreness: ["Easy on your sore legs", "Harder on your sore legs"],
+  injury: ["Easy on your injury", "Puts strain on your injury"],
+  surface_relief: ["Softer ground for your sore legs", "Firmer ground for your sore legs"],
+  soreness_history: ["You usually recover well from runs like this", "You've been sorer after runs like this"],
+  energy: ["Manageable for your energy", "Tough for a low-energy day"],
+  footing: ["Even footing", "Uneven ground after a short night"],
+  rhythm: ["Easy enough for a recovery day", "Hilly or long for a recovery day"],
+  overload: ["Keeps your week in check", "Long for a week you've already run a lot"],
+  mood: ["Suits your mood", "Doesn't suit your mood"],
+  proximity: ["Starts close to you", "Starts a way from you"],
+  approach: ["Short run to the start", "Most of the run is getting to the route"],
+  appeal: ["Parks, trees or water along the way", "Mostly plain streets"],
+  novelty: ["Somewhere you haven't run lately", "You ran it recently"],
+  rating: ["You've rated it well before", "You've rated it low before"],
+  taste_surface: ["The kind of surface you like", "A surface you tend to rate low"],
+  taste_scenic: ["The kind of scenery you like", "Not your kind of scenery"],
+  taste_loop: ["A loop, which you like", "Not a loop"],
+  variety: ["Different from the other picks", "Similar to another pick"],
+  heat: ["Comfortable temperature", "It'll be hot"],
+  shade: ["Shady for the heat", "Little shade"],
+  air: ["Clean air", "Poor air quality"],
+  wind: ["Calm", "Windy on exposed stretches"],
+  mud: ["Dry trails", "Trails may be muddy"],
+  daylight: ["Plenty of daylight", "You might finish after dark"],
+};
+
+function whyGroups(breakdown: Record<string, number> | undefined) {
+  const b = breakdown ?? {};
+  return WHY_GROUPS.map((g) => {
+    const items = g.keys.filter((k) => b[k] !== undefined && Math.abs(b[k]) >= 1).map((k) => [k, b[k]] as [string, number]);
+    if (items.length === 0) return null;
+    const sum = items.reduce((t, [, v]) => t + v, 0);
+    const ratio = sum / g.full;
+    const dots = sum <= -8 ? 1 : sum < 0 ? 2 : ratio < 0.25 ? 3 : ratio < 0.6 ? 4 : 5;
+    // what mattered most, bad news first when the group came out negative
+    const ordered = [...items].sort((x, y) => Math.abs(y[1]) - Math.abs(x[1]));
+    const line = ordered.slice(0, 2)
+      .map(([k, v]) => (WHY_PHRASES[k] ?? [k, k])[v >= 0 ? 0 : 1])
+      .join(". ");
+    return { title: g.title, dots, line: line + "." };
+  }).filter((g): g is { title: string; dots: number; line: string } => g !== null);
 }
 
 const SURFACE_LABELS: Record<string, string> = {
@@ -550,7 +579,7 @@ function RecommendationsPage() {
                 <div className="rec-title-row">
                   <h2>{rec.route_name}</h2>
                   <span className={`rec-match-pill ${matchLabel(rec.score).tone}`}
-                        title={`${matchPct(rec.score)}% match with your check-in - see "Why this route"`}>
+                        title={`${matchPct(rec.score)}% match with your check-in`}>
                     {matchLabel(rec.score).text}
                   </span>
                 </div>
@@ -600,58 +629,23 @@ function RecommendationsPage() {
                   <span className={`chevron ${openReasoning[i] ? "open" : ""}`}>▾</span>
                 </button>
 
-                {openReasoning[i] && (() => {
-                  const factors = Object.entries(rec.score_breakdown ?? {}).filter(([, pts]) => Math.abs(pts) >= 0.5);
-                  const helped = factors.filter(([, p]) => p > 0).sort((x, y) => y[1] - x[1]);
-                  const hurt = factors.filter(([, p]) => p < 0).sort((x, y) => x[1] - y[1]);
-                  const biggest = Math.max(...factors.map(([, p]) => Math.abs(p)), 1);
-                  const row = ([key, pts]: [string, number]) => (
-                    <div className="rec-breakdown-row" key={key}>
-                      <span>{factorLabel(key, pts)}</span>
-                      <span className="rec-breakdown-bar">
-                        <span className={pts >= 0 ? "plus" : "minus"} style={{ width: `${(Math.abs(pts) / biggest) * 100}%` }} />
-                      </span>
-                      <span className={`pts ${pts >= 0 ? "plus" : "minus"}`}>
-                        {pts >= 0 ? "+" : "−"}
-                        {Math.abs(pts).toFixed(0)}
-                      </span>
-                    </div>
-                  );
-                  return (
-                    <div className="rec-reasoning">
-                      {helped.length > 0 && (
-                        <div className="rec-breakdown">
-                          <span className="rec-breakdown-title">What helped</span>
-                          {helped.map(row)}
+                {openReasoning[i] && (
+                  <div className="rec-reasoning">
+                    {whyGroups(rec.score_breakdown).map((g) => (
+                      <div className="why-row" key={g.title}>
+                        <div className="why-head">
+                          <span className="why-title">{g.title}</span>
+                          <span className="why-dots" aria-label={`${g.dots} out of 5`}>
+                            {[1, 2, 3, 4, 5].map((n) => (
+                              <span key={n} className={n <= g.dots ? `on d${g.dots}` : ""} />
+                            ))}
+                          </span>
                         </div>
-                      )}
-                      {hurt.length > 0 && (
-                        <div className="rec-breakdown">
-                          <span className="rec-breakdown-title">What held it back</span>
-                          {hurt.map(row)}
-                        </div>
-                      )}
-                      {(() => {
-                        const net = Math.round(rec.score - BASE_SCORE);
-                        const perfect = PERFECT_POINTS;
-                        return (
-                          <>
-                            <div className="rec-breakdown-total">
-                              <span>Total</span>
-                              <span className={`pts ${net >= 0 ? "plus" : "minus"}`}>{net >= 0 ? "+" : "−"}{Math.abs(net)}</span>
-                              <span className="rec-breakdown-match">= {matchPct(rec.score)}% match</span>
-                            </div>
-                            <p className="rec-breakdown-note">
-                              Every route starts at 0. Things that fit how you feel today add points, and things that
-                              don't take points away. The match is your total out of <b>+{perfect}</b>, the score of a
-                              route that fits everything: {Math.max(0, net)} ÷ {perfect} = {matchPct(rec.score)}%.
-                            </p>
-                          </>
-                        );
-                      })()}
-                    </div>
-                  );
-                })()}
+                        <p className="why-line">{g.line}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </article>
           );
