@@ -8807,3 +8807,15 @@ body::before {
 .why-item.good .why-dots span.on { background: var(--why-good); }
 .why-item.watch .why-dots span.on { background: var(--why-watch); }
 .why-line { font-size: 0.84rem; line-height: 1.4; color: var(--ink); opacity: 0.68; }
+.why-title { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0.25rem 0.5rem; }
+.why-fact {
+  font-weight: 600;
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+}
+.why-item.good .why-fact { color: var(--why-good); background: color-mix(in srgb, var(--why-good) 10%, transparent); }
+.why-item.watch .why-fact { color: var(--why-watch); background: color-mix(in srgb, var(--why-watch) 12%, transparent); }

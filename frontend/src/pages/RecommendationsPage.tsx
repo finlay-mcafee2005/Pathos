@@ -71,6 +71,13 @@ type Recommendation = {
   run_format?: string;
   repeat_count?: number;
   path: [number, number][];
+  // facts shown in "Why this route"
+  target_km?: number | null;
+  shade_pct?: number | null;
+  scenic_pct?: number | null;
+  days_since_run?: number | null;
+  your_rating?: number | null;
+  feels_like_f?: number | null;
 };
 
 // Plain-language explanation for each scoring factor.
@@ -262,6 +269,45 @@ function WhyIcon({ title }: { title: string }) {
 }
 
 const WHY_WORDS = ["", "Works against it", "A bit against it", "Okay", "Good", "Great"];
+
+// One measurable fact per category, so two routes' breakdowns read differently
+// even when their ratings match ("3.2 mi of 3", "410 ft up", "0.4 mi away").
+function whyFact(title: string, rec: Recommendation): string | null {
+  const mi = kmToMiles(rec.effective_distance_km ?? rec.distance_km);
+  const ft = metersToFeet(rec.elevation_gain_m ?? 0);
+  const pct = (x?: number | null) => (x == null ? null : Math.round(x * 100));
+  const surface = rec.surface_type && rec.surface_type !== "unknown" ? SURFACE_LABELS[rec.surface_type] ?? rec.surface_type : null;
+  switch (title) {
+    case "Distance":
+      return rec.target_km ? `${mi.toFixed(1)} of ${kmToMiles(rec.target_km).toFixed(1)} mi` : `${mi.toFixed(1)} mi`;
+    case "Climbing":
+      return `${Math.round(ft)} ft up · ${mi > 0 ? Math.round(ft / mi) : 0} ft/mi`;
+    case "Soreness":
+      return surface ? `${surface} surface` : null;
+    case "Energy & sleep":
+      return `${(rec.difficulty_label ?? rec.difficulty).replace(/^./, (c) => c.toUpperCase())} effort`;
+    case "Surface":
+      return surface;
+    case "Scenery":
+      return pct(rec.scenic_pct) != null ? `${pct(rec.scenic_pct)}% parks, trees or water` : null;
+    case "Location":
+      if (rec.approach_km && rec.approach_km > 0) return `${kmToMiles(rec.approach_km).toFixed(1)} mi run to the start`;
+      return rec.travel_km != null ? `${kmToMiles(rec.travel_km).toFixed(1)} mi away` : null;
+    case "Something new":
+      return rec.days_since_run == null ? "Never run" : rec.days_since_run === 0 ? "Ran it today"
+        : `Last run ${rec.days_since_run} day${rec.days_since_run === 1 ? "" : "s"} ago`;
+    case "Your ratings":
+      return rec.your_rating != null ? `You rated it ${rec.your_rating.toFixed(1)}★` : null;
+    case "Run type & mood":
+      return rec.estimated_minutes ? `About ${rec.estimated_minutes} min` : null;
+    case "Weather": {
+      const bits = [rec.feels_like_f != null ? `Feels ${Math.round(rec.feels_like_f)}°F` : null,
+                    pct(rec.shade_pct) != null ? `${pct(rec.shade_pct)}% shade` : null].filter(Boolean);
+      return bits.length ? bits.join(" · ") : null;
+    }
+  }
+  return null;
+}
 
 function whyGroups(breakdown: Record<string, number> | undefined) {
   const b = breakdown ?? {};
@@ -667,7 +713,10 @@ function RecommendationsPage() {
                       <span className="why-icon"><WhyIcon title={g.title} /></span>
                       <span className="why-text">
                         <span className="why-head">
-                          <span className="why-title">{g.title}</span>
+                          <span className="why-title">
+                            {g.title}
+                            {whyFact(g.title, rec) && <span className="why-fact">{whyFact(g.title, rec)}</span>}
+                          </span>
                           <span className="why-dots" role="img" aria-label={`${WHY_WORDS[g.dots]} (${g.dots} of 5)`}>
                             {[1, 2, 3, 4, 5].map((n) => <span key={n} className={n <= g.dots ? "on" : ""} />)}
                           </span>

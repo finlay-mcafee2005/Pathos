@@ -355,6 +355,14 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             "difficulty_label": "Long, gentle" if r.difficulty == "hard"
                 and long_but_gentle(r.effective_distance_km, r.run_gain_m or 0) else r.difficulty,
             "surface_type": r.route.surface_type,
+            # facts for "Why this route"
+            "target_km": round(r.target_km, 2) if r.target_km else None,
+            "shade_pct": getattr(r.route, "shade", None),
+            "scenic_pct": getattr(r.route, "scenic_pct", None),
+            "days_since_run": recent_runs.days_since_last_run_by_route_id.get(r.route.id),
+            "your_rating": recent_runs.avg_rating_by_route_id.get(r.route.id),
+            "feels_like_f": getattr(daily_checkin.conditions, "feels_like_f", None)
+                            or getattr(daily_checkin.conditions, "temp_f", None),
             "path": [
                 [lat, lon]
                 for lon, lat in (
