@@ -8900,3 +8900,18 @@ body::before {
   .cond-notes li { flex-wrap: wrap; }
   .cond-note-action { margin-left: 2.4rem; }
 }
+
+/* stat tiles: icon on the left, number + label stacked beside it (compact, no dead space) */
+.cond-stats { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.5rem; }
+.cond-stat {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.7rem 0.85rem;
+}
+.cond-stat-icon { width: 36px; height: 36px; border-radius: 11px; margin: 0; flex-shrink: 0; }
+.cond-stat-icon svg { width: 18px; height: 18px; }
+.cond-stat-text { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+.cond-stat-num { display: flex; align-items: baseline; font-size: 1.45rem; }
+.cond-stat-num small { margin-left: 3px; }
+.cond-stat-label { line-height: 1.25; }

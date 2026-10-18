@@ -605,8 +605,10 @@ function RecommendationsPage() {
                       {COND_ICONS[st.icon].map((d, n) => <path key={n} d={d} />)}
                     </svg>
                   </span>
-                  <span className="cond-stat-num">{st.value}{st.unit && <small>{st.unit}</small>}</span>
-                  <span className="cond-stat-label">{st.label}</span>
+                  <span className="cond-stat-text">
+                    <span className="cond-stat-num">{st.value}{st.unit && <small>{st.unit}</small>}</span>
+                    <span className="cond-stat-label">{st.label}</span>
+                  </span>
                 </div>
               ))}
             </div>
