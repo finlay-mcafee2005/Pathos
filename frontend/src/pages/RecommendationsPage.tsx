@@ -88,6 +88,16 @@ function matchPct(score: number): number {
   return Math.round(Math.max(0, Math.min(1, (score - BASE_SCORE) / PERFECT_POINTS)) * 100);
 }
 
+// The card shows a plain label instead of the raw %: the % is points out of a
+// "fits everything" route, so 45% reads like a failing grade when it's really
+// "decent, with one thing off". The exact % stays in "Why this route".
+function matchLabel(score: number): { text: string; tone: "great" | "good" | "look" } {
+  const pct = matchPct(score);
+  if (pct >= 70) return { text: "Great match", tone: "great" };
+  if (pct >= 50) return { text: "Good match", tone: "good" };
+  return { text: "Worth a look", tone: "look" };
+}
+
 // Short labels for the "Why this route" breakdown. The section title
 // ("What helped" / "What held it back") already says which way each one went.
 const FACTOR_LABELS: Record<string, [string, string]> = {
@@ -538,9 +548,9 @@ function RecommendationsPage() {
               <div className="rec-body">
                 <div className="rec-title-row">
                   <h2>{rec.route_name}</h2>
-                  <span className="rec-match" title="How well this route matches your check-in">
-                    <span className="rec-match-num">{matchPct(rec.score)}<small>%</small></span>
-                    <span className="rec-match-label">match</span>
+                  <span className={`rec-match-pill ${matchLabel(rec.score).tone}`}
+                        title={`${matchPct(rec.score)}% match with your check-in - see "Why this route"`}>
+                    {matchLabel(rec.score).text}
                   </span>
                 </div>
 

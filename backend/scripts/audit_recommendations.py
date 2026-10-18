@@ -26,7 +26,7 @@ from app.scoring.engine import (UserProfile, DailyCheckin, RecentRuns, recommend
                                 heat_distance_factor, haversine_km, climb_per_km)
 from app.scoring.converters import build_route_candidates, route_start
 from app.scoring.route_combiner import generate_combined_routes
-from app.scoring.fallbacks import needs_gentler, add_gentler, GENTLE_EXTRA_KM, wants_challenge, add_challenge
+from app.scoring.fallbacks import needs_gentler, add_gentler, GENTLE_EXTRA_KM, wants_challenge, add_challenge, drop_weak, weak_match_note
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:devpassword@localhost:5432/run_recommender")
 
@@ -130,6 +130,7 @@ def run_scenario(routes, home, day, dist_mi, extra):
             results = add_gentler(results, user, checkin, recent, build_route_candidates(wider))
     if wants_challenge(results, user, checkin, recent):
         results = add_challenge(results, user, checkin, recent, build_route_candidates(pool))
+    results = drop_weak(results)
     return results, len(pool), radius
 
 
@@ -278,6 +279,8 @@ def main():
                 f"shade {('%.0f%%' % (r.shade * 100)) if r.shade is not None else 'n/a'}, "
                 f"~{s.estimated_minutes} min, match {match}%")
             lines.append("   - points: " + ", ".join(f"{k} {v:+.0f}" for k, v in top))
+            if match < 50:
+                lines.append(f"   - card note: {weak_match_note(s)}")
             if fl:
                 lines.append("   - **FLAG: " + "; ".join(fl) + "**")
             rows.append({"home": home, "scenario": label, "rank": rank, "route": r.name,

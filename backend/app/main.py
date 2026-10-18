@@ -39,7 +39,8 @@ from app.scoring.converters import (
 )
 from app.scoring.route_combiner import generate_combined_routes
 from app.scoring.fallbacks import (needs_gentler, add_gentler, GENTLE_EXTRA_KM, GENTLE_NOTE,
-                                  wants_challenge, add_challenge)
+                                  wants_challenge, add_challenge, CHALLENGE_NOTE,
+                                  drop_weak, match_pct, weak_match_note, LOW_MATCH_PCT)
 from app.scoring.engine import build_personal_context, DailyCheckin, normalize_body_part, LOWER_BODY_PARTS
 from app.scoring.groups import GroupSession, RunnerToday, match_groups, best_for_today, KM_PER_MI
 
@@ -296,6 +297,8 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
     # fresh day and nothing Hard in the picks: offer one Hard run as the stretch option
     if wants_challenge(results, user_profile, daily_checkin, recent_runs):
         results = add_challenge(results, user_profile, daily_checkin, recent_runs, candidates)
+    # always show the best option; drop extra picks that are poor fits far behind it
+    results = drop_weak(results)
 
     rough_today = readiness(user_profile, daily_checkin, recent_runs) < 0.45
 
@@ -337,9 +340,10 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             "repeat_count": r.repeat_count,
             "effective_distance_km": round(r.effective_distance_km, 2),
             "reasons": r.reasons,
-            "notice": GENTLE_NOTE if GENTLE_NOTE in r.reasons else (
-                LONG_ROUGH_NOTE if rough_today and long_but_gentle(r.effective_distance_km, r.run_gain_m or 0)
-                else None),
+            "notice": GENTLE_NOTE if GENTLE_NOTE in r.reasons else
+                CHALLENGE_NOTE if CHALLENGE_NOTE in r.reasons else
+                LONG_ROUGH_NOTE if rough_today and long_but_gentle(r.effective_distance_km, r.run_gain_m or 0) else
+                weak_match_note(r) if match_pct(r) < LOW_MATCH_PCT else None,
             "distance_km": r.route.distance_km,
             "elevation_gain_m": r.run_gain_m if r.run_gain_m is not None
                                 else run_climb_m(route_by_id[r.route.id], r.run_format, r.repeat_count),

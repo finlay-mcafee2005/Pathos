@@ -8757,3 +8757,20 @@ body::before {
 /* (back to the original map look) */
 .rec-map .leaflet-tile-pane { filter: saturate(0.35) contrast(0.92) brightness(1.06); }
 [data-theme="dark"] .rec-map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) saturate(0.3) brightness(0.85) contrast(0.9); }
+
+/* match label on each card (replaces the big % number) */
+.rec-match-pill {
+  flex-shrink: 0;
+  align-self: flex-start;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+.rec-match-pill.great { background: var(--accent); color: #fff; }
+.rec-match-pill.good  { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+.rec-match-pill.look  { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); opacity: 0.75; }
