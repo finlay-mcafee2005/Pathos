@@ -23,7 +23,7 @@ def too_steep(s: ScoredRoute) -> bool:
     return s.difficulty == "hard" and climb_rate(s) >= GENTLE_M_PER_KM \
         or s.breakdown.get("terrain", 0) <= -5
 GENTLE_EXTRA_KM = 8.0        # how much farther than their limit we'll look (~15 min drive)
-GENTLE_NOTE = "A little farther than you wanted to go, but much gentler for today"
+GENTLE_NOTE = "It's a bit farther than you wanted to go, but a lot flatter, which suits today"
 
 
 def needs_gentler(results: List[ScoredRoute], user: UserProfile,
@@ -64,7 +64,7 @@ def add_gentler(results: List[ScoredRoute], user: UserProfile, checkin: DailyChe
 FRESH_READINESS = 0.85
 CHALLENGE_GAP = 25           # the Hard pick can't score much worse than the pick it replaces
 CHALLENGE_M_PER_KM = 45      # only routes this steep (or already Hard) are worth scoring
-CHALLENGE_NOTE = "Challenge pick: you're fresh today - a hard one if you're up for it"
+CHALLENGE_NOTE = "You're feeling good, so here's a harder one if you want it"
 
 
 def wants_challenge(results: List[ScoredRoute], user: UserProfile,
@@ -124,14 +124,14 @@ def drop_weak(results: List[ScoredRoute]) -> List[ScoredRoute]:
 
 
 WEAK_REASON = {
-    "soreness": "Harder on your sore legs than ideal - take it easy",
-    "injury": "Not ideal for your injury - take it easy",
-    "terrain": "Not quite the amount of climbing today calls for",
-    "surface_pref": "Not the surface you asked for - nothing nearby matched",
-    "heat": "It's hot out - keep this one easy",
-    "footing": "Uneven footing after a short night - go steady",
-    "approach": "Most of this run is getting to the route - few routes start close by",
-    "energy": "A tough one for a low-energy day",
+    "soreness": "This surface is a bit harder on your sore legs",
+    "injury": "This surface puts some strain on your injury",
+    "terrain": "The climbing isn't quite right for how you feel today",
+    "surface_pref": "It's not the surface you picked, but nothing nearby was",
+    "heat": "It'll be hot out, so run this one easy",
+    "footing": "It's on uneven trail and you didn't sleep much, so watch your footing",
+    "approach": "Few routes start near you, so most of this run is getting to the route",
+    "energy": "This one is tough for a low-energy day",
 }
 
 
@@ -140,8 +140,8 @@ def weak_match_note(s: ScoredRoute) -> str:
     mi = s.effective_distance_km * 0.621371
     target_mi = (s.target_km or 0) * 0.621371
     if target_mi and not s.distance_matched:
-        return f"Few routes near you are {target_mi:.0f} mi - this one's {mi:.1f} mi"
+        return f"There aren't many {target_mi:.0f} mi routes near you. This one is {mi:.1f} mi"
     known = [(k, v) for k, v in s.breakdown.items() if k in WEAK_REASON and v < 0]
     if known:
         return WEAK_REASON[min(known, key=lambda kv: kv[1])[0]]
-    return "Not a perfect fit for today, but one of the better options nearby"
+    return "Not a perfect fit for today, but one of the closer matches near you"

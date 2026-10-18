@@ -32,7 +32,7 @@ import hashlib
 from app.emails import send_welcome_email, send_verify_email, send_reset_email, APP_URL
 
 from app.scoring.engine import recommend, diversify, heat_distance_factor, readiness, long_but_gentle
-LONG_ROUGH_NOTE = "A long run for how you feel today - keep the pace easy and cut it short if you need to"
+LONG_ROUGH_NOTE = "This is long for how you feel today. Run it easy, and cut it short if you need to"
 from app.scoring.converters import (
     build_user_profile, build_daily_checkin,
     build_recent_runs, build_route_candidates,

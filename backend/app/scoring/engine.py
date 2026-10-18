@@ -364,7 +364,7 @@ def build_personal_context(user: UserProfile, checkin: DailyCheckin,
     long_run_factor, long_run_reason = 1.0, None
     if today.weekday() >= 5 and ready >= 0.5 and not rhythm.reason:
         long_run_factor = goal["weekend_long_run"]
-        long_run_reason = "Weekend - a good day for a longer run"
+        long_run_reason = "It's the weekend, a good day for a longer run"
 
     # pace: their logged runs once there are some, else what they told us at
     # signup, else a guess from their fitness level
@@ -438,7 +438,7 @@ def score_route(
         if wanted_surface and surface == wanted_surface:
             sore_weight *= 0.5
         add("soreness", -SORENESS_SURFACE_PENALTY * sore_weight,
-            f"Caution: {SURFACE_NOUN[surface]} is harder on your sore {pretty_part(sore_part)}")
+            f"{SURFACE_NOUN[surface].capitalize()} is harder on your sore {pretty_part(sore_part)}")
 
     injury_weight, injury_part = surface_strain(surface, user.active_injury_body_parts)
     if injury_weight > 0:
@@ -446,7 +446,7 @@ def score_route(
                       if normalize_body_part(part) == injury_part]
         sev = max((SEVERITY_MULTIPLIER.get(x, 1.0) for x in severities), default=1.0)
         add("injury", -INJURY_SURFACE_PENALTY * injury_weight * sev,
-            f"Caution: {SURFACE_NOUN[surface]} strains your {pretty_part(injury_part)} injury")
+            f"{SURFACE_NOUN[surface].capitalize()} puts strain on your {pretty_part(injury_part)} injury")
 
     relief_part = surface_relief(surface, checkin.sore_body_parts + user.active_injury_body_parts)
     # (no "gentler surface" bonus for a surface other than the one they asked for)
@@ -473,21 +473,21 @@ def score_route(
 
     # --- 2. explicit check-in choices --------------------------------------
     if checkin.wants_scenic and route.scenic:
-        add("scenic", W_SCENIC, "Scenic route, as requested")
+        add("scenic", W_SCENIC, "Scenic, like you asked")
 
     if checkin.surface_preference:
         wanted = "pavement" if checkin.surface_preference == "road" else checkin.surface_preference
         if surface == wanted:
-            add("surface_pref", W_SURFACE_PREF, f"{surface_label} route, as requested")
+            add("surface_pref", W_SURFACE_PREF, f"{surface_label}, like you asked")
         elif surface == "mixed":
-            add("surface_pref", W_SURFACE_PREF / 2, f"Partly {checkin.surface_preference}, as requested")
+            add("surface_pref", W_SURFACE_PREF / 2, f"Partly {checkin.surface_preference}, like you asked")
         elif surface != "unknown":
             add("surface_pref", -W_SURFACE_PREF * 0.75)  # the other surface: they asked for this one
 
     days_since = recent.days_since_last_run_by_route_id.get(route.id)
     if checkin.wants_adventure and (days_since is None or days_since > 14) \
             and route.id not in recent.last_14_days_route_ids:
-        add("adventure", W_ADVENTURE, "New route, as requested")
+        add("adventure", W_ADVENTURE, "Somewhere new, like you asked")
 
     # --- 3. learned taste (from their own ratings) -------------------------
     taste = ctx.taste
@@ -602,11 +602,11 @@ def score_route(
         elif ctx.rhythm.recovery_day:
             reason = None
         elif pts >= 8 and ready >= 0.7 and checkin.energy_score >= 7 and hill >= 20:
-            reason = "Feeling fresh - good day for some climbing"
+            reason = "You're feeling fresh, so it's a good day for some climbing"
         elif pts >= 8 and ready < 0.45 and hill < FLAT_HILL_M_PER_KM:
             reason = "Gentle, flat route for an easy day"
         elif pts <= -5 and hill > ideal:
-            reason = "Hillier than ideal for how you're feeling"
+            reason = "Hillier than you'd want today"
         add("terrain", pts, reason)
 
     # how they feel today tilts the KIND of run, not just its hilliness: a fresh day leans
@@ -643,7 +643,7 @@ def score_route(
         length = clamp(effective_distance / typical, 0, 1.5) / 1.5
         pts = -W_OVERLOAD * severity * length
         add("overload", pts,
-            "Suggested: recovery pace (weekly mileage above average)" if pts <= -3 else None)
+            "You've run more than usual this week, so keep the pace easy" if pts <= -3 else None)
 
     # tired legs + uneven terrain = higher trip / roll risk, so lean toward even footing
     poorly_rested = (
@@ -652,7 +652,7 @@ def score_route(
     )
     if poorly_rested and surface in ("trail", "mixed"):
         add("footing", -TIRED_TRAIL_PENALTY * (1.0 if surface == "trail" else 0.5),
-            "Suggested: even footing (poor sleep raises trip risk on trails)")
+            "You didn't sleep much, so even ground is safer than trail")
 
     # --- 6b. surroundings: how pleasant the route itself is --------------
     # Separate from the "scenic" request: this is a small, always-on nudge so a
@@ -701,8 +701,8 @@ def score_route(
                         "Shady route for a hot day" if heat * shade >= 0.3 else None)
             reason = None
             if pts <= -4:
-                reason = (f"It'll feel like {feels:.0f}°F - shorter and flatter is the smart call"
-                          if heat < 1 else f"Dangerous heat ({feels:.0f}°F) - keep it short, or go early")
+                reason = (f"It'll feel like {feels:.0f}°F, so shorter and flatter is the better call"
+                          if heat < 1 else f"It'll feel like {feels:.0f}°F, which is dangerous. Keep it short or go early")
             add("heat", pts, reason)
 
         uv = getattr(cond, "uv_index", None)
@@ -712,25 +712,25 @@ def score_route(
         wind = getattr(cond, "wind_mph", None)
         if wind is not None and wind >= WIND_STRONG_MPH and (hill >= 20 or surface == "trail"):
             add("wind", -W_WIND * clamp((wind - WIND_STRONG_MPH) / 15 + 0.3),
-                f"Windy ({wind:.0f} mph) - exposed ridges will be rough" if wind >= 25 else None)
+                f"It's windy ({wind:.0f} mph), so exposed ridges will be rough" if wind >= 25 else None)
 
         aqi = getattr(cond, "us_aqi", None)
         if aqi is not None and aqi > AQI_START:
             bad = clamp((aqi - AQI_START) / (AQI_SEVERE - AQI_START))
             pts = -W_AIR_MAX * bad * (0.35 + 0.65 * clamp(run_minutes / 60))
             add("air", pts,
-                f"Air quality is poor (AQI {aqi:.0f}) - keep it short and easy" if pts <= -3 else None)
+                f"Air quality is poor (AQI {aqi:.0f}), so keep it short and easy" if pts <= -3 else None)
 
         rain = getattr(cond, "rain_last_48h_mm", 0) or 0
         if rain >= RAIN_MUDDY_MM and surface in ("trail", "mixed"):
             add("mud", -W_MUD * (1.0 if surface == "trail" else 0.5),
-                "Recent rain - trails may be muddy and slick")
+                "It rained recently, so trails may be muddy and slick")
 
         until_sunset = getattr(cond, "minutes_until_sunset", None)
         if until_sunset is not None and run_minutes > until_sunset - 10:
             dark = clamp((run_minutes - until_sunset + 10) / 30)
             if surface in ("trail", "mixed"):
-                add("daylight", -W_DARK_TRAIL * dark, "You'd finish after sunset - unlit trails are risky")
+                add("daylight", -W_DARK_TRAIL * dark, "You'd finish after sunset, and these trails aren't lit")
             else:
                 add("daylight", -W_DARK_ROAD * dark)
 
@@ -748,7 +748,7 @@ def score_route(
     if mood == "stressed":
         pts = (0.6 if route.scenic else 0) + (0.4 if soft else 0) - (0.6 if route.difficulty == "hard" else 0)
         add("mood", W_MOOD * pts,
-            "Scenic and away from traffic - good for clearing your head" if pts >= 0.6 else None)
+            "Scenic and away from traffic, good for clearing your head" if pts >= 0.6 else None)
     elif mood == "flat":
         pts = (0.5 if route.scenic else 0) + (0.4 if never_run or (days_since or 0) > 30 else 0) \
             - (0.5 if route.difficulty == "hard" else 0)

@@ -203,6 +203,7 @@ const HEADLINE_CLAUSES: Record<string, string> = {
   overload: "it keeps your weekly mileage in check",
   mood: "it suits how you're feeling today",
   intent: "it fits the kind of run you wanted",
+  feel: "it's the right kind of run for how you feel",
 };
 
 function buildHeadline(breakdown: Record<string, number> | undefined, fallback?: string): string | null {
