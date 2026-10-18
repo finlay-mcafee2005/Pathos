@@ -206,33 +206,6 @@ function buildHeadline(breakdown: Record<string, number> | undefined, fallback?:
   return sentence.charAt(0).toUpperCase() + sentence.slice(1) + ".";
 }
 
-// Plain instructions for how to run the pick, so a loop, laps or an
-// out-and-back is never a surprise.
-function runPlan(rec: Recommendation): string {
-  const approach = kmToMiles(rec.approach_km ?? 0);
-  const fromHome = approach > 0.05;
-  const total = kmToMiles(rec.effective_distance_km ?? rec.distance_km) - 2 * approach;   // the route part
-  const base = kmToMiles(rec.distance_km);
-  let main: string;
-  if (rec.run_format === "out_and_back") {
-    main = `run ${(total / 2).toFixed(1)} mi to the "Turn around" point and come back the same way`;
-  } else if (rec.run_format === "repeat" && (rec.repeat_count ?? 1) > 1) {
-    main = `run the ${base.toFixed(1)} mi loop ${rec.repeat_count} times`;
-  } else {
-    main = "run the loop back to the start";
-  }
-  const here = rec.origin_source === "current";
-  if (fromHome) {
-    return here
-      ? `From where you are: run ${approach.toFixed(1)} mi to the start (the blue line begins at the dot), ${main}, then run back. The total includes both trips.`
-      : `From home: run ${approach.toFixed(1)} mi to the start (the blue line begins at the dot), ${main}, then run back home. The total includes both trips.`;
-  }
-  if (rec.travel_km) {
-    return `The start is ${kmToMiles(rec.travel_km).toFixed(1)} mi from ${here ? "you" : "home"}. Get there, then ${main}.`;
-  }
-  return `Start at the blue dot, ${main}.`;
-}
-
 function factorLabel(key: string, pts: number): string {
   const pair = FACTOR_LABELS[key];
   if (!pair) return key.replace(/_/g, " ");
@@ -572,12 +545,6 @@ function RecommendationsPage() {
                 </div>
 
                 {headline && <p className="rec-why">{headline}</p>}
-                <p className="rec-plan">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
-                  </svg>
-                  <span>{runPlan(rec)}</span>
-                </p>
 
                 <div className="rec-splits">
                   <div>

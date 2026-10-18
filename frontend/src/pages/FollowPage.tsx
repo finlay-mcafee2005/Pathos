@@ -574,7 +574,14 @@ function FollowPage() {
         {turnaround && (
           <CircleMarker center={turnaround} radius={8} pathOptions={{ color: "#1D4ED8", weight: 3, fillColor: "#FFFFFF", fillOpacity: 1 }} />
         )}
-        <CircleMarker center={start} radius={10} pathOptions={{ color: "#FFFFFF", weight: 4, fillColor: "#1D4ED8", fillOpacity: 1 }} />
+        {/* one dot: while there's a way to the start, the line begins at you (or home), so
+            the route's own start dot is hidden until you get there */}
+        {(started || wayThere.length < 2) && (
+          <CircleMarker center={start} radius={10} pathOptions={{ color: "#FFFFFF", weight: 4, fillColor: "#1D4ED8", fillOpacity: 1 }} />
+        )}
+        {!started && wayThere.length > 1 && !me && (
+          <CircleMarker center={wayThere[0]} radius={10} pathOptions={{ color: "#FFFFFF", weight: 4, fillColor: "#1D4ED8", fillOpacity: 1 }} />
+        )}
         {me && (
           <>
             <Circle center={me.pos} radius={me.accuracy} pathOptions={{ color: "#2563EB", weight: 1, fillOpacity: 0.12 }} />
