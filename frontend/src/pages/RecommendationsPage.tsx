@@ -142,15 +142,16 @@ function formatClockTime(iso: string): string {
 function conditionsVerdict(c: Conditions): string {
   const feels = c.feels_like_f ?? c.temp_f;
   const notes: string[] = [];
-  if (feels != null && feels >= 95) notes.push("dangerously hot");
-  else if (feels != null && feels >= 85) notes.push("hot");
-  if (c.us_aqi != null && c.us_aqi > 100) notes.push("hazy");
-  if (c.rain_last_48h_mm >= 5) notes.push("muddy on the trails");
-  if (c.minutes_until_sunset != null && c.minutes_until_sunset < 75) notes.push("losing daylight");
-  if (c.wind_mph != null && c.wind_mph >= 20) notes.push("windy");
+  if (feels != null && feels >= 95) notes.push("it's dangerously hot");
+  else if (feels != null && feels >= 85) notes.push("it's hot");
+  else if (c.heat_cut_pct) notes.push("it's warm");
+  if (c.us_aqi != null && c.us_aqi > 100) notes.push("the air is hazy");
+  if (c.rain_last_48h_mm >= 5) notes.push("trails may be muddy");
+  if (c.minutes_until_sunset != null && c.minutes_until_sunset < 75) notes.push("daylight is running short");
+  if (c.wind_mph != null && c.wind_mph >= 20) notes.push("it's windy");
   if (notes.length === 0) return "Good running conditions. Nothing to work around today.";
   const list = notes.length > 1 ? `${notes.slice(0, -1).join(", ")} and ${notes[notes.length - 1]}` : notes[0];
-  return `${list.charAt(0).toUpperCase() + list.slice(1)}, so Pathos is favoring routes that work around it.`;
+  return `${list.charAt(0).toUpperCase() + list.slice(1)}, so your picks are adjusted for it.`;
 }
 
 // Clause for each factor, used to build a one-line headline from a route's top strengths
@@ -558,51 +559,67 @@ function RecommendationsPage() {
               </span>
               <p>{conditionsVerdict(conditions)}</p>
             </div>
-            <div className="conditions-chips">
+            <div className="cond-stats">
               {feels != null && (
-                <span className={`cond-chip ${feels >= 85 ? "warn" : ""}`}>
-                  <b>{Math.round(feels)}°F</b> feels like
-                </span>
+                <div className={`cond-stat ${feels >= 85 ? "warn" : ""}`}>
+                  <span className="cond-stat-num">{Math.round(feels)}<small>°F</small></span>
+                  <span className="cond-stat-label">Feels like</span>
+                </div>
               )}
               {conditions.us_aqi != null && (
-                <span className={`cond-chip ${conditions.us_aqi > 100 ? "warn" : ""}`}>
-                  <b>AQI {Math.round(conditions.us_aqi)}</b> {aqiLabel(conditions.us_aqi)}
-                </span>
+                <div className={`cond-stat ${conditions.us_aqi > 100 ? "warn" : ""}`}>
+                  <span className="cond-stat-num">{Math.round(conditions.us_aqi)}</span>
+                  <span className="cond-stat-label">Air · {aqiLabel(conditions.us_aqi)}</span>
+                </div>
               )}
               {conditions.uv_index != null && conditions.uv_index >= 6 && (
-                <span className={`cond-chip ${conditions.uv_index >= 8 ? "warn" : ""}`}>
-                  <b>UV {Math.round(conditions.uv_index)}</b> {conditions.uv_index >= 8 ? "very high" : "high"}
-                </span>
+                <div className={`cond-stat ${conditions.uv_index >= 8 ? "warn" : ""}`}>
+                  <span className="cond-stat-num">{Math.round(conditions.uv_index)}</span>
+                  <span className="cond-stat-label">UV · {conditions.uv_index >= 8 ? "Very high" : "High"}</span>
+                </div>
               )}
               {conditions.wind_mph != null && conditions.wind_mph >= 12 && (
-                <span className={`cond-chip ${conditions.wind_mph >= 20 ? "warn" : ""}`}>
-                  <b>{Math.round(conditions.wind_mph)} mph</b> wind
-                </span>
+                <div className={`cond-stat ${conditions.wind_mph >= 20 ? "warn" : ""}`}>
+                  <span className="cond-stat-num">{Math.round(conditions.wind_mph)}<small>mph</small></span>
+                  <span className="cond-stat-label">Wind</span>
+                </div>
               )}
               {conditions.rain_last_48h_mm >= 1 && (
-                <span className={`cond-chip ${conditions.rain_last_48h_mm >= 5 ? "warn" : ""}`}>
-                  <b>{conditions.rain_last_48h_mm} mm</b> rain, last 48h
-                </span>
+                <div className={`cond-stat ${conditions.rain_last_48h_mm >= 5 ? "warn" : ""}`}>
+                  <span className="cond-stat-num">{conditions.rain_last_48h_mm}<small>mm</small></span>
+                  <span className="cond-stat-label">Rain, last 48h</span>
+                </div>
               )}
               {conditions.sunset && (
-                <span className={`cond-chip ${conditions.minutes_until_sunset != null && conditions.minutes_until_sunset < 75 ? "warn" : ""}`}>
-                  <b>{formatClockTime(conditions.sunset)}</b> sunset
-                </span>
+                <div className={`cond-stat ${conditions.minutes_until_sunset != null && conditions.minutes_until_sunset < 75 ? "warn" : ""}`}>
+                  <span className="cond-stat-num">{formatClockTime(conditions.sunset).replace(/ (am|pm)$/, "")}<small>{formatClockTime(conditions.sunset).slice(-2)}</small></span>
+                  <span className="cond-stat-label">Sunset</span>
+                </div>
               )}
             </div>
             {(conditions.heat_cut_pct || conditions.cooler_option) && (
-              <div className="cond-heat">
+              <ul className="cond-notes">
                 {conditions.heat_cut_pct ? (
-                  <p>🌡️ It's hot, so these picks aim about <b>{conditions.heat_cut_pct}% shorter</b> than usual, and shady routes get a boost.</p>
+                  <li>
+                    <span className="cond-note-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 14.8V4a2 2 0 0 0-4 0v10.8a4 4 0 1 0 4 0z" /></svg>
+                    </span>
+                    <span>Picks run about <b>{conditions.heat_cut_pct}% shorter</b> than usual, and shady routes get a boost.</span>
+                  </li>
                 ) : null}
                 {conditions.cooler_option && (
-                  <p>
-                    🕖 <b>{conditions.cooler_option.cooler_by_f}°F cooler {conditions.cooler_option.label}</b>
-                    {conditions.cooler_option.clock && ` (around ${conditions.cooler_option.clock})`}: feels like {conditions.cooler_option.feels_like_f}°F.{" "}
-                    <Link to="/checkin" className="cond-heat-link">Change my run time</Link>
-                  </p>
+                  <li>
+                    <span className="cond-note-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+                    </span>
+                    <span>
+                      <b>{conditions.cooler_option.cooler_by_f}°F cooler {conditions.cooler_option.label}</b>
+                      {conditions.cooler_option.clock && ` around ${conditions.cooler_option.clock}`}, feeling like {conditions.cooler_option.feels_like_f}°F.
+                    </span>
+                    <Link to="/checkin" className="cond-note-action">Change run time</Link>
+                  </li>
                 )}
-              </div>
+              </ul>
             )}
             <span className="cond-credit">
               <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Weather: Open-Meteo</a>
