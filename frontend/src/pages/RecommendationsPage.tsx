@@ -33,18 +33,24 @@ function fullLine(rec: Recommendation): [number, number][] {
 function MapResizer({ path, extra = [] }: { path: [number, number][]; extra?: [number, number][] }) {
   const map = useMap();
   useEffect(() => {
-    setTimeout(() => {
+    if (path.length < 2) return;
+    const fit = () => {
       map.invalidateSize();
-      if (path.length > 1) {
-        const bounds = [...path, ...extra].reduce(
-          (b, [lat, lon]) => b.extend([lat, lon]),
-          L.latLngBounds([path[0]])
-        );
-        // extra room top-left so the rank badge never covers the start marker
-        map.fitBounds(bounds, { paddingTopLeft: [70, 70], paddingBottomRight: [30, 40] });
-      }
-    }, 100);
-  }, [map, path, extra]);
+      const bounds = [...path, ...extra].reduce(
+        (b, [lat, lon]) => b.extend([lat, lon]),
+        L.latLngBounds([path[0]])
+      );
+      // room on the left for the rank badge, and at the bottom for the fade into the card;
+      // otherwise fill the map (fractional zoom, so a tall route isn't zoomed a whole level too far out)
+      map.fitBounds(bounds, { paddingTopLeft: [64, 18], paddingBottomRight: [22, 34], animate: false });
+    };
+    const t = setTimeout(fit, 60);
+    // refit whenever the card changes size (images/fonts loading, rotating the phone)
+    const ro = new ResizeObserver(() => fit());
+    ro.observe(map.getContainer());
+    return () => { clearTimeout(t); ro.disconnect(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, JSON.stringify(path[0]), JSON.stringify(path[path.length - 1]), path.length, extra.length]);
   return null;
 }
 
@@ -658,6 +664,7 @@ function RecommendationsPage() {
                   <MapContainer
  center={rec.path[Math.floor(rec.path.length / 2)]}
                     zoom={15}
+                    zoomSnap={0.25}
                     scrollWheelZoom={false}
                     zoomControl={false}
                     
