@@ -26,7 +26,7 @@ from app.scoring.engine import (UserProfile, DailyCheckin, RecentRuns, recommend
                                 heat_distance_factor, haversine_km, climb_per_km)
 from app.scoring.converters import build_route_candidates, route_start
 from app.scoring.route_combiner import generate_combined_routes
-from app.scoring.fallbacks import needs_gentler, add_gentler, GENTLE_EXTRA_KM
+from app.scoring.fallbacks import needs_gentler, add_gentler, GENTLE_EXTRA_KM, wants_challenge, add_challenge
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:devpassword@localhost:5432/run_recommender")
 
@@ -128,6 +128,8 @@ def run_scenario(routes, home, day, dist_mi, extra):
         wider = [r for r in routes if dist.get(r.id, 1e9) <= radius + GENTLE_EXTRA_KM and r.id not in shown]
         if wider:
             results = add_gentler(results, user, checkin, recent, build_route_candidates(wider))
+    if wants_challenge(results, user, checkin, recent):
+        results = add_challenge(results, user, checkin, recent, build_route_candidates(pool))
     return results, len(pool), radius
 
 

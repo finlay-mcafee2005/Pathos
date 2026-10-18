@@ -38,7 +38,8 @@ from app.scoring.converters import (
     build_recent_runs, build_route_candidates,
 )
 from app.scoring.route_combiner import generate_combined_routes
-from app.scoring.fallbacks import needs_gentler, add_gentler, GENTLE_EXTRA_KM, GENTLE_NOTE
+from app.scoring.fallbacks import (needs_gentler, add_gentler, GENTLE_EXTRA_KM, GENTLE_NOTE,
+                                  wants_challenge, add_challenge)
 from app.scoring.engine import build_personal_context, DailyCheckin, normalize_body_part, LOWER_BODY_PARTS
 from app.scoring.groups import GroupSession, RunnerToday, match_groups, best_for_today, KM_PER_MI
 
@@ -291,6 +292,10 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             for r in extra:
                 route_by_id[str(r.id)] = r
             real_route_ids |= {str(r.id) for r in extra}
+
+    # fresh day and nothing Hard in the picks: offer one Hard run as the stretch option
+    if wants_challenge(results, user_profile, daily_checkin, recent_runs):
+        results = add_challenge(results, user_profile, daily_checkin, recent_runs, candidates)
 
     rough_today = readiness(user_profile, daily_checkin, recent_runs) < 0.45
 
