@@ -181,7 +181,10 @@ def display_name(name: str) -> str:
 
 @app.get("/recommendations/{user_id}")
 def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
-        _me: UUID = Depends(require_self)):
+        _me: UUID = Depends(require_self),
+        lat: Optional[float] = None, lon: Optional[float] = None):
+    """lat/lon = the runner's current location (from the phone/browser). When it's
+    missing (location not allowed), everything uses the home address from signup."""
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -196,6 +199,11 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
 
     effective_radius_km = checkin.willing_to_drive_km if checkin.willing_to_drive_km else MAX_DISTANCE_KM
 
+    # where the run starts from: current location if we have a sensible one, else home
+    use_here = lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180
+    origin_lat, origin_lon = (lat, lon) if use_here else (user.latitude, user.longitude)
+    origin_source = "current" if use_here else "home"
+
     routes_query = text("""
         SELECT id FROM route
         WHERE NOT COALESCE(hidden, FALSE) AND ST_DWithin(
@@ -207,8 +215,8 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
     nearby_route_ids = session.exec(
         routes_query,
         params={
-            "lon": user.longitude,
-            "lat": user.latitude,
+            "lon": origin_lon,
+            "lat": origin_lat,
             "max_distance_m": effective_radius_km * 1000,
         },
     ).all()
@@ -228,7 +236,7 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
                                      ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography)
                 LIMIT 3
             """),
-            params={"lon": user.longitude, "lat": user.latitude, "max_m": MAX_DISTANCE_KM * 1000},
+            params={"lon": origin_lon, "lat": origin_lat, "max_m": MAX_DISTANCE_KM * 1000},
         ).all()
         routes = session.exec(select(Route).where(Route.id.in_([r[0] for r in closest]))).all()
 
@@ -239,8 +247,9 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
         )
 
     user_profile = build_user_profile(session, user)
+    user_profile.home_lat, user_profile.home_lon = origin_lat, origin_lon   # closeness = from where they are
     daily_checkin = build_daily_checkin(checkin)
-    daily_checkin.conditions = fetch_conditions(user.latitude, user.longitude, checkin.run_time or "now")
+    daily_checkin.conditions = fetch_conditions(origin_lat, origin_lon, checkin.run_time or "now")
     recent_runs = build_recent_runs(session, user_id)
     candidates = build_route_candidates(routes)
 
@@ -271,7 +280,7 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
     # rough day and nothing nearby but Hard routes: look a little farther for gentler ones
     if needs_gentler(results, user_profile, daily_checkin, recent_runs):
         wider_ids = [row[0] for row in session.exec(routes_query, params={
-            "lon": user.longitude, "lat": user.latitude,
+            "lon": origin_lon, "lat": origin_lat,
             "max_distance_m": (effective_radius_km + GENTLE_EXTRA_KM) * 1000,
         }).all()]
         extra = [r for r in session.exec(select(Route).where(Route.id.in_(wider_ids))).all()
@@ -330,7 +339,8 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             "elevation_gain_m": r.run_gain_m if r.run_gain_m is not None
                                 else run_climb_m(route_by_id[r.route.id], r.run_format, r.repeat_count),
             # run from home: the streets from home to the start, drawn on the card
-            **approach_fields(user, r),
+            **approach_fields((origin_lat, origin_lon), r),
+            "origin_source": origin_source,
             "difficulty": r.difficulty,
             # a long, flat run is "Hard" by length only: say so instead of just "Hard"
             "difficulty_label": "Long, gentle" if r.difficulty == "hard"
@@ -350,17 +360,17 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
     return unique_titles(response)
 
 
-def approach_fields(user, r) -> dict:
-    """The way from home to the start of the route, drawn on every card.
+def approach_fields(origin, r) -> dict:
+    """The way from the runner (current location, or home) to the start of the route.
     approach_km > 0 = close enough that it's run as part of today's run;
-    otherwise travel_km is how far away the start is (the user gets there first)."""
-    if user.latitude is None or r.route.start_lat is None:
+    otherwise travel_km is how far away the start is (they get there first)."""
+    if origin[0] is None or r.route.start_lat is None:
         return {"approach_km": 0, "approach_path": [], "travel_km": None}
-    path, metres = walk_path((user.latitude, user.longitude), (r.route.start_lat, r.route.start_lon))
+    path, metres = walk_path(origin, (r.route.start_lat, r.route.start_lon))
     return {"approach_km": round(getattr(r, "approach_km", 0) or 0, 2),
-            "approach_path": [[lat, lon] for lat, lon in path],
+            "approach_path": [[a, b] for a, b in path],
             "travel_km": round(metres / 1000, 2),
-            "home": [user.latitude, user.longitude]}
+            "home": [origin[0], origin[1]]}
 
 
 def run_climb_m(route, run_format: str, repeat_count: int) -> float:

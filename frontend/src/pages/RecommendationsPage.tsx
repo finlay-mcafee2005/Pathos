@@ -15,6 +15,27 @@ const HOME_ICON = L.divIcon({
   iconAnchor: [11, 11],
 });
 
+// The phone/browser location, or null if it's not allowed or takes too long (then home is used).
+function currentPosition(): Promise<[number, number] | null> {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
+    const timer = setTimeout(() => resolve(null), 6000);
+    navigator.geolocation.getCurrentPosition(
+      (p) => { clearTimeout(timer); resolve([p.coords.latitude, p.coords.longitude]); },
+      () => { clearTimeout(timer); resolve(null); },
+      { enableHighAccuracy: false, maximumAge: 5 * 60 * 1000, timeout: 6000 }
+    );
+  });
+}
+
+// "you are here" pin, used when the card was planned from the phone's current location
+const YOU_ICON = L.divIcon({
+  className: "map-home-pin",
+  html: '<svg width="22" height="22" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#0f172a" stroke="#fff" stroke-width="2"/><circle cx="12" cy="12" r="4" fill="#fff"/></svg>',
+  iconSize: [22, 22],
+  iconAnchor: [11, 11],
+});
+
 function MapResizer({ path, extra = [] }: { path: [number, number][]; extra?: [number, number][] }) {
   const map = useMap();
   useEffect(() => {
@@ -45,7 +66,8 @@ type Recommendation = {
   approach_km?: number;                 // each way, home -> start (0 = travel there instead)
   approach_path?: [number, number][];   // the streets from home to the start
   home?: [number, number];
-  travel_km?: number | null;            // home -> start, when it's farther than a run-there   // e.g. "Long, gentle" for a flat run that's Hard only by length   // e.g. a gentler route a little beyond the travel limit
+  travel_km?: number | null;
+  origin_source?: "current" | "home";   // planned from the phone's location, or the signup address            // home -> start, when it's farther than a run-there   // e.g. "Long, gentle" for a flat run that's Hard only by length   // e.g. a gentler route a little beyond the travel limit
   distance_km: number;
   elevation_gain_m: number;
   difficulty: string;
@@ -206,11 +228,14 @@ function runPlan(rec: Recommendation): string {
   } else {
     main = "run the loop back to the start";
   }
+  const here = rec.origin_source === "current";
   if (fromHome) {
-    return `From home: run ${approach.toFixed(1)} mi to the start (dotted line on the map), ${main}, then run back home. The total includes both trips.`;
+    return here
+      ? `From where you are: run ${approach.toFixed(1)} mi to the start (dotted line on the map), ${main}, then run back. The total includes both trips.`
+      : `From home: run ${approach.toFixed(1)} mi to the start (dotted line on the map), ${main}, then run back home. The total includes both trips.`;
   }
   if (rec.travel_km) {
-    return `The start is ${kmToMiles(rec.travel_km).toFixed(1)} mi from home (dotted line on the map). Get there, then ${main}.`;
+    return `The start is ${kmToMiles(rec.travel_km).toFixed(1)} mi from ${here ? "you" : "home"} (dotted line on the map). Get there, then ${main}.`;
   }
   return `Start at the blue dot, ${main}.`;
 }
@@ -363,7 +388,10 @@ function RecommendationsPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_URL}/recommendations/${userId}`);
+      // plan from where they are right now; if location isn't allowed, the server uses home
+      const here = await currentPosition();
+      const where = here ? `?lat=${here[0].toFixed(5)}&lon=${here[1].toFixed(5)}` : "";
+      const response = await fetch(`${API_URL}/recommendations/${userId}${where}`);
       if (!response.ok) {
         const body = await response.json().catch(() => null);
         if (response.status === 404 && body?.detail === "No checkin for today") {
@@ -548,7 +576,7 @@ function RecommendationsPage() {
                       pathOptions={{ color: "#FFFFFF", weight: 3, fillColor: "#1D4ED8", fillOpacity: 1 }}
                     />
                     {rec.home && rec.approach_path && rec.approach_path.length > 1 && (
-                      <Marker position={rec.home} icon={HOME_ICON} interactive={false} />
+                      <Marker position={rec.home} icon={rec.origin_source === "current" ? YOU_ICON : HOME_ICON} interactive={false} />
                     )}
                   </MapContainer>
                 )}
@@ -558,7 +586,7 @@ function RecommendationsPage() {
                     {rec.run_format === "out_and_back" && <span><i className="lg-turn" />Turn around</span>}
                     {rec.home && rec.approach_path && rec.approach_path.length > 1 && (
                       <>
-                        <span><i className="lg-home" />Home</span>
+                        <span><i className="lg-home" />{rec.origin_source === "current" ? "You" : "Home"}</span>
                         <span><i className="lg-way" />{(rec.approach_km ?? 0) > 0 ? "Run there" : "Way there"}</span>
                       </>
                     )}
