@@ -8754,6 +8754,6 @@ body::before {
 .map-legend .lg-home { background: #0f172a; }
 .map-legend .lg-way { width: 16px; height: 0; border-radius: 0; border-top: 3px dotted #0f172a; }
 .map-home-pin { background: none; border: none; }
-/* calm the OpenStreetMap tiles a bit more so the route, home and dotted line stand out */
-.rec-map .leaflet-tile-pane { filter: saturate(0.2) contrast(0.85) brightness(1.1); }
-[data-theme="dark"] .rec-map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) saturate(0.25) brightness(0.85) contrast(0.9); }
+/* (back to the original map look) */
+.rec-map .leaflet-tile-pane { filter: saturate(0.35) contrast(0.92) brightness(1.06); }
+[data-theme="dark"] .rec-map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) saturate(0.3) brightness(0.85) contrast(0.9); }

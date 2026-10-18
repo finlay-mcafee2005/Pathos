@@ -1,19 +1,11 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { MapContainer, TileLayer, Polyline, CircleMarker, Marker, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Polyline, CircleMarker, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useRouteActions } from "../components/RouteExportButtons";
 import { type GroupMatch, formatMeetTime, sessionTitle } from "./GroupsPage";
 import { API_URL } from "../utils/format";
-
-// small house pin for "home" (no text labels on the map: they collided with each other)
-const HOME_ICON = L.divIcon({
-  className: "map-home-pin",
-  html: '<svg width="22" height="22" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#0f172a" stroke="#fff" stroke-width="2"/><path d="M7 12.5 12 8l5 4.5V17h-3.2v-3h-3.6v3H7z" fill="#fff"/></svg>',
-  iconSize: [22, 22],
-  iconAnchor: [11, 11],
-});
 
 // The phone/browser location, or null if it's not allowed or takes too long (then home is used).
 function currentPosition(): Promise<[number, number] | null> {
@@ -28,19 +20,12 @@ function currentPosition(): Promise<[number, number] | null> {
   });
 }
 
-// "you are here" pin, used when the card was planned from the phone's current location
-const YOU_ICON = L.divIcon({
-  className: "map-home-pin",
-  html: '<svg width="22" height="22" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#0f172a" stroke="#fff" stroke-width="2"/><circle cx="12" cy="12" r="4" fill="#fff"/></svg>',
-  iconSize: [22, 22],
-  iconAnchor: [11, 11],
-});
-
 // The whole thing as one line: origin -> (streets) -> route start -> route. The
 // street path is pinned to the exact origin and start so there's never a gap or jump.
 function fullLine(rec: Recommendation): [number, number][] {
   const way = rec.approach_path ?? [];
-  if (way.length < 2 || !rec.home) return rec.path;
+  // only when the route starts close by and is run from where they are; otherwise just the route
+  if ((rec.approach_km ?? 0) <= 0 || way.length < 2 || !rec.home) return rec.path;
   return [rec.home, ...way, rec.path[0], ...rec.path];
 }
 
@@ -239,11 +224,11 @@ function runPlan(rec: Recommendation): string {
   const here = rec.origin_source === "current";
   if (fromHome) {
     return here
-      ? `From where you are: run ${approach.toFixed(1)} mi to the start (on the map), ${main}, then run back. The total includes both trips.`
-      : `From home: run ${approach.toFixed(1)} mi to the start (on the map), ${main}, then run back home. The total includes both trips.`;
+      ? `From where you are: run ${approach.toFixed(1)} mi to the start (the blue line begins at the dot), ${main}, then run back. The total includes both trips.`
+      : `From home: run ${approach.toFixed(1)} mi to the start (the blue line begins at the dot), ${main}, then run back home. The total includes both trips.`;
   }
   if (rec.travel_km) {
-    return `The start is ${kmToMiles(rec.travel_km).toFixed(1)} mi from ${here ? "you" : "home"} (on the map). Get there, then ${main}.`;
+    return `The start is ${kmToMiles(rec.travel_km).toFixed(1)} mi from ${here ? "you" : "home"}. Get there, then ${main}.`;
   }
   return `Start at the blue dot, ${main}.`;
 }
@@ -558,41 +543,20 @@ function RecommendationsPage() {
                     
                     className="rec-map"
                   >
-                    <MapResizer path={rec.path} extra={rec.approach_path ?? []} />
+                    <MapResizer path={fullLine(rec)} />
                     <TileLayer
                       url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                       attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                     />
                     {/* one continuous line: from you (or home) along the streets to the start, then the route */}
-                    <Polyline positions={fullLine(rec)} pathOptions={{ color: "#FFFFFF", weight: 8, opacity: 0.95, lineJoin: "round", lineCap: "round" }} />
-                    <Polyline positions={fullLine(rec)} pathOptions={{ color: "#2563EB", weight: 4.5, opacity: 1, lineJoin: "round", lineCap: "round" }} />
-                    {rec.run_format === "out_and_back" && (
-                      <CircleMarker
-                        center={rec.path[rec.path.length - 1]}
-                        radius={6}
-                        pathOptions={{ color: "#1D4ED8", weight: 3, fillColor: "#FFFFFF", fillOpacity: 1 }}
-                      />
-                    )}
+                    <Polyline positions={fullLine(rec)} pathOptions={{ color: "#FFFFFF", weight: 9, opacity: 0.9 }} />
+                    <Polyline positions={fullLine(rec)} pathOptions={{ color: "#2563EB", weight: 4.5, opacity: 1 }} />
                     <CircleMarker
-                      center={rec.path[0]}
-                      radius={8}
+                      center={fullLine(rec)[0]}
+                      radius={7}
                       pathOptions={{ color: "#FFFFFF", weight: 3, fillColor: "#1D4ED8", fillOpacity: 1 }}
                     />
-                    {rec.home && rec.approach_path && rec.approach_path.length > 1 && (
-                      <Marker position={rec.home} icon={rec.origin_source === "current" ? YOU_ICON : HOME_ICON} interactive={false} />
-                    )}
                   </MapContainer>
-                )}
-                {rec.path.length > 1 && (
-                  <div className="map-legend" aria-label="Map key">
-                    <span><i className="lg-start" />Start</span>
-                    {rec.run_format === "out_and_back" && <span><i className="lg-turn" />Turn around</span>}
-                    {rec.home && rec.approach_path && rec.approach_path.length > 1 && (
-                      <>
-                        <span><i className="lg-home" />{rec.origin_source === "current" ? "You" : "Home"}</span>
-                      </>
-                    )}
-                  </div>
                 )}
                 <span className="rec-rank">{String(i + 1).padStart(2, "0")}</span>
                 {i === 0 && <span className="rec-best">Best match today</span>}
