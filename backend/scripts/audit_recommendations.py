@@ -30,7 +30,8 @@ from app.scoring.fallbacks import needs_gentler, add_gentler, GENTLE_EXTRA_KM
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:devpassword@localhost:5432/run_recommender")
 
-if "DATABASE_URL" not in os.environ:
+USE_CACHE = "--cache" in sys.argv     # reuse the routes saved by the last database run (no DB needed)
+if "DATABASE_URL" not in os.environ and not USE_CACHE:
     sys.exit("DATABASE_URL isn't set, so this would use your local database. In this Terminal window, run:\n"
              '  export DATABASE_URL="<your Supabase link>"\nthen run this script again.')
 OUT_DIR = os.path.join(os.path.dirname(__file__), "audit_output")
@@ -206,7 +207,21 @@ def responsiveness(rows):
     return out
 
 
-def main():
+CACHE = os.path.join(OUT_DIR, "routes_cache.pkl")
+ROUTE_FIELDS = ["id", "name", "nickname", "hidden", "distance_km", "elevation_gain_m", "elevation_loss_m",
+                "shade_pct", "scenic_pct", "surface_type", "difficulty", "scenic"]
+
+
+def load_routes():
+    """Routes from the database (and saved to a local cache), or from that cache with --cache."""
+    import pickle
+    from types import SimpleNamespace
+    if USE_CACHE:
+        with open(CACHE, "rb") as f:
+            routes = [SimpleNamespace(**d) for d in pickle.load(f)]
+        print(f"{len(routes)} routes loaded (cache)")
+        return routes
+    from app.scoring.route_combiner import get_route_coords
     engine = create_engine(DATABASE_URL, pool_pre_ping=True)
     with Session(engine) as session:
         routes = session.exec(select(Route).where(Route.hidden.is_not(True))).all()
@@ -214,6 +229,14 @@ def main():
             _ = r.gps_path
         session.expunge_all()
     print(f"{len(routes)} routes loaded (database: {DATABASE_URL.split('@')[-1].split('/')[0]})")
+    os.makedirs(OUT_DIR, exist_ok=True)
+    with open(CACHE, "wb") as f:
+        pickle.dump([dict({k: getattr(r, k) for k in ROUTE_FIELDS}, coords=get_route_coords(r)) for r in routes], f)
+    return routes
+
+
+def main():
+    routes = load_routes()
 
     scenarios = []
     for home in HOMES:

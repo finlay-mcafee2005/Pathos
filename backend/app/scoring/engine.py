@@ -215,6 +215,9 @@ W_DISTANCE_FLOOR = -15       # very far off
 INFERRED_DISTANCE_SCALE = 0.6  # no planned distance -> length fit counts less
 W_TERRAIN = 15               # hilliness suits today's readiness
 W_TERRAIN_FLOOR = -10
+W_TERRAIN_EXTRA = 7           # ...plus up to this on a clearly run-down or clearly fresh day
+TERRAIN_TIGHTEN = 0.15        # ...and the fit tightens by up to this on those days
+W_TERRAIN_UNDER_FLOOR = -4    # ...when the route is flatter than ideal
 LOW_ENERGY = 4                # mental energy at or below this (0-10) counts as low
 W_LOW_ENERGY_HARD = 15        # max penalty for a Hard run on a low-energy day
 LONG_GENTLE_M_PER_KM = 20     # 'Hard' only because it's long: averages under ~2% climb
@@ -222,6 +225,14 @@ CLOSE_TO_HOME_KM = 3.5        # check-in travel limit at or under this = "close 
 RUN_FROM_HOME_KM = 4.0        # ...then every route starting within this (straight line) is run from where they are
 STREET_DETOUR = 1.3           # streets are ~30% longer than a straight line (the app draws the real way)
 W_APPEAL = 8                  # always-on: parks, water and trees beat plain street grids
+MIN_ROUTE_SHARE = 0.5         # run from home: under half the run on the route itself starts to cost
+W_MOSTLY_APPROACH = 12        # ...up to this much when the route is a tiny bit at the end of the streets
+IDEAL_CLIMB_SPAN = 30         # ideal climb (m/km) = 5 + span * readiness^curve
+IDEAL_CURVE = 2.0             # >1 keeps an ordinary day well below a fresh one
+FEEL_CENTER = 0.72            # readiness of an ordinary day (energy ~6, ~7 h sleep)
+FEEL_WIDTH = 0.25             # this far above / below it = clearly fresh / clearly run-down
+FEEL_DEADZONE = 0.3
+W_FEEL = 12                   # fresh day -> hills/trails, run-down day -> flat/pavement
 TERRAIN_TIGHTNESS = 0.7       # <1 = hill fit falls off faster away from today's ideal
 W_NOVELTY = 8                # never run / not run in 30+ days
 W_RATING_PER_STAR = 5        # around a neutral 3-star rating
@@ -544,9 +555,26 @@ def score_route(
     elif run_format == "repeat":
         add("format", W_REPEAT_PER_LAP * (repeat_count - 1))
 
+    # Run from home: the streets to the start and back are part of the run, so what
+    # the runner actually feels is the climb (and the parks) spread over the whole run,
+    # not just the route part. A route that's mostly "getting there" isn't much of a route.
+    route_hill = hill
+    route_share = 1.0
+    if approach > 0 and effective_distance > 0:
+        route_share = clamp((effective_distance - 2 * approach) / effective_distance)
+        hill = route_hill * route_share
+        if route_share < MIN_ROUTE_SHARE:
+            add("approach", -W_MOSTLY_APPROACH * (1 - route_share / MIN_ROUTE_SHARE),
+                "Most of this run is getting to the route" if route_share < 0.3 else None)
+
+    # how far today is from an ordinary day: -1 run-down .. 0 ordinary .. +1 fresh
+    # (a little either side of ordinary counts as ordinary)
+    lean = clamp((ready - FEEL_CENTER) / FEEL_WIDTH, -1, 1)
+    lean = clamp((abs(lean) - FEEL_DEADZONE) / (1 - FEEL_DEADZONE)) * (1 if lean >= 0 else -1)
+
     # --- 5. terrain: hilliness vs. readiness, taste, recovery, goal -------
     if route.distance_km > 0:
-        ideal = (5 + 30 * ready) * FITNESS_HILL_FACTOR.get(user.fitness_level, 1.0)
+        ideal = (5 + IDEAL_CLIMB_SPAN * ready ** IDEAL_CURVE) * FITNESS_HILL_FACTOR.get(user.fitness_level, 1.0)
         if taste.preferred_hill is not None and taste.confidence > 0:
             learned = taste.preferred_hill * (0.6 + 0.8 * ready)
             ideal = (1 - taste.confidence) * ideal + taste.confidence * learned
@@ -555,13 +583,17 @@ def score_route(
             ideal = min(ideal, 8.0)                 # an easy / day-after-a-hard-effort run is a flat run
         # how forgiving the fit is: tighter than before so a fresh day and an
         # ordinary day actually prefer different amounts of climbing
-        scale = max(ideal, 15) * TERRAIN_TIGHTNESS
+        # on an ordinary day their own taste leads; the further from ordinary they feel,
+        # the more hilliness counts and the tighter the fit (so days pick different routes)
+        w_terrain = W_TERRAIN + W_TERRAIN_EXTRA * abs(lean)
+        scale = max(ideal, 15) * (TERRAIN_TIGHTNESS - TERRAIN_TIGHTEN * abs(lean))
         if hill > ideal:
             # on a tired day, climbing above the ideal costs more, sooner
             scale *= 0.5 + 0.5 * ready
         # too steep on a run-down day can cost more than the usual floor
-        floor = W_TERRAIN_FLOOR - (12 * (1 - ready) if hill > ideal else 0)
-        pts = clamp(W_TERRAIN * (1 - abs(hill - ideal) / scale), floor, W_TERRAIN)
+        # flatter than ideal on a fresh day is a missed chance, not a problem: it costs less
+        floor = W_TERRAIN_FLOOR - 12 * (1 - ready) if hill > ideal else W_TERRAIN_UNDER_FLOOR
+        pts = clamp(w_terrain * (1 - abs(hill - ideal) / scale), floor, w_terrain)
         reason = None
         if hill < FLAT_HILL_M_PER_KM and ctx.recovery.hill_reason:
             reason = ctx.recovery.hill_reason
@@ -576,6 +608,12 @@ def score_route(
         elif pts <= -5 and hill > ideal:
             reason = "Hillier than ideal for how you're feeling"
         add("terrain", pts, reason)
+
+    # how they feel today tilts the KIND of run, not just its hilliness: a fresh day leans
+    # toward climbing and trails, a run-down day toward flat, even pavement.
+    hillness = clamp((hill - 8) / 25)                               # 8 m/km -> 0, 33 m/km -> 1
+    rugged = {"trail": 1.0, "mixed": 0.5}.get(surface, 0.0)
+    add("feel", W_FEEL * lean * (0.6 * hillness + 0.4 * rugged - 0.3))
 
     # the runner's own call on hills today outweighs anything inferred above
     if checkin.hills_pref == "avoid":
@@ -621,7 +659,7 @@ def score_route(
     # path through a park or along the river beats a loop of plain streets.
     if route.scenic_pct is not None or route.shade is not None:
         appeal = 0.6 * (route.scenic_pct or 0.0) + 0.4 * (route.shade or 0.0)
-        add("appeal", W_APPEAL * clamp((appeal - 0.15) / 0.6),
+        add("appeal", W_APPEAL * route_share * clamp((appeal - 0.15) / 0.6),
             "Runs through parks, trees or along water" if appeal >= 0.6 else None)
 
     # --- 7. proximity to home ---------------------------------------------
@@ -745,7 +783,7 @@ def score_route(
 
     # difficulty of the run as actually run: an out-and-back or 3 laps
     # doubles / triples both the distance and the climbing
-    run_gain = hill * max(0.0, effective_distance - 2 * approach)   # the streets to the start are counted flat
+    run_gain = route_hill * max(0.0, effective_distance - 2 * approach)   # the streets to the start are counted flat
     run_difficulty = classify_difficulty(effective_distance, run_gain)
     # low mental energy: a Hard *climbing* run is a hard sell today. A run that's Hard only
     # because of the distance they chose isn't penalised (every option at that length is).
