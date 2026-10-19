@@ -22,7 +22,7 @@ from sqlmodel import Session, create_engine, select
 
 from app.models import Route
 from app.conditions import Conditions
-from app.scoring.engine import (UserProfile, DailyCheckin, RecentRuns, recommend, diversify,
+from app.scoring.engine import (match_pct, UserProfile, DailyCheckin, RecentRuns, recommend, diversify,
                                 heat_distance_factor, haversine_km, climb_per_km)
 from app.scoring.converters import build_route_candidates, route_start
 from app.scoring.route_combiner import generate_combined_routes
@@ -271,7 +271,7 @@ def main():
             appear[r.name] += 1
             climb_ft = (s.run_gain_m or 0) * 3.281
             top = sorted(s.breakdown.items(), key=lambda kv: -abs(kv[1]))[:4]
-            match = max(0, min(100, round((s.score - 100) / PERFECT_POINTS * 100)))
+            match = match_pct(s.score, s.perfect_points)
             lines.append(
                 f"{rank}. **{r.name}** - {s.effective_distance_km / MI:.1f} mi ({s.run_format}"
                 f"{' x' + str(s.repeat_count) if s.run_format == 'repeat' else ''}), "

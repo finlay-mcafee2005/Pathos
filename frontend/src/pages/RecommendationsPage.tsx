@@ -78,6 +78,7 @@ type Recommendation = {
   run_format?: string;
   repeat_count?: number;
   path: [number, number][];
+  perfect_points?: number;            // match % = (score - 100) / this
   // facts shown in "Why this route"
   target_km?: number | null;
   shade_pct?: number | null;
@@ -98,15 +99,17 @@ const PERFECT_POINTS = 85;       // points a route that fits everything earns
 // card is exactly the total in "Why this route" divided by 85. (85 leaves room
 // at the top: in a 192-pick audit the best routes scored +75 to +78, so strong
 // picks read in the 80s-90s instead of piling up at 100%.)
-function matchPct(score: number): number {
-  return Math.round(Math.max(0, Math.min(1, (score - BASE_SCORE) / PERFECT_POINTS)) * 100);
+// perfect = what a route that fits everything could earn for THIS check-in (sent by the
+// server; it grows with each extra thing asked for). Capped at 99%: nothing is perfect.
+function matchPct(score: number, perfect: number = PERFECT_POINTS): number {
+  return Math.round(Math.max(0, Math.min(0.99, (score - BASE_SCORE) / perfect)) * 100);
 }
 
 // The card shows a plain label instead of the raw %: the % is points out of a
 // "fits everything" route, so 45% reads like a failing grade when it's really
 // "decent, with one thing off". The exact % is in the label's tooltip.
-function matchLabel(score: number): { text: string; tone: "great" | "good" | "look" } {
-  const pct = matchPct(score);
+function matchLabel(score: number, perfect?: number): { text: string; tone: "great" | "good" | "look" } {
+  const pct = matchPct(score, perfect);
   if (pct >= 70) return { text: "Great match", tone: "great" };
   if (pct >= 50) return { text: "Good match", tone: "good" };
   return { text: "Worth a look", tone: "look" };
@@ -692,9 +695,9 @@ function RecommendationsPage() {
               <div className="rec-body">
                 <div className="rec-title-row">
                   <h2>{rec.route_name}</h2>
-                  <span className={`rec-match-pill ${matchLabel(rec.score).tone}`}
-                        title={`${matchPct(rec.score)}% match with your check-in`}>
-                    {matchLabel(rec.score).text}
+                  <span className={`rec-match-pill ${matchLabel(rec.score, rec.perfect_points).tone}`}
+                        title={`${matchPct(rec.score, rec.perfect_points)}% match with your check-in`}>
+                    {matchLabel(rec.score, rec.perfect_points).text}
                   </span>
                 </div>
 

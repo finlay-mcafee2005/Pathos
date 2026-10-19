@@ -342,6 +342,10 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             "reasons": r.reasons,
             "notice": GENTLE_NOTE if GENTLE_NOTE in r.reasons else
                 CHALLENGE_NOTE if CHALLENGE_NOTE in r.reasons else
+                (f"To fit your time, run {r.turnaround_km * 0.621371:.1f} mi out along this route, then turn back"
+                 if checkin.available_minutes else
+                 f"For a short run, go {r.turnaround_km * 0.621371:.1f} mi out along this route, then turn back")
+                if r.turnaround_km else
                 LONG_ROUGH_NOTE if rough_today and long_but_gentle(r.effective_distance_km, r.run_gain_m or 0) else
                 weak_match_note(r) if match_pct(r) < LOW_MATCH_PCT else None,
             "distance_km": r.route.distance_km,
@@ -363,18 +367,37 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             "your_rating": recent_runs.avg_rating_by_route_id.get(r.route.id),
             "feels_like_f": getattr(daily_checkin.conditions, "feels_like_f", None)
                             or getattr(daily_checkin.conditions, "temp_f", None),
-            "path": [
+            "turnaround_km": r.turnaround_km,
+            "perfect_points": r.perfect_points,        # match % = (score - 100) / this
+            # a short-on-time run goes partway along the route and back: draw only that part
+            "path": first_part([
                 [lat, lon]
                 for lon, lat in (
                     route_by_id[r.route.id].coords
                     if hasattr(route_by_id[r.route.id], "coords")
                     else to_shape(route_by_id[r.route.id].gps_path).coords
                 )
-            ],
+            ], r.turnaround_km),
         }
         for i, r in enumerate(results)
     ]
     return unique_titles(response)
+
+
+def first_part(path: list, km) -> list:
+    """The path up to km along it (the turnaround point); the whole path when km is None."""
+    if not km:
+        return path
+    out, done = [path[0]], 0.0
+    for a, b in zip(path, path[1:]):
+        step = _hav(a[0], a[1], b[0], b[1])
+        if done + step >= km:
+            t = (km - done) / step if step else 0
+            out.append([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t])
+            return out
+        out.append(b)
+        done += step
+    return out
 
 
 def approach_fields(origin, r) -> dict:

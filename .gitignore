@@ -17,3 +17,6 @@ dist/
 
 backend/scripts/.shade_cache/
 backend/scripts/audit_output/
+
+# study data (participants' personal data) - never commit
+backend/scripts/study_exports/

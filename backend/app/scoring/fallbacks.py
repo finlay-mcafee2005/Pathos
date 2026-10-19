@@ -108,7 +108,8 @@ LOW_MATCH_PCT = 50           # below this the card explains what's off
 
 
 def match_pct(s: ScoredRoute) -> float:
-    return max(0.0, min(100.0, (s.score - BASE_SCORE_POINTS) / PERFECT_POINTS * 100))
+    from app.scoring.engine import match_pct as pct
+    return pct(s.score, s.perfect_points)
 
 
 def drop_weak(results: List[ScoredRoute]) -> List[ScoredRoute]:

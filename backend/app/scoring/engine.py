@@ -106,6 +106,8 @@ class ScoredRoute:
     estimated_minutes: Optional[float] = None
     run_gain_m: Optional[float] = None    # total climbing for the run as recommended (both ways, all laps)
     approach_km: float = 0.0              # each way, home -> start, when the run starts from home
+    turnaround_km: Optional[float] = None # run only this far along the route, then back (short time limit)
+    perfect_points: float = 70.0          # points that make a 100% match for this check-in (see perfect_points())
     difficulty: str = "moderate"   # of the run as actually run (out-and-back / laps included)
 
 
@@ -236,6 +238,10 @@ W_FEEL = 12                   # fresh day -> hills/trails, run-down day -> flat/
 TERRAIN_TIGHTNESS = 0.7       # <1 = hill fit falls off faster away from today's ideal
 W_NOVELTY = 8                # never run / not run in 30+ days
 W_RATING_PER_STAR = 5        # around a neutral 3-star rating
+SHORT_RUN_KM = 3.0            # targets this short (or a time limit) may use part of a longer route
+PARTIAL_OVER = 1.2            # short time limit: a route this much longer than the target is run partway out and back
+W_PARTIAL = -3                # ...a small nudge toward runs that use the whole route
+TIME_SLACK = 1.15             # a run may take up to 15% (+3 min) over the time they have
 W_OUT_AND_BACK = -2          # small nudge toward true loops
 W_REPEAT_PER_LAP = -3        # each extra lap of a repeated loop
 W_OVERLOAD = 15              # long route while mileage is well above average
@@ -374,21 +380,56 @@ def build_personal_context(user: UserProfile, checkin: DailyCheckin,
                            long_run_factor, long_run_reason)
 
 
-def choose_format(route: RouteCandidate, target: float, max_repeats: int):
+# Match % = points earned / points a route that fits everything could earn TODAY.
+# Every check-in can earn ~70 (distance, climbing, closeness, surroundings, novelty);
+# each extra thing they ask for (scenic, a surface, hills, mood, run type, somewhere
+# new) adds what a route can earn for it. So a plain check-in isn't marked down
+# for not ticking options, and a busy one isn't inflated by them.
+MATCH_BASE_POINTS = 70.0
+
+
+def perfect_points(checkin) -> float:
+    pts = MATCH_BASE_POINTS
+    if getattr(checkin, "wants_scenic", False):
+        pts += W_SCENIC
+    if getattr(checkin, "surface_preference", None):
+        pts += W_SURFACE_PREF
+    if getattr(checkin, "wants_adventure", False):
+        pts += W_ADVENTURE
+    if getattr(checkin, "hills_pref", None):
+        pts += W_HILLS_PREF
+    if getattr(checkin, "mood", None):
+        pts += W_MOOD
+    if getattr(checkin, "run_intent", None):
+        pts += W_INTENT
+    return pts
+
+
+def match_pct(score: float, perfect: float) -> int:
+    """0..99 (never 100%: nothing is a perfect fit)."""
+    return int(max(0, min(99, round((score - BASE_SCORE) / perfect * 100))))
+
+
+def choose_format(route: RouteCandidate, target: float, max_repeats: int, allow_partial: bool = False):
     """Best way to run this route to hit target km.
-    Returns (diff_km, format, repeat_count, effective_km).
+    Returns (diff_km, format, repeat_count, effective_km, turnaround_km).
     Point-to-point routes are always out-and-back (running one-way would
-    strand the runner); loops can be run once or repeated."""
+    strand the runner); loops can be run once or repeated.
+    allow_partial (a short time limit): when the whole route is too long, run out
+    along its first part and turn around (turnaround_km = how far along the route)."""
     if not route.is_loop:
         d = route.distance_km * 2
-        return abs(d - target), "out_and_back", 1, d
-    best = (abs(route.distance_km - target), "single", 1, route.distance_km)
-    if route.distance_km > 0:
-        n = max(1, round(target / route.distance_km))
-        if 1 < n <= max_repeats:
-            d = route.distance_km * n
-            if abs(d - target) < best[0]:
-                best = (abs(d - target), "repeat", n, d)
+        best = (abs(d - target), "out_and_back", 1, d, None)
+    else:
+        best = (abs(route.distance_km - target), "single", 1, route.distance_km, None)
+        if route.distance_km > 0:
+            n = max(1, round(target / route.distance_km))
+            if 1 < n <= max_repeats:
+                d = route.distance_km * n
+                if abs(d - target) < best[0]:
+                    best = (abs(d - target), "repeat", n, d, None)
+    if allow_partial and best[3] > target * PARTIAL_OVER and target >= 0.4:
+        best = (0.0, "out_and_back", 1, target, target / 2)
     return best
 
 
@@ -521,15 +562,23 @@ def score_route(
     typical = ctx.typical_km
     if checkin.planned_distance_km:
         target = checkin.planned_distance_km
-        err, run_format, repeat_count, effective_distance = choose_format(route, max(0.5, target - 2 * approach), MAX_REPEATS)
+        err, run_format, repeat_count, effective_distance, turnaround = choose_format(
+            route, max(0.4, target - 2 * approach), MAX_REPEATS,
+            allow_partial=bool(checkin.available_minutes) or target <= SHORT_RUN_KM)
         effective_distance += 2 * approach
         err = abs(effective_distance - target)
         tol = max(0.5, target * 0.25)
         distance_matched = err <= tol
         add("distance", distance_points(err, tol) * goal["distance_weight"])
+        if turnaround:
+            add("format", W_PARTIAL)
         if distance_matched:
             mi = effective_distance * 0.621371
-            if run_format == "single":
+            if checkin.available_minutes and turnaround:
+                reasons.append(f"Fits your {checkin.available_minutes:.0f} minutes: out {turnaround * 0.621371:.1f} mi on this route and back")
+            elif checkin.available_minutes:
+                reasons.append(f"Fits your {checkin.available_minutes:.0f} minutes")
+            elif run_format == "single":
                 reasons.append("Close match to your planned distance")
             elif run_format == "out_and_back":
                 reasons.append(f"Out-and-Back: {mi:.1f} mi")
@@ -539,11 +588,14 @@ def score_route(
         # no plan: aim for THEIR normal run, shorter when run-down, longer when
         # fresh, longer still on a weekend
         target = typical * (0.7 + 0.5 * ready) * ctx.long_run_factor
-        err, run_format, repeat_count, effective_distance = choose_format(route, max(0.5, target - 2 * approach), 1)
+        err, run_format, repeat_count, effective_distance, turnaround = choose_format(
+            route, max(0.4, target - 2 * approach), 1, allow_partial=target <= SHORT_RUN_KM)
         effective_distance += 2 * approach
         err = abs(effective_distance - target)
         tol = max(0.8, target * 0.3)
         distance_matched = True
+        if turnaround:
+            add("format", W_PARTIAL)
         pts = distance_points(err, tol) * INFERRED_DISTANCE_SCALE
         reason = None
         if pts >= 10:
@@ -814,6 +866,8 @@ def score_route(
         estimated_minutes=round(minutes),
         run_gain_m=round(run_gain, 1),
         approach_km=round(approach, 2),
+        turnaround_km=round(turnaround, 3) if turnaround else None,
+        perfect_points=perfect_points(checkin),
         difficulty=run_difficulty,
     )
 
@@ -906,7 +960,10 @@ def diversify(scored: List[ScoredRoute], top_n: int,
     picked: List[ScoredRoute] = []
     while pool and len(picked) < top_n:
         best = None
-        for s in pool:
+        # never two versions of the same route (same name) in the picks, unless nothing else is left
+        names = {route_family(p.route.name) for p in picked}
+        fresh = [s for s in pool if route_family(s.route.name) not in names] or pool
+        for s in fresh:
             sim = max((similarity(s, p, not surface_requested) for p in picked), default=0.0)
             adjusted = s.base_score - W_VARIETY * sim
             key = (-round(adjusted, 1),) + rank_key(s)[1:]
@@ -935,9 +992,26 @@ def recommend(
     scored = [score_route(r, user, checkin, recent, ctx) for r in candidates]
     # gate on the difficulty of the run as it would actually be run
     scored = [s for s in scored if passes_difficulty_gate(s.difficulty, user)]
+    scored = fit_time_limit(scored, checkin.available_minutes, top_n)
     # Always rank every eligible route and return the best top_n, even if
     # none is a great distance match, so the user always sees options.
     return diversify(scored, top_n, surface_requested=bool(checkin.surface_preference))
+
+
+def fit_time_limit(scored: List[ScoredRoute], minutes: Optional[float], top_n: int) -> List[ScoredRoute]:
+    """They said how long they have: that's a limit, not a wish. Drop runs that take
+    much longer. If too few fit, fill with the quickest of the rest (and say so)."""
+    if not minutes:
+        return scored
+    limit = minutes * TIME_SLACK + 3
+    fits = [s for s in scored if (s.estimated_minutes or 0) <= limit]
+    if len(fits) >= top_n:
+        return fits
+    rest = sorted((s for s in scored if (s.estimated_minutes or 0) > limit), key=lambda s: s.estimated_minutes or 0)
+    extra = rest[:top_n - len(fits)]
+    for s in extra:
+        s.reasons.insert(0, f"Nothing nearby fits in {minutes:.0f} minutes - this is one of the quickest")
+    return fits + extra
 
 
 def prepare_context(user: UserProfile, checkin: DailyCheckin, recent: RecentRuns):
