@@ -66,10 +66,12 @@ type FollowState = {
   repeatCount?: number;
   surface?: string | null;
   approachPath?: [number, number][];   // home -> start, from the card (shown until GPS is ready)
+  runFromHere?: boolean;               // false = they drive to the trailhead: the run starts there
 };
 
 type GetThere = { path: [number, number][]; distance_m: number; cues: Cue[] };
 const AT_START_M = 60;            // closer than this to the start = no "getting there" directions
+const DRIVE_NEAR_M = 500;         // driving there: your dot shows once you're this close to the start
 const REROUTE_M = 400;            // re-plan the way to the start after moving this far
 
 const OFF_ROUTE_M = 60;          // farther than this from the line = off route
@@ -471,6 +473,7 @@ function FollowPage() {
   // directions from where the runner is to the start of the route (re-planned if they move a lot)
   useEffect(() => {
     if (!me || route.length < 2 || progressIdx > 0) return;
+    if (state?.runFromHere === false) return;      // driving there: no running directions to the start
     const startPt = route[0];
     if (metersBetween(me.pos, startPt) < AT_START_M) {
       setGetThere(null);
@@ -492,7 +495,7 @@ function FollowPage() {
         }
       })
       .catch(() => {});
-  }, [me, route, progressIdx]);
+  }, [me, route, progressIdx, state?.runFromHere]);
 
   if (!state || route.length < 2) {
     return (
@@ -504,7 +507,8 @@ function FollowPage() {
   }
 
   const start = route[0];
-  const wayRaw = getThere?.path ?? state.approachPath ?? [];
+  const driving = state.runFromHere === false;
+  const wayRaw = driving ? [] : getThere?.path ?? state.approachPath ?? [];
   const wayThere: [number, number][] = wayRaw.length > 1
     ? [...(me ? [me.pos] : []), ...wayRaw, start]
     : [];
@@ -556,7 +560,7 @@ function FollowPage() {
         <FitTo points={focus} trigger={fitTrigger} />
         <MapGrab onMap={grabMap} />
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' />
-        {!started && (getThere?.path ?? state.approachPath) && (
+        {!started && wayThere.length > 1 && (
           <>
             {/* same style as the route, joined exactly to you and to the start: one continuous line */}
             <Polyline positions={wayThere} pathOptions={{ color: "#FFFFFF", weight: 11, opacity: 0.95, lineJoin: "round", lineCap: "round" }} />
@@ -582,7 +586,8 @@ function FollowPage() {
         {!started && wayThere.length > 1 && !me && (
           <CircleMarker center={wayThere[0]} radius={10} pathOptions={{ color: "#FFFFFF", weight: 4, fillColor: "#1D4ED8", fillOpacity: 1 }} />
         )}
-        {me && (
+        {/* driving to the trailhead: show where you are only once you're there */}
+        {me && (!driving || started || (toStart != null && toStart < DRIVE_NEAR_M)) && (
           <>
             <Circle center={me.pos} radius={me.accuracy} pathOptions={{ color: "#2563EB", weight: 1, fillOpacity: 0.12 }} />
             <CircleMarker center={me.pos} radius={8} pathOptions={{ color: "#FFFFFF", weight: 3, fillColor: "#2563EB", fillOpacity: 1 }} />
@@ -679,6 +684,13 @@ function FollowPage() {
           {geoError && <p className="follow-warn">{geoError}</p>}
           {weakSignal && !geoError && (
             <p className="follow-warn">Weak GPS signal. Progress will resume when it sharpens.</p>
+          )}
+
+          {!started && driving && (toStart == null || toStart >= DRIVE_NEAR_M) && (
+            <a className="follow-drive-link" target="_blank" rel="noreferrer"
+               href={`https://www.google.com/maps/dir/?api=1&destination=${start[0]},${start[1]}&travelmode=driving`}>
+              Drive to the start
+            </a>
           )}
 
           {!started && getThere && toStart != null && toStart >= AT_START_M && (

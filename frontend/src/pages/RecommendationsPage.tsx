@@ -405,6 +405,8 @@ function RecActions({ rec, saved, onSave, onLog }: {
     repeatCount: rec.repeat_count,
     surface: rec.surface_type,
     approachPath: rec.approach_path,
+    // "close to home" = run there from where you are; 15/30/45 min = drive to the trailhead
+    runFromHere: (rec.approach_km ?? 0) > 0,
   });
   const hasPath = rec.path.length > 1;
   return (

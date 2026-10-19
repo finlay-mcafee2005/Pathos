@@ -8915,3 +8915,16 @@ body::before {
 .cond-stat-num { display: flex; align-items: baseline; font-size: 1.45rem; }
 .cond-stat-num small { margin-left: 3px; }
 .cond-stat-label { line-height: 1.25; }
+
+/* Start route, driving to the trailhead: open driving directions in Maps */
+.follow-drive-link {
+  display: block;
+  margin-top: 0.6rem;
+  padding: 0.65rem 1rem;
+  border-radius: 12px;
+  text-align: center;
+  font-weight: 700;
+  color: #fff;
+  text-decoration: none;
+  background: linear-gradient(100deg, #1D4ED8, #3B82F6);
+}
