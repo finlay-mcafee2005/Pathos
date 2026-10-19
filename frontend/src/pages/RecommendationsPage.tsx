@@ -708,7 +708,16 @@ function RecommendationsPage() {
                 <div className="rec-splits">
                   <div>
                     <span className="rec-split-value">{miles.toFixed(1)}<small>mi</small></span>
-                    <span className="rec-split-label">Distance</span>
+                    <span className="rec-split-label">
+                      {/* say how the distance is made up, so 3 laps of a 3.3 mi loop doesn't read as one 9.8 mi route */}
+                      {rec.run_format === "repeat" && (rec.repeat_count ?? 1) > 1
+                        ? `${rec.repeat_count} laps of ${((miles - 2 * kmToMiles(rec.approach_km ?? 0)) / (rec.repeat_count ?? 1)).toFixed(1)} mi`
+                        : rec.run_format === "out_and_back"
+                          ? "Out & back"
+                          : (rec.approach_km ?? 0) > 0
+                            ? "From you"
+                            : "Distance"}
+                    </span>
                   </div>
                   {rec.estimated_minutes != null && (
                     <div>
