@@ -642,13 +642,6 @@ function FollowPage() {
                   <span className="follow-num">{(total / MI).toFixed(1)}<small>mi</small></span>
                   <span className="follow-label">Route</span>
                 </div>
-                <div>
-                  <span className="follow-num">
-                    {toStart != null ? (toStart < 1000 ? `${Math.round(toStart * 3.28084)}` : (toStart / MI).toFixed(1)) : "–"}
-                    <small>{toStart != null && toStart < 1000 ? "ft" : "mi"}</small>
-                  </span>
-                  <span className="follow-label">To the start</span>
-                </div>
               </>
             ) : (
               <>
