@@ -984,14 +984,21 @@ def recommend(
     recent: RecentRuns,
     candidates: List[RouteCandidate],
     top_n: int = 3,
+    gate: bool = True,
 ) -> List[ScoredRoute]:
+    """gate=False skips the fitness-level difficulty limit (last resort, to still show 3)."""
     ctx, checkin = prepare_context(user, checkin, recent)
     surfaces = {c.surface_type for c in candidates if c.surface_type in SURFACE_STRAIN or c.surface_type == "track"}
     if surfaces:
         ctx.sore_baseline = min(surface_strain(s, checkin.sore_body_parts)[0] for s in surfaces)
     scored = [score_route(r, user, checkin, recent, ctx) for r in candidates]
     # gate on the difficulty of the run as it would actually be run
-    scored = [s for s in scored if passes_difficulty_gate(s.difficulty, user)]
+    allowed = [s for s in scored if passes_difficulty_gate(s.difficulty, user)] if gate else list(scored)
+    # never fewer than top_n because of the gate: add the easiest of the rest
+    if len(allowed) < top_n:
+        rest = sorted((s for s in scored if s not in allowed), key=lambda s: DIFFICULTY_RANK[s.difficulty])
+        allowed += rest[:top_n - len(allowed)]
+    scored = allowed
     scored = fit_time_limit(scored, checkin.available_minutes, top_n)
     # Always rank every eligible route and return the best top_n, even if
     # none is a great distance match, so the user always sees options.

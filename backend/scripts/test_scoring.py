@@ -298,10 +298,17 @@ def check_difficulty():
     beginner = UserProfile(fitness_level="beginner", weekly_km_avg=12)
     steep = RouteCandidate(id="steep", name="Steep 3 km", distance_km=3.0, elevation_gain_m=200,
                            difficulty="easy", surface_type="trail", is_loop=True)
+    flat2 = RouteCandidate(id="flat2", name="Flat 3 km", distance_km=3.0, elevation_gain_m=10,
+                           difficulty="easy", surface_type="pavement", is_loop=True)
+    r = recommend(beginner, DailyCheckin(energy_score=6, today=THURSDAY),
+                  RecentRuns(last_7_days_km=8), [steep, loop, flat2], top_n=2)
+    assert "steep" not in [x.route.id for x in r], [x.route.id for x in r]
+    print("  beginner: steep 3 km (hard) filtered out while easier options fill the picks")
+    # ...but the picks are never short: with nothing else, the hard one fills the gap
     r = recommend(beginner, DailyCheckin(energy_score=6, today=THURSDAY),
                   RecentRuns(last_7_days_km=8), [steep, loop], top_n=2)
-    assert [x.route.id for x in r] == ["lap"], [x.route.id for x in r]
-    print("  beginner: steep 3 km (hard) filtered out, flat loop kept")
+    assert [x.route.id for x in r] == ["lap", "steep"], [x.route.id for x in r]
+    print("  beginner, only 2 routes: both shown, easier first")
     print("  all difficulty checks passed")
 
 

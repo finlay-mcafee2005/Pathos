@@ -226,21 +226,10 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
 
     routes = session.exec(select(Route).where(Route.id.in_(nearby_ids))).all()
 
-    # Travel limit is a hard rule. If nothing starts inside it, fall back to the
-    # few closest routes (within the max radius) rather than showing nothing.
-    if len(routes) < 3 and effective_radius_km < MAX_DISTANCE_KM:
-        closest = session.exec(
-            text("""
-                SELECT id FROM route
-                WHERE NOT COALESCE(hidden, FALSE) AND ST_DWithin(ST_StartPoint(gps_path)::geography,
-                                 ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography, :max_m)
-                ORDER BY ST_Distance(ST_StartPoint(gps_path)::geography,
-                                     ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography)
-                LIMIT 3
-            """),
-            params={"lon": origin_lon, "lat": origin_lat, "max_m": MAX_DISTANCE_KM * 1000},
-        ).all()
-        routes = session.exec(select(Route).where(Route.id.in_([r[0] for r in closest]))).all()
+    # Travel limit is a hard rule. If fewer than 3 routes start inside it, add the
+    # closest ones (any distance away) so there are always 3 picks to compare.
+    if len(routes) < 3:
+        routes = list(routes) + closest_routes(session, origin_lat, origin_lon, {str(r.id) for r in routes}, 12)
 
     if not routes:
         raise HTTPException(
@@ -298,7 +287,18 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
     if wants_challenge(results, user_profile, daily_checkin, recent_runs):
         results = add_challenge(results, user_profile, daily_checkin, recent_runs, candidates)
     # always show the best option; drop extra picks that are poor fits far behind it
-    results = drop_weak(results)
+    # always 3 picks (study comparisons need the same number every time): if anything
+    # above left fewer, fill with the best of the closest routes not shown yet
+    if len(results) < 3:
+        shown = {r.route.id for r in results}
+        more = [r for r in closest_routes(session, origin_lat, origin_lon, shown | set(route_by_id), 40)]
+        if more:
+            extra = recommend(user_profile, daily_checkin, recent_runs, build_route_candidates(more), top_n=3,
+                              gate=False)
+            for r in more:
+                route_by_id[str(r.id)] = r
+            real_route_ids |= {str(r.id) for r in more}
+            results = results + [e for e in extra if e.route.id not in shown][:3 - len(results)]
 
     rough_today = readiness(user_profile, daily_checkin, recent_runs) < 0.45
 
@@ -382,6 +382,18 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
         for i, r in enumerate(results)
     ]
     return unique_titles(response)
+
+
+def closest_routes(session, lat, lon, exclude: set, n: int) -> list:
+    """The n visible routes starting closest to (lat, lon), any distance away."""
+    rows = session.exec(text("""
+        SELECT id FROM route WHERE NOT COALESCE(hidden, FALSE)
+        ORDER BY ST_Distance(ST_StartPoint(gps_path)::geography,
+                             ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography)
+        LIMIT :n
+    """), params={"lon": lon, "lat": lat, "n": n + len(exclude)}).all()
+    ids = [r[0] for r in rows if str(r[0]) not in exclude][:n]
+    return session.exec(select(Route).where(Route.id.in_(ids))).all() if ids else []
 
 
 def first_part(path: list, km) -> list:

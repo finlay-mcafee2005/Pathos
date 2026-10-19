@@ -91,13 +91,13 @@ EXTRAS = {
 
 
 def nearby(routes, lat, lon, radius_km):
-    """Mirror of main.py: routes starting within the radius, else the 3 closest within 15 km."""
+    """Mirror of main.py: routes starting within the radius, plus the 12 closest if fewer than 3."""
     starts = {r.id: route_start(r) for r in routes}
     dist = {r.id: haversine_km(lat, lon, *starts[r.id]) for r in routes if starts[r.id][0] is not None}
     inside = [r for r in routes if dist.get(r.id, 1e9) <= radius_km]
-    if len(inside) < 3 and radius_km < MAX_DISTANCE_KM:
-        inside = sorted([r for r in routes if dist.get(r.id, 1e9) <= MAX_DISTANCE_KM],
-                        key=lambda r: dist[r.id])[:3]
+    if len(inside) < 3:
+        have = {r.id for r in inside}
+        inside = inside + sorted([r for r in routes if r.id in dist and r.id not in have], key=lambda r: dist[r.id])[:12]
     return inside, dist
 
 
@@ -130,7 +130,11 @@ def run_scenario(routes, home, day, dist_mi, extra):
             results = add_gentler(results, user, checkin, recent, build_route_candidates(wider))
     if wants_challenge(results, user, checkin, recent):
         results = add_challenge(results, user, checkin, recent, build_route_candidates(pool))
-    results = drop_weak(results)
+    if len(results) < 3:      # same as the app: always 3, filled from the closest routes
+        shown = {r.route.id for r in results} | {str(r.id) for r in pool}
+        more = sorted((r for r in routes if str(r.id) not in shown and r.id in dist), key=lambda r: dist[r.id])[:40]
+        extra = recommend(user, checkin, recent, build_route_candidates(more), top_n=3, gate=False)
+        results = results + extra[:3 - len(results)]
     return results, len(pool), radius
 
 
