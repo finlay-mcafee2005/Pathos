@@ -262,7 +262,7 @@ const WHY_GROUPS: { title: string; keys: string[]; full: number }[] = [
   { title: "Something new", full: 8, keys: ["novelty", "adventure", "variety"] },
   { title: "Your ratings", full: 8, keys: ["rating", "taste_loop"] },
   { title: "Run type & mood", full: 6, keys: ["intent", "goal", "mood", "shape"] },
-  { title: "Weather", full: 6, keys: ["heat", "shade", "air", "wind", "mud", "daylight"] },
+  { title: "Weather", full: 6, keys: ["heat", "shade", "air", "wind", "mud", "wet", "daylight"] },
 ];
 
 // [when it helped, when it hurt]
@@ -306,6 +306,7 @@ const WHY_PHRASES: Record<string, [string, string]> = {
   air: ["Clean air", "Poor air quality"],
   wind: ["Calm", "Windy on exposed stretches"],
   mud: ["Dry trails", "Trails may be muddy"],
+  wet: ["Dry roads", "The steep downhill may be slick"],
   daylight: ["Plenty of daylight", "You might finish after dark"],
 };
 
@@ -740,8 +741,10 @@ function RecommendationsPage() {
                 </div>
 
                 {headline && <p className="rec-why">{headline}</p>}
-                {(rec.score_breakdown?.mud ?? 0) <= -1 && (
-                  <p className="rec-alert">Recent rain: {rec.surface_type === "trail" ? "trails" : "the dirt sections"} may be wet or muddy. Watch your footing on the downhills.</p>
+                {(rec.score_breakdown?.mud ?? 0) <= -1 ? (
+                  <p className="rec-alert">Recent rain: {rec.surface_type === "trail" ? "the trail" : "the dirt sections"} may be wet or muddy. Watch your footing on the downhills.</p>
+                ) : (rec.score_breakdown?.wet ?? 0) <= -1 && (
+                  <p className="rec-alert">Recent rain: the steep downhill may be slick. Shorten your stride and take it easy going down.</p>
                 )}
 
                 <div className="rec-splits">

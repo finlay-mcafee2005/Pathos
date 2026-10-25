@@ -901,6 +901,10 @@ def score_route(
         if rain >= RAIN_MUDDY_MM and surface in ("trail", "mixed"):
             add("mud", -W_MUD * (1.0 if surface == "trail" else 0.5),
                 "It rained recently, so trails may be muddy and slick")
+        # roads too: a steep descent on wet pavement is slick (RJ's hill route after rain)
+        steep_down = (route.steepest_grade or 0) >= 0.10 or hill >= 25
+        if rain >= RAIN_MUDDY_MM and surface not in ("trail", "mixed") and steep_down:
+            add("wet", -W_MUD * 0.4, "It rained recently, so the steep downhill may be slick")
 
         until_sunset = getattr(cond, "minutes_until_sunset", None)
         if until_sunset is not None and run_minutes > until_sunset - 10:
