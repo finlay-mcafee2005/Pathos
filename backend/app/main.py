@@ -347,7 +347,9 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             "repeat_count": r.repeat_count,
             "effective_distance_km": round(r.effective_distance_km, 2),
             "reasons": r.reasons,
-            "notice": GENTLE_NOTE if GENTLE_NOTE in r.reasons else
+            "needs_drive": drive_notice((origin_lat, origin_lon), r, effective_radius_km, match_pct(r)) is not None,
+            "notice": drive_notice((origin_lat, origin_lon), r, effective_radius_km, match_pct(r)) or (
+                GENTLE_NOTE if GENTLE_NOTE in r.reasons else
                 CHALLENGE_NOTE if CHALLENGE_NOTE in r.reasons else
                 (f"To fit your time, run {r.turnaround_km * 0.621371:.1f} mi out along this route, then turn back"
                  if checkin.available_minutes else
@@ -356,7 +358,7 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
                  f"For a short run, go {r.turnaround_km * 0.621371:.1f} mi out along this route, then turn back")
                 if r.turnaround_km else
                 LONG_ROUGH_NOTE if rough_today and long_but_gentle(r.effective_distance_km, r.run_gain_m or 0) else
-                weak_match_note(r) if match_pct(r) < LOW_MATCH_PCT else None,
+                weak_match_note(r) if match_pct(r) < LOW_MATCH_PCT else None),
             "distance_km": r.route.distance_km,
             "elevation_gain_m": r.run_gain_m if r.run_gain_m is not None
                                 else run_climb_m(route_by_id[r.route.id], r.run_format, r.repeat_count),
@@ -424,6 +426,24 @@ def first_part(path: list, km) -> list:
         out.append(b)
         done += step
     return out
+
+
+DRIVE_KMH = 32          # ~20 mph, same as the check-in's 15 / 30 / 45 min travel chips
+
+
+def drive_notice(origin, r, radius_km, match: int) -> Optional[str]:
+    """A pick that starts beyond their travel limit (a gentler or fill-in pick) and isn't run
+    from home: say plainly that it needs a drive, how far, and why it's still shown."""
+    if origin[0] is None or r.route.start_lat is None or (getattr(r, "approach_km", 0) or 0) > 0:
+        return None
+    km = _hav(origin[0], origin[1], r.route.start_lat, r.route.start_lon)
+    if km <= radius_km + 0.3:
+        return None
+    mins = max(5, int(round(km * 1.3 / DRIVE_KMH * 60 / 5.0)) * 5)    # streets ~1.3x straight line
+    why = ("it's flatter, which suits today, and still a good match" if GENTLE_NOTE in r.reasons
+           else "it's still a good match for today" if match >= 50
+           else "it's one of the closest good options")
+    return f"Needs a drive: about {mins} min ({km * 1.3 * 0.621371:.0f} mi), farther than you wanted to go, but {why}"
 
 
 def approach_fields(origin, r) -> dict:

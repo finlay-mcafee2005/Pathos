@@ -63,6 +63,7 @@ type Recommendation = {
   score: number;
   reasons: string[];
   notice?: string | null;
+  needs_drive?: boolean;                // starts beyond their travel limit (shown anyway, and said so)
   difficulty_label?: string;
   approach_km?: number;                 // each way, home -> start (0 = travel there instead)
   approach_path?: [number, number][];   // the streets from home to the start
@@ -731,6 +732,7 @@ function RecommendationsPage() {
               <div className="rec-body">
                 <div className="rec-title-row">
                   <h2>{rec.route_name}</h2>
+                  {rec.needs_drive && <span className="rec-drive-pill">Needs a drive</span>}
                   <span className={`rec-match-pill ${matchLabel(rec.score, rec.perfect_points).tone}`}
                         title={`${matchPct(rec.score, rec.perfect_points)}% match with your check-in`}>
                     {matchLabel(rec.score, rec.perfect_points).text}

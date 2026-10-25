@@ -8954,3 +8954,20 @@ body::before {
   color: color-mix(in srgb, var(--accent) 55%, transparent);
   font-weight: 700;
 }
+
+/* a pick that starts beyond the travel limit: shown anyway, but flagged */
+.rec-drive-pill {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #EA580C 13%, transparent);
+  color: #C2410C;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+[data-theme="dark"] .rec-drive-pill { color: #FDBA74; }
+.rec-title-row h2 { flex: 1 1 auto; }
+.rec-title-row .rec-drive-pill + .rec-match-pill { margin-left: -0.5rem; }
