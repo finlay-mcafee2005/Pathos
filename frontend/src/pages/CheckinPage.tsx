@@ -688,9 +688,7 @@ function CheckinPage() {
                   <div className="ci-row">
                     <span className="ci-row-label">
                       Drive
-                      <small>{willingToDrive
-                        ? `Up to ${willingToDrive} min away. Routes near home are still included.`
-                        : "Run from your door. Nothing that needs a drive."}</small>
+                      <small>{willingToDrive ? "Plus routes near home" : "Run from your door"}</small>
                     </span>
                     <div className="ci-segmented compact">
                       {DRIVE_CHIPS.map((c) => (
