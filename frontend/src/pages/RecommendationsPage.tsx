@@ -740,6 +740,9 @@ function RecommendationsPage() {
                 </div>
 
                 {headline && <p className="rec-why">{headline}</p>}
+                {(rec.score_breakdown?.mud ?? 0) <= -1 && (
+                  <p className="rec-alert">Recent rain: {rec.surface_type === "trail" ? "trails" : "the dirt sections"} may be wet or muddy. Watch your footing on the downhills.</p>
+                )}
 
                 <div className="rec-splits">
                   <div>

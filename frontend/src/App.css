@@ -9014,3 +9014,41 @@ body::before {
   .ps-options { grid-template-columns: 1fr; }
   .ps-row { grid-template-columns: 1fr; }
 }
+
+/* ===== Group runs: layout fixes (hero ring, notes label, phone cards) ===== */
+.group-hero-row { align-items: flex-start; }
+.group-hero-when { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 10px; row-gap: 2px; }
+.group-hero-what::before, .group-hero-where::before { content: "·"; margin-right: 10px; opacity: .7; }
+.group-hero .fit-meter { width: 66px; height: 66px; }
+.group-hero .fit-meter svg { width: 66px; height: 66px; }
+.group-hero .fit-num { font-size: 1.25rem; }
+.group-hero .fit-label { position: absolute; top: calc(100% + 4px); left: -10px; right: -10px; text-align: center;
+  opacity: .85; font-size: .6rem; }
+.group-hero .fit-meter { margin-bottom: 14px; }
+.gr-notes-label { font-weight: 700; color: #475569; }
+[data-theme="dark"] .gr-notes-label { color: #cbd5e1; }
+
+@media (max-width: 860px) {
+  /* time pill and fit side by side on top, details full width below */
+  .gr-card { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "time fit" "main main"; gap: 12px; }
+  .gr-time { grid-area: time; align-self: center; }
+  .gr-fit { grid-area: fit; flex-direction: row-reverse; align-items: center; gap: 8px; }
+  .gr-main { grid-area: main; }
+  .gr-ring, .gr-ring svg { width: 46px; height: 46px; }
+  .gr-ring-num { font-size: 17px; }
+  .gr-main h3 { font-size: 19px; }
+  .gr-day-title { font-size: 21px; gap: 4px 10px; }
+  .gr-day-title small { flex-basis: 100%; }
+  .group-hero h2 { font-size: 1.45rem; }
+  .group-hero-when { font-size: .95rem; }
+  .group-hero-when .bib { flex-basis: 100%; }
+  .group-hero-what::before, .group-hero-where::before { content: none; }
+  .group-hero-where { flex-basis: 100%; }
+  .group-join { width: 100%; }
+  .group-join input { flex: 1; width: auto; min-width: 0; }
+}
+
+/* per-route wet / muddy warning (was only shown at the top of the page) */
+.rec-alert { margin: 8px 0 0; padding: 8px 12px; border-radius: 12px; font-size: 0.85rem; font-weight: 600;
+  background: color-mix(in srgb, #EA580C 10%, transparent); color: #C2410C; }
+[data-theme="dark"] .rec-alert { color: #FDBA74; }

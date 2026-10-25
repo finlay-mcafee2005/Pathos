@@ -160,6 +160,8 @@ function SessionCard({ m }: { m: GroupMatch }) {
         )}
         {m.notes && (
           <p className={`gr-notes ${longNotes && !open ? "clamped" : ""}`}>
+            {/* club-wide info (other days, rotating spots), not just this session */}
+            <span className="gr-notes-label">About the club: </span>
             {m.notes}
             {longNotes && (
               <button type="button" className="gr-more" onClick={() => setOpen(!open)}>
@@ -290,8 +292,9 @@ function GroupsPage() {
             <div>
               <h2>{data.today.club_name}</h2>
               <p className="group-hero-when">
-                <span className="bib">{formatMeetTime(data.today.starts_at)}</span> · {sessionTitle(data.today)} ·{" "}
-                {data.today.place_label ?? data.today.location}
+                <span className="bib">{formatMeetTime(data.today.starts_at)}</span>
+                <span className="group-hero-what">{sessionTitle(data.today)}</span>
+                <span className="group-hero-where">{data.today.place_label ?? shortPlace(data.today.location)}</span>
               </p>
             </div>
             <FitMeter fit={data.today.fit} />
