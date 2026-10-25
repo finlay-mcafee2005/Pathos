@@ -190,9 +190,11 @@ def display_name(name: str) -> str:
 @app.get("/recommendations/{user_id}")
 def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
         _me: UUID = Depends(require_self),
-        lat: Optional[float] = None, lon: Optional[float] = None):
+        lat: Optional[float] = None, lon: Optional[float] = None, exclude: Optional[str] = None):
     """lat/lon = the runner's current location (from the phone/browser). When it's
-    missing (location not allowed), everything uses the home address from signup."""
+    missing (location not allowed), everything uses the home address from signup.
+    exclude = comma-separated route ids already shown ("give me 3 different ones")."""
+    excluded = {x.strip() for x in (exclude or "").split(",") if x.strip()}
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -231,11 +233,13 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
     nearby_ids = [row[0] for row in nearby_route_ids]
 
     routes = session.exec(select(Route).where(Route.id.in_(nearby_ids))).all()
+    routes = [r for r in routes if str(r.id) not in excluded]
 
     # Travel limit is a hard rule. If fewer than 3 routes start inside it, add the
     # closest ones (any distance away) so there are always 3 picks to compare.
     if len(routes) < 3:
-        routes = list(routes) + closest_routes(session, origin_lat, origin_lon, {str(r.id) for r in routes}, 12)
+        routes = list(routes) + closest_routes(session, origin_lat, origin_lon,
+                                               {str(r.id) for r in routes} | excluded, 12)
 
     if not routes:
         raise HTTPException(
@@ -299,7 +303,7 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
     # above left fewer, fill with the best of the closest routes not shown yet
     if len(results) < 3:
         shown = {r.route.id for r in results}
-        more = [r for r in closest_routes(session, origin_lat, origin_lon, shown | set(route_by_id), 40)]
+        more = [r for r in closest_routes(session, origin_lat, origin_lon, shown | set(route_by_id) | excluded, 40)]
         if more:
             extra = recommend(user_profile, daily_checkin, recent_runs, build_route_candidates(more), top_n=3,
                               gate=False)
@@ -663,6 +667,75 @@ def last_checkin(user_id: UUID, session: Session = Depends(get_session),
         "quiet_streets": bool(c.quiet_streets),
         "shape_pref": c.shape_pref,
     }
+
+
+ADJUSTABLE = ("hills_pref", "shape_pref", "surface_preference", "quiet_streets", "wants_scenic",
+              "planned_distance_miles")
+
+
+def checkin_prefs(c: Checkin) -> dict:
+    return {
+        "checkin_id": str(c.id),
+        "hills_pref": c.hills_pref,
+        "shape_pref": c.shape_pref,
+        "surface_preference": c.surface_preference,
+        "quiet_streets": bool(c.quiet_streets),
+        "wants_scenic": bool(c.wants_scenic),
+        "planned_distance_miles": round(c.planned_distance_km / 1.60934, 1) if c.planned_distance_km else None,
+        "available_minutes": c.available_minutes,
+    }
+
+
+def todays_checkin(session: Session, user_id) -> Checkin:
+    c = session.exec(
+        select(Checkin)
+        .where(Checkin.user_id == user_id, Checkin.checkin_date == date_type.today())
+        .order_by(Checkin.created_at.desc())
+    ).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="No checkin for today")
+    return c
+
+
+@app.get("/checkins/{user_id}/today")
+def get_todays_checkin(user_id: UUID, session: Session = Depends(get_session),
+                       _me: UUID = Depends(require_self)):
+    return checkin_prefs(todays_checkin(session, user_id))
+
+
+class CheckinAdjust(BaseModel):
+    """Tweak today's check-in from the results page ("no hills, give me 3 new ones").
+    Only the fields sent change; send null to clear one."""
+    hills_pref: Optional[Literal["avoid", "want"]] = None
+    shape_pref: Optional[Literal["loop", "out_and_back"]] = None
+    surface_preference: Optional[Literal["trail", "road"]] = None
+    quiet_streets: Optional[bool] = None
+    wants_scenic: Optional[bool] = None
+    planned_distance_miles: Optional[float] = Field(default=None, ge=0.5, le=40)
+
+
+@app.post("/checkins/{user_id}/adjust")
+def adjust_checkin(user_id: UUID, payload: CheckinAdjust, session: Session = Depends(get_session),
+                   _me: UUID = Depends(require_self)):
+    """Saves the change as a new check-in for today (a copy with the tweak), so the
+    original answers stay in the history and the study data shows what was adjusted."""
+    old = todays_checkin(session, user_id)
+    data = {k: v for k, v in old.model_dump().items() if k not in ("id", "created_at")}
+    sent = payload.model_fields_set
+    for k in sent & {"hills_pref", "shape_pref", "surface_preference"}:
+        data[k] = getattr(payload, k)
+    for k in sent & {"quiet_streets", "wants_scenic"}:
+        data[k] = bool(getattr(payload, k))
+    if "planned_distance_miles" in sent:
+        miles = payload.planned_distance_miles
+        data["planned_distance_km"] = miles * 1.60934 if miles else None
+        if miles:
+            data["available_minutes"] = None       # a distance replaces "I have N minutes"
+    new = Checkin(**data)
+    session.add(new)
+    session.commit()
+    session.refresh(new)
+    return checkin_prefs(new)
 
 
 @app.post("/checkins")

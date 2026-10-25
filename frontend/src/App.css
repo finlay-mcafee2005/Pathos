@@ -9067,3 +9067,19 @@ body::before {
   .ci-segmented.compact button { padding: 0.45rem 0.35rem; text-align: center; white-space: nowrap; font-size: 0.8rem;
     letter-spacing: -0.01em; }
 }
+
+/* "Adjust and regenerate" bar on the results page */
+.adj-bar { text-align: left; margin: 18px 0 6px; padding: 14px 16px; border-radius: 18px; background: var(--card-bg);
+  border: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
+.adj-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.adj-title { font-weight: 700; font-size: 0.95rem; color: var(--ink); }
+.adj-different { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px; border: 0;
+  background: var(--accent); color: #fff; font: 700 0.85rem Inter, sans-serif; cursor: pointer; }
+.adj-different:disabled, .adj-chip:disabled { opacity: .5; cursor: default; }
+.adj-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.adj-chip { padding: 6px 12px; border-radius: 999px; border: 1.5px solid var(--border); background: transparent;
+  color: var(--ink); font: 600 0.84rem Inter, sans-serif; cursor: pointer; white-space: nowrap; }
+.adj-chip:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+.adj-chip.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+.adj-note { font-size: 0.78rem; color: var(--ink); opacity: .6; }
+.adj-msg { text-align: left; margin: 6px 0 0; font-size: 0.88rem; font-weight: 600; color: var(--accent); }

@@ -6,6 +6,7 @@ import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useRouteActions } from "../components/RouteExportButtons";
 import { runPlan, type PlanInput } from "../utils/routeExport";
+import AdjustBar, { type Adjust, type TodayPrefs } from "../components/AdjustBar";
 import { type GroupMatch, formatMeetTime, sessionTitle } from "./GroupsPage";
 import { API_URL } from "../utils/format";
 
@@ -508,6 +509,9 @@ function RecommendationsPage() {
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [conditions, setConditions] = useState<Conditions | null>(null);
   const [groupToday, setGroupToday] = useState<GroupMatch | null>(null);
+  const [prefs, setPrefs] = useState<TodayPrefs | null>(null);
+  const [seen, setSeen] = useState<string[]>([]);        // routes shown so far, for "3 different routes"
+  const [adjustMsg, setAdjustMsg] = useState<string | null>(null);
 
   // load saved routes so the Save buttons show the right state
   useEffect(() => {
@@ -546,7 +550,35 @@ function RecommendationsPage() {
     setOpenReasoning((prev) => ({ ...prev, [i]: !prev[i] }));
   }
 
-  async function fetchRecommendations() {
+  async function adjust(change: Adjust, label: string) {
+    if (!userId) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/checkins/${userId}/adjust`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(change),
+      });
+      if (!res.ok) throw new Error("Couldn't update your check-in. Try again.");
+      setPrefs(await res.json());
+      setSeen([]);                       // new preferences: start over from the best matches
+      setAdjustMsg(`Updated: ${label.toLowerCase()}. Here are new picks.`);
+      await fetchRecommendations([]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+      setLoading(false);
+    }
+  }
+
+  async function showDifferent() {
+    const ids = [...seen, ...recommendations.map((r) => r.route_id).filter((x): x is string => !!x)];
+    const unique = [...new Set(ids)];
+    setSeen(unique);
+    setAdjustMsg("Here are 3 routes you haven't seen today.");
+    await fetchRecommendations(unique);
+  }
+
+  async function fetchRecommendations(exclude: string[] = []) {
     if (!userId) {
       setError("No user found. Please log in again.");
       return;
@@ -556,7 +588,10 @@ function RecommendationsPage() {
     try {
       // plan from where they are right now; if location isn't allowed, the server uses home
       const here = await currentPosition();
-      const where = here ? `?lat=${here[0].toFixed(5)}&lon=${here[1].toFixed(5)}` : "";
+      const params = new URLSearchParams();
+      if (here) { params.set("lat", here[0].toFixed(5)); params.set("lon", here[1].toFixed(5)); }
+      if (exclude.length) params.set("exclude", exclude.join(","));
+      const where = params.toString() ? `?${params}` : "";
       const response = await fetch(`${API_URL}/recommendations/${userId}${where}`);
       if (!response.ok) {
         const body = await response.json().catch(() => null);
@@ -567,6 +602,10 @@ function RecommendationsPage() {
       }
       const data = await response.json();
       setRecommendations(data);
+      fetch(`${API_URL}/checkins/${userId}/today`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then(setPrefs)
+        .catch(() => setPrefs(null));
       fetch(`${API_URL}/conditions/${userId}`)
         .then((res) => (res.ok ? res.json() : null))
         .then(setConditions)
@@ -598,7 +637,7 @@ function RecommendationsPage() {
           </h1>
           <p>Ranked by how well each one fits your check-in. Open "Why this route" to see the reasoning.</p>
         </div>
-        <button className="recs-refresh" onClick={fetchRecommendations} disabled={loading}>
+        <button className="recs-refresh" onClick={() => { setSeen([]); setAdjustMsg(null); fetchRecommendations(); }} disabled={loading}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={loading ? "spin" : ""}>
             <path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7" />
           </svg>
@@ -691,6 +730,20 @@ function RecommendationsPage() {
           </section>
         );
       })()}
+
+      {count > 0 && (
+        <AdjustBar
+          prefs={prefs}
+          busy={loading}
+          currentMiles={(() => {
+            const t = recommendations.find((r) => r.target_km)?.target_km;
+            return t ? Math.round(t * 0.621371 * 2) / 2 : null;
+          })()}
+          onAdjust={adjust}
+          onDifferent={showDifferent}
+        />
+      )}
+      {adjustMsg && count > 0 && !loading && <p className="adj-msg">{adjustMsg}</p>}
 
       <div className="recs-list">
         {recommendations.map((rec, i) => {
