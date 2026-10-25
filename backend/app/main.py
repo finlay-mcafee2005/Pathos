@@ -254,7 +254,9 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
     # synthetic longer options and merge them into the same ranking so the
     # best overall candidates (real or combined) win the top spots.
     best_is_weak_match = (not results) or (
-        checkin.planned_distance_km and not results[0].distance_matched
+        checkin.planned_distance_km and (not results[0].distance_matched
+                                         # laps are a last resort: try joining routes instead
+                                         or results[0].run_format == "repeat")
     )
     if best_is_weak_match and checkin.planned_distance_km:
         heat_cut, _ = heat_distance_factor(daily_checkin.conditions)

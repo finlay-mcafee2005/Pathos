@@ -289,10 +289,37 @@ def check_difficulty():
     # the engine grades the run as actually run: 3 laps of a 3 km loop is not "easy"
     loop = RouteCandidate(id="lap", name="3 km loop", distance_km=3.0, elevation_gain_m=30,
                           difficulty="easy", surface_type="pavement", is_loop=True)
+    r = recommend(INTERMEDIATE, DailyCheckin(energy_score=6, planned_distance_km=6.0, today=THURSDAY),
+                  RecentRuns(last_7_days_km=20), [loop], top_n=1)[0]
+    assert r.run_format == "repeat" and r.repeat_count == 2 and r.difficulty == "moderate", (r.run_format, r.difficulty)
+    print(f"  3 km loop x{r.repeat_count} for a 6 km plan -> {r.difficulty}")
+    # never more than 2 laps, even when 3 would hit the distance
     r = recommend(INTERMEDIATE, DailyCheckin(energy_score=6, planned_distance_km=9.0, today=THURSDAY),
                   RecentRuns(last_7_days_km=20), [loop], top_n=1)[0]
-    assert r.run_format == "repeat" and r.difficulty == "moderate", (r.run_format, r.difficulty)
-    print(f"  3 km loop x{r.repeat_count} for a 9 km plan -> {r.difficulty}")
+    assert r.repeat_count <= 2, r.repeat_count
+    print(f"  3 km loop for a 9 km plan -> at most 2 laps ({r.repeat_count})")
+
+    # "avoid hills" is a limit: a steep route is dropped when flat ones can fill the picks
+    flats = [RouteCandidate(id=f"f{i}", name=f"Flat {i}", distance_km=5.0, elevation_gain_m=20 + i,
+                            difficulty="easy", surface_type="pavement", is_loop=True) for i in range(3)]
+    steep5 = RouteCandidate(id="steep5", name="Steep 5 km", distance_km=5.0, elevation_gain_m=250,
+                            difficulty="hard", surface_type="pavement", is_loop=True)
+    r = recommend(INTERMEDIATE, DailyCheckin(energy_score=10, sleep_hours=9, planned_distance_km=5.0,
+                                             hills_pref="avoid", today=THURSDAY),
+                  RecentRuns(last_7_days_km=20), flats + [steep5], top_n=3)
+    assert "steep5" not in [x.route.id for x in r], [x.route.id for x in r]
+    print("  avoid hills on a fresh day: the steep route is left out")
+
+    # a long run on a fresh day stays gentle unless they ask for hills
+    long_flat = RouteCandidate(id="lf", name="Long flat", distance_km=20.0, elevation_gain_m=100,
+                               difficulty="hard", surface_type="pavement", is_loop=True)
+    long_hilly = RouteCandidate(id="lh", name="Long hilly", distance_km=20.0, elevation_gain_m=900,
+                                difficulty="hard", surface_type="pavement", is_loop=True)
+    r = recommend(INTERMEDIATE, DailyCheckin(energy_score=10, sleep_hours=9, planned_distance_km=20.0,
+                                             run_intent="long", today=THURSDAY),
+                  RecentRuns(last_7_days_km=20), [long_hilly, long_flat], top_n=2)
+    assert r[0].route.id == "lf", [x.route.id for x in r]
+    print("  fresh-day long run, hills not asked for: the flatter long route comes first")
 
     # beginners are gated on that run difficulty
     beginner = UserProfile(fitness_level="beginner", weekly_km_avg=12)

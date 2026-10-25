@@ -4,6 +4,8 @@ Export one study participant's check-ins and the picks they were shown.
 Run from backend/ (reads only, never writes to the database):
     DATABASE_URL=... python3 scripts/export_study_data.py --email someone@oxy.edu
     DATABASE_URL=... python3 scripts/export_study_data.py --email someone@oxy.edu --since 2026-10-19
+    DATABASE_URL=... python3 scripts/export_study_data.py --name "Jane"                 (part of their name)
+    DATABASE_URL=... python3 scripts/export_study_data.py --who-checked-in 2026-10-20  (everyone that day)
 
 Writes to scripts/study_exports/<email>/ (kept out of git - it's personal data):
     summary.md     - read this: each check-in with what they entered and the top 3 shown
@@ -24,10 +26,20 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 if "DATABASE_URL" not in os.environ:
     sys.exit('DATABASE_URL isn\'t set. Run: export DATABASE_URL="<your Supabase link>"')
-if "--email" not in sys.argv:
-    sys.exit("Usage: python3 scripts/export_study_data.py --email someone@oxy.edu [--since YYYY-MM-DD]")
+USAGE = ("Usage:\n"
+         "  python3 scripts/export_study_data.py --email someone@oxy.edu [--since YYYY-MM-DD]\n"
+         "  python3 scripts/export_study_data.py --name \"Jane Doe\" [--since YYYY-MM-DD]   (part of a name is fine)\n"
+         "  python3 scripts/export_study_data.py --who-checked-in YYYY-MM-DD           (list everyone that day)")
+if not any(a in sys.argv for a in ("--email", "--name", "--who-checked-in")):
+    sys.exit(USAGE)
 
-EMAIL = sys.argv[sys.argv.index("--email") + 1].strip().lower()
+
+def arg(flag):
+    return sys.argv[sys.argv.index(flag) + 1].strip() if flag in sys.argv else None
+
+
+EMAIL = (arg("--email") or "").lower()
+NAME = arg("--name")
 SINCE = sys.argv[sys.argv.index("--since") + 1] if "--since" in sys.argv else "1900-01-01"
 LA = ZoneInfo("America/Los_Angeles")
 MI = 0.621371
@@ -57,8 +69,37 @@ def main():
     from sqlalchemy import create_engine, text
     engine = create_engine(os.environ["DATABASE_URL"])
     with engine.connect() as conn:
-        user = conn.execute(text('SELECT id, full_name, email, fitness_level, weekly_mileage_avg, usual_pace_min_km, '
-                                 'address, goal FROM "user" WHERE lower(email) = :e'), {"e": EMAIL}).mappings().first()
+        day = arg("--who-checked-in")
+        if day:
+            # check-in dates are stored by the server's (UTC) day, so look at the LA day around it
+            rows = conn.execute(text("""
+                SELECT u.full_name, u.email, count(*) AS n, min(c.created_at) AS first, max(c.created_at) AS last
+                FROM checkin c JOIN "user" u ON u.id = c.user_id
+                WHERE c.checkin_date BETWEEN CAST(:d AS date) AND CAST(:d AS date) + 1
+                GROUP BY u.full_name, u.email ORDER BY min(c.created_at)
+            """), {"d": day}).mappings().all()
+            print(f"Check-ins on or just after {day} (times in LA):")
+            for r in rows:
+                print(f"  {r['full_name']:<28} {r['email']:<34} {r['n']} check-ins  {la_time(r['first'])} - {la_time(r['last'])}")
+            if not rows:
+                print("  nobody")
+            print("\nThen export one with: python3 scripts/export_study_data.py --email THEIR_EMAIL --since " + day)
+            return
+        cols = ('SELECT id, full_name, email, fitness_level, weekly_mileage_avg, usual_pace_min_km, '
+                'address, goal FROM "user" ')
+        if NAME:
+            users = conn.execute(text(cols + "WHERE full_name ILIKE :n ORDER BY created_at"),
+                                 {"n": f"%{NAME}%"}).mappings().all()
+            if not users:
+                sys.exit(f'No account with a name like "{NAME}". Try part of it, or --who-checked-in YYYY-MM-DD.')
+            if len(users) > 1:
+                print(f'{len(users)} accounts match "{NAME}" - use --email with one of these:')
+                for u in users:
+                    print(f"  {u['full_name']:<28} {u['email']}")
+                sys.exit(1)
+            user = users[0]
+        else:
+            user = conn.execute(text(cols + "WHERE lower(email) = :e"), {"e": EMAIL}).mappings().first()
         if not user:
             sys.exit(f"No account with the email {EMAIL}. Check the spelling (it's matched exactly, ignoring case).")
         checkins = conn.execute(text("""
@@ -81,7 +122,7 @@ def main():
         injuries = conn.execute(text("SELECT body_part, severity, reported_at, resolved_at FROM injury WHERE user_id = :u"),
                                 {"u": user["id"]}).mappings().all()
 
-    out = os.path.join(os.path.dirname(__file__), "study_exports", EMAIL.replace("@", "_at_"))
+    out = os.path.join(os.path.dirname(__file__), "study_exports", user["email"].lower().replace("@", "_at_"))
     os.makedirs(out, exist_ok=True)
 
     by_checkin = {}

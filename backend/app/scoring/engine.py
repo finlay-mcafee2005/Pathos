@@ -243,7 +243,7 @@ PARTIAL_OVER = 1.2            # short time limit: a route this much longer than 
 W_PARTIAL = -3                # ...a small nudge toward runs that use the whole route
 TIME_SLACK = 1.15             # a run may take up to 15% (+3 min) over the time they have
 W_OUT_AND_BACK = -2          # small nudge toward true loops
-W_REPEAT_PER_LAP = -3        # each extra lap of a repeated loop
+W_REPEAT_PER_LAP = -8        # each extra lap of a repeated loop (testers disliked laps: use them only when nothing else fits)
 W_OVERLOAD = 15              # long route while mileage is well above average
 
 W_PROXIMITY = 14              # starts at home -> fades to 0 at the search radius (travel is a priority)
@@ -284,8 +284,14 @@ W_SHADE = 8                   # bonus for a shady route on a hot day
 FITNESS_HILL_FACTOR = {"beginner": 0.6, "intermediate": 1.0, "advanced": 1.4}
 DEFAULT_TYPICAL_RUN_KM = {"beginner": 4.0, "intermediate": 7.0, "advanced": 10.0}
 RUNS_PER_WEEK = 4
-MAX_REPEATS = 3
+MAX_REPEATS = 2                # never more than 2 laps
 FLAT_HILL_M_PER_KM = 15
+AVOID_HILLS_MAX_M_PER_KM = 15  # "avoid hills" is a limit: runs climbing more than this (~80 ft/mi) are dropped
+LONG_RUN_KM = 16.0            # a planned run at least this long (~10 mi)...
+LONG_RUN_VS_USUAL = 1.6       # ...and 1.6x their usual run, or run type "long", counts as a long run
+LONG_RUN_HILL_IDEAL = 12.0    # long run: ideal climb (m/km) unless they asked for hills (~65 ft/mi)
+LONG_RUN_HILL_WANT = 20.0     # long run with "want hills": still capped (~105 ft/mi, ~1,500 ft over 14 mi)
+WANT_HILLS_MAX = 50.0         # "want hills": steeper than this stops helping and starts to cost
 W_HILLS_PREF = 18             # the runner said outright: avoid hills / want hills
 
 LOWER_BODY_PARTS = {
@@ -624,6 +630,11 @@ def score_route(
     lean = clamp((ready - FEEL_CENTER) / FEEL_WIDTH, -1, 1)
     lean = clamp((abs(lean) - FEEL_DEADZONE) / (1 - FEEL_DEADZONE)) * (1 if lean >= 0 else -1)
 
+    # a long run: more distance means climbing adds up, so keep it gentler unless they ask for hills
+    # (run type "long", or a planned distance well past their usual run)
+    long_run = checkin.run_intent == "long" or (
+        bool(checkin.planned_distance_km) and target >= max(LONG_RUN_KM, LONG_RUN_VS_USUAL * typical))
+
     # --- 5. terrain: hilliness vs. readiness, taste, recovery, goal -------
     if route.distance_km > 0:
         ideal = (5 + IDEAL_CLIMB_SPAN * ready ** IDEAL_CURVE) * FITNESS_HILL_FACTOR.get(user.fitness_level, 1.0)
@@ -633,6 +644,8 @@ def score_route(
         ideal *= ctx.recovery.hill_tolerance * goal["hill_factor"]
         if checkin.run_intent == "easy" or ctx.rhythm.recovery_day:
             ideal = min(ideal, 8.0)                 # an easy / day-after-a-hard-effort run is a flat run
+        if long_run:
+            ideal = min(ideal, LONG_RUN_HILL_WANT if checkin.hills_pref == "want" else LONG_RUN_HILL_IDEAL)
         # how forgiving the fit is: tighter than before so a fresh day and an
         # ordinary day actually prefer different amounts of climbing
         # on an ordinary day their own taste leads; the further from ordinary they feel,
@@ -664,6 +677,8 @@ def score_route(
     # how they feel today tilts the KIND of run, not just its hilliness: a fresh day leans
     # toward climbing and trails, a run-down day toward flat, even pavement.
     hillness = clamp((hill - 8) / 25)                               # 8 m/km -> 0, 33 m/km -> 1
+    if long_run and checkin.hills_pref != "want":
+        hillness = 0.0                       # feeling fresh doesn't mean a hilly long run
     rugged = {"trail": 1.0, "mixed": 0.5}.get(surface, 0.0)
     add("feel", W_FEEL * lean * (0.6 * hillness + 0.4 * rugged - 0.3))
 
@@ -677,8 +692,11 @@ def score_route(
                 "Has some climbing (you asked to avoid hills)" if steep >= 0.5 else None)
     elif checkin.hills_pref == "want":
         climb = clamp((hill - 15) / 25)                    # 15 m/km -> 0, 40 m/km -> 1
+        too_much = WANT_HILLS_MAX if not long_run else LONG_RUN_HILL_WANT * 1.4
+        over = clamp((hill - too_much) / 25)               # past this, more climbing costs
         if climb > 0:
-            add("hills", W_HILLS_PREF * climb, "Plenty of climbing, like you asked" if climb >= 0.5 else None)
+            add("hills", W_HILLS_PREF * (climb - 1.5 * over),
+                "Plenty of climbing, like you asked" if climb >= 0.5 and over == 0 else None)
         elif hill < 10:
             add("hills", -W_HILLS_PREF * 0.5)
 
@@ -999,10 +1017,28 @@ def recommend(
         rest = sorted((s for s in scored if s not in allowed), key=lambda s: DIFFICULTY_RANK[s.difficulty])
         allowed += rest[:top_n - len(allowed)]
     scored = allowed
+    scored = limit_hills(scored, checkin.hills_pref, top_n)
     scored = fit_time_limit(scored, checkin.available_minutes, top_n)
     # Always rank every eligible route and return the best top_n, even if
     # none is a great distance match, so the user always sees options.
     return diversify(scored, top_n, surface_requested=bool(checkin.surface_preference))
+
+
+def run_climb_rate(s: ScoredRoute) -> float:
+    """m of climbing per km of the run as it's run (laps and the run to the start included)."""
+    return (s.run_gain_m or 0.0) / s.effective_distance_km if s.effective_distance_km else 0.0
+
+
+def limit_hills(scored: List[ScoredRoute], hills_pref: Optional[str], top_n: int) -> List[ScoredRoute]:
+    """They said avoid hills: that's a limit, not a nudge. Drop runs climbing more than
+    AVOID_HILLS_MAX_M_PER_KM; if too few are left, fill with the flattest of the rest."""
+    if hills_pref != "avoid":
+        return scored
+    flat = [s for s in scored if run_climb_rate(s) <= AVOID_HILLS_MAX_M_PER_KM]
+    if len(flat) >= top_n:
+        return flat
+    rest = sorted((s for s in scored if s not in flat), key=run_climb_rate)
+    return flat + rest[:top_n - len(flat)]
 
 
 def fit_time_limit(scored: List[ScoredRoute], minutes: Optional[float], top_n: int) -> List[ScoredRoute]:

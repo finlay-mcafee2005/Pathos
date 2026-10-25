@@ -117,7 +117,8 @@ def run_scenario(routes, home, day, dist_mi, extra):
     if not pool:
         return [], 0, radius
     results = recommend(user, checkin, recent, build_route_candidates(pool))
-    if (not results or not results[0].distance_matched) and checkin.planned_distance_km:
+    if (not results or not results[0].distance_matched or results[0].run_format == "repeat") \
+            and checkin.planned_distance_km:
         cut, _ = heat_distance_factor(checkin.conditions)
         combos = generate_combined_routes(pool, checkin.planned_distance_km * cut)
         if combos:
