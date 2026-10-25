@@ -112,7 +112,17 @@ function FollowPage() {
   const navigate = useNavigate();
   const state = useLocation().state as FollowState | null;
 
-  const route = useMemo(() => (state ? runPath(state.path, state.format) : []), [state]);
+  // Running from home: one big route - home to the start, the route, and back home -
+  // with one distance and one set of turn-by-turn directions (no separate "getting there").
+  const merged = !!(state?.runFromHere && state.approachPath && state.approachPath.length > 1);
+  const route = useMemo(() => {
+    if (!state) return [];
+    const run = runPath(state.path, state.format);
+    if (!merged || !state.approachPath) return run;
+    const there = state.approachPath;
+    const back = [...there].reverse();
+    return [...there, ...run.slice(1), ...back.slice(1)];
+  }, [state, merged]);
   const cum = useMemo(() => cumulativeMeters(route), [route]);
   const total = cum[cum.length - 1] ?? 0;
 
@@ -510,7 +520,8 @@ function FollowPage() {
 
   const start = route[0];
   const driving = state.runFromHere === false;
-  const wayRaw = driving ? [] : getThere?.path ?? state.approachPath ?? [];
+  // (merged: the run already starts at home, so only show a way there if they're elsewhere)
+  const wayRaw = driving ? [] : merged ? getThere?.path ?? [] : getThere?.path ?? state.approachPath ?? [];
   const wayThere: [number, number][] = wayRaw.length > 1
     ? [...(me ? [me.pos] : []), ...wayRaw, start]
     : [];
@@ -518,9 +529,10 @@ function FollowPage() {
   const done = cum[progressIdx] ?? 0;
   // the whole run (same number as the card), and what's left beyond this pass of the
   // drawn route: more laps, and the run home if they ran here
-  const approachM = state.runFromHere ? (state.plan?.approachKm ?? 0) * 1000 : 0;
+  const approachM = state.runFromHere && !merged ? (state.plan?.approachKm ?? 0) * 1000 : 0;
   const runTotal = state.totalKm ? state.totalKm * 1000 : total;
-  const extraAfter = Math.max(0, runTotal - approachM - total);
+  // beyond one pass of the drawn line: more laps (and the run home, if it isn't drawn)
+  const extraAfter = merged && state.format !== "repeat" ? 0 : Math.max(0, runTotal - approachM - total);
   const partLabel = state.format === "repeat" && (state.repeatCount ?? 1) > 1 ? "One lap"
     : state.format === "out_and_back" ? "Out & back" : "Route";
   const started = progressIdx > 0;
@@ -651,7 +663,7 @@ function FollowPage() {
                   <span className="follow-num">{(runTotal / MI).toFixed(1)}<small>mi</small></span>
                   <span className="follow-label">Total run</span>
                 </div>
-                {Math.abs(runTotal - total) > 0.05 * MI && (
+                {!merged && Math.abs(runTotal - total) > 0.05 * MI && (
                   <div>
                     <span className="follow-num">{(total / MI).toFixed(1)}<small>mi</small></span>
                     <span className="follow-label">{partLabel}</span>
