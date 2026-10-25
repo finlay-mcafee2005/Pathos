@@ -5,7 +5,7 @@ Find the steepest stretch of every route, and take out the barely-runnable ones
   steepest_grade   steepest climb sustained over 200 m, as a fraction (0.15 = 15%),
                    in either direction (routes can be run both ways)
 
-Routes at or above HIDE_GRADE (20% on roads, 28% on trails) are hidden. Anything
+Routes at or above HIDE_GRADE (25% on roads, 30% on trails) are hidden. Anything
 steeper than ~12% that stays gets a scoring penalty in the app (lighter if you asked for hills).
 
 Uses the same USGS elevation data as update_elevation_dem.py. Run from backend/:
@@ -22,23 +22,48 @@ from update_elevation_dem import resample, elevations, STEP_M  # noqa: E402  (al
 from sqlalchemy import create_engine, text  # noqa: E402
 
 WINDOW_M = 200
-HIDE_GRADE = {"trail": 0.28}       # trails: fire roads are steep on purpose
-HIDE_GRADE_DEFAULT = 0.20          # roads / mixed / track
+def _arg(flag, default):
+    return float(sys.argv[sys.argv.index(flag) + 1]) if flag in sys.argv else default
+
+
+# hide at or above this steepest-200 m grade (override: --hide-road 0.25 --hide-trail 0.30)
+HIDE_GRADE = {"trail": _arg("--hide-trail", 0.30)}     # trails: fire roads are steep on purpose
+HIDE_GRADE_DEFAULT = _arg("--hide-road", 0.25)         # roads / mixed / track
 BACKUP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "steep_hidden.json")
+
+
+SMOOTH = 5                         # median of 5 samples (~100 m): drops one-off DEM spikes
+STEADY = 1.35                      # a real climb goes steadily up: total up+down movement in the
+                                   # window can't be more than this x the net climb (bridges,
+                                   # overpasses and cliff edges jump up and back down)
+
+
+def smooth(el):
+    half = SMOOTH // 2
+    out = []
+    for i in range(len(el)):
+        win = sorted(e for e in el[max(0, i - half): i + half + 1] if e is not None)
+        out.append(win[len(win) // 2] if win else None)
+    return out
 
 
 def steepest(coords):
     pts = resample(coords)
-    el = elevations(pts)
-    if not el or sum(e is None for e in el) > 0.1 * len(el):
+    raw = elevations(pts)
+    if not raw or sum(e is None for e in raw) > 0.1 * len(raw):
         return None, None
+    el = smooth(raw)
     w = max(1, int(WINDOW_M // STEP_M))
     best, where = 0.0, None
     for i in range(len(el) - w):
-        a, b = el[i], el[i + w]
-        if a is None or b is None:
+        seg = el[i:i + w + 1]
+        if any(e is None for e in seg):
             continue
-        g = abs(b - a) / (w * STEP_M)
+        net = abs(seg[-1] - seg[0])
+        moved = sum(abs(b - a) for a, b in zip(seg, seg[1:]))
+        if net < 5 or moved > STEADY * net:
+            continue                    # not a steady climb: noise, not a hill
+        g = net / (w * STEP_M)
         if g > best:
             best, where = g, pts[i + w // 2]
     return round(best, 3), where
@@ -93,6 +118,8 @@ def main():
     print(f"\n{len(results)} routes measured.")
     for cut in (0.10, 0.12, 0.15, 0.20, 0.25):
         print(f"  steepest 200 m at {cut:.0%}+: {sum(r[3] >= cut for r in results)} routes")
+    from collections import Counter
+    print("  would hide, by surface:", dict(Counter(r[2] for r in hide)))
     print(f"\nTo hide ({len(hide)}): too steep to run")
     for rid, name, surf, g, where in sorted(hide, key=lambda r: -r[3]):
         print(f"  {g:.0%}  {surf:<8} {name}   (steepest at {where[1]:.5f},{where[0]:.5f})")
