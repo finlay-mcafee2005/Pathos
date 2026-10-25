@@ -53,6 +53,7 @@ def build_daily_checkin(checkin: Checkin) -> DailyCheckin:
         mood=getattr(checkin, "mood", None),
         run_intent=getattr(checkin, "run_intent", None),
         hills_pref=getattr(checkin, "hills_pref", None),
+        quiet_streets=bool(getattr(checkin, "quiet_streets", False)),
     )
 
 
@@ -170,6 +171,10 @@ def build_route_candidates(routes: List[Route]) -> List[RouteCandidate]:
             start_lon=route_start(r)[1],
             shade=getattr(r, "shade_pct", None),
             scenic_pct=getattr(r, "scenic_pct", None),
+            busy_pct=getattr(r, "busy_pct", None),
+            freeway_crossings=getattr(r, "freeway_crossings", None),
+            downtown_pct=getattr(r, "downtown_pct", None),
+            turns_per_km=getattr(r, "turns_per_km", None),
             elevation_loss_m=getattr(r, "elevation_loss_m", None),
         )
         for r in routes

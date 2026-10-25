@@ -321,6 +321,28 @@ def check_difficulty():
     assert r[0].route.id == "lf", [x.route.id for x in r]
     print("  fresh-day long run, hills not asked for: the flatter long route comes first")
 
+    # busy roads, freeways and turns: a quiet, simple route beats a busy, twisty twin
+    def twin(i, **kw):
+        return RouteCandidate(id=i, name=i, distance_km=6.0, elevation_gain_m=40, difficulty="easy",
+                              surface_type="pavement", is_loop=True, **kw)
+    calm = twin("calm", busy_pct=0.02, freeway_crossings=0, downtown_pct=0.0, turns_per_km=1.2)
+    busy = twin("busy", busy_pct=0.60, freeway_crossings=2, downtown_pct=0.0, turns_per_km=1.2)
+    twisty = twin("twisty", busy_pct=0.02, freeway_crossings=0, downtown_pct=0.0, turns_per_km=6.0)
+    avg = DailyCheckin(energy_score=6, sleep_hours=7, planned_distance_km=6.0, today=THURSDAY)
+    r = recommend(INTERMEDIATE, avg, RecentRuns(last_7_days_km=20), [busy, twisty, calm], top_n=3)
+    assert r[0].route.id == "calm", [x.route.id for x in r]
+    print("  quiet, few-turn route beats a busy-road twin and a twisty twin")
+    downtown = twin("dtla", busy_pct=0.05, freeway_crossings=0, downtown_pct=0.8, turns_per_km=2.0)
+    calm2 = twin("calm2", busy_pct=0.08, freeway_crossings=0, downtown_pct=0.0, turns_per_km=3.0)
+    calm3 = twin("calm3", busy_pct=0.0, freeway_crossings=0, downtown_pct=0.0, turns_per_km=2.5)
+    quiet_ck = DailyCheckin(energy_score=6, sleep_hours=7, planned_distance_km=6.0, quiet_streets=True, today=THURSDAY)
+    r = recommend(INTERMEDIATE, quiet_ck, RecentRuns(last_7_days_km=20), [busy, downtown, calm, calm2, calm3], top_n=3)
+    ids = [x.route.id for x in r]
+    assert "busy" not in ids and "dtla" not in ids and len(ids) == 3, ids
+    r = recommend(INTERMEDIATE, quiet_ck, RecentRuns(last_7_days_km=20), [busy, downtown, calm], top_n=3)
+    assert len(r) == 3, [x.route.id for x in r]
+    print("  quiet side streets only: busy and downtown routes left out, filled only if short")
+
     # beginners are gated on that run difficulty
     beginner = UserProfile(fitness_level="beginner", weekly_km_avg=12)
     steep = RouteCandidate(id="steep", name="Steep 3 km", distance_km=3.0, elevation_gain_m=200,

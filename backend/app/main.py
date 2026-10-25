@@ -108,6 +108,10 @@ def add_new_columns():
         conn.execute(text("ALTER TABLE route ADD COLUMN IF NOT EXISTS elevation_loss_m FLOAT"))
         conn.execute(text("ALTER TABLE route ADD COLUMN IF NOT EXISTS shade_pct FLOAT"))
         conn.execute(text("ALTER TABLE route ADD COLUMN IF NOT EXISTS scenic_pct FLOAT"))
+        for col, typ in [("busy_pct", "FLOAT"), ("freeway_crossings", "INTEGER"),
+                         ("downtown_pct", "FLOAT"), ("turns_per_km", "FLOAT")]:
+            conn.execute(text(f"ALTER TABLE route ADD COLUMN IF NOT EXISTS {col} {typ}"))
+        conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS quiet_streets BOOLEAN DEFAULT FALSE"))
         # recommendation logging
         conn.execute(text("ALTER TABLE recommendation ALTER COLUMN route_id DROP NOT NULL"))
         for col, typ in [("checkin_id", "UUID"), ("rank", "INTEGER"), ("route_name", "VARCHAR"),
@@ -365,6 +369,10 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             "target_km": round(r.target_km, 2) if r.target_km else None,
             "shade_pct": getattr(r.route, "shade", None),
             "scenic_pct": getattr(r.route, "scenic_pct", None),
+            "busy_pct": getattr(r.route, "busy_pct", None),
+            "freeway_crossings": getattr(r.route, "freeway_crossings", None),
+            "downtown_pct": getattr(r.route, "downtown_pct", None),
+            "turns_per_km": getattr(r.route, "turns_per_km", None),
             "days_since_run": recent_runs.days_since_last_run_by_route_id.get(r.route.id),
             "your_rating": recent_runs.avg_rating_by_route_id.get(r.route.id),
             "feels_like_f": getattr(daily_checkin.conditions, "feels_like_f", None)
@@ -589,6 +597,7 @@ class CheckinRequest(BaseModel):
     mood: Optional[Literal["stressed", "flat", "good", "restless", "low"]] = None
     run_intent: Optional[Literal["easy", "workout", "long", "explore"]] = None
     hills_pref: Optional[Literal["avoid", "want"]] = None
+    quiet_streets: bool = False
 
 
 @app.get("/checkins/{user_id}/last")
@@ -618,6 +627,7 @@ def last_checkin(user_id: UUID, session: Session = Depends(get_session),
         "wants_scenic": c.wants_scenic,
         "run_time": c.run_time,
         "hills_pref": c.hills_pref,
+        "quiet_streets": bool(c.quiet_streets),
     }
 
 
@@ -643,6 +653,7 @@ def create_checkin(payload: CheckinRequest, session: Session = Depends(get_sessi
         mood=payload.mood,
         run_intent=payload.run_intent,
         hills_pref=payload.hills_pref,
+        quiet_streets=payload.quiet_streets,
     )
     session.add(checkin)
     session.commit()

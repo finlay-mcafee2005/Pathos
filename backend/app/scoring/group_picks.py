@@ -65,12 +65,13 @@ def group_recommend(members: List[Member], candidates: List[RouteCandidate],
 
     shared_km = min(t for *_, t in prepared)              # least-ready runner sets it
     avoid_hills = any(ck.hills_pref == "avoid" for _, _, ck, _ in prepared)
+    quiet = any(getattr(ck, "quiet_streets", False) for _, _, ck, _ in prepared)
 
     # score every route for every member, judged against the shared distance
     per_member = []
     for m, ctx, ck, own_km in prepared:
         ck = replace(ck, planned_distance_km=shared_km, available_minutes=None,
-                     hills_pref="avoid" if avoid_hills else ck.hills_pref)
+                     hills_pref="avoid" if avoid_hills else ck.hills_pref, quiet_streets=quiet)
         per_member.append({r.id: score_route(r, m.user, ck, m.recent, ctx) for r in candidates})
 
     rows = []

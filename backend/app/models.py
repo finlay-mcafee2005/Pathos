@@ -94,6 +94,7 @@ class Checkin(SQLModel, table=True):
     mood: Optional[str] = None                 # "stressed" | "flat" | "good" | "restless" | "low"
     run_intent: Optional[str] = None           # "easy" | "workout" | "long" | "explore"
     hills_pref: Optional[str] = None           # "avoid" | "want" | None
+    quiet_streets: Optional[bool] = Field(default=False)   # "Quiet side streets only"
 
     user: User = Relationship(back_populates="checkins")
 # ---------------------------------------------------------------------------
@@ -111,6 +112,10 @@ class Route(SQLModel, table=True):
     elevation_loss_m: Optional[float] = None   # total descent along the stored path
     shade_pct: Optional[float] = None          # 0..1 share of the path near tree cover (scripts/update_shade.py)
     scenic_pct: Optional[float] = None         # 0..1 share near parks/nature/water/trees (scripts/update_scenic.py)
+    busy_pct: Optional[float] = None           # 0..1 share along busy roads (scripts/update_traffic.py)
+    freeway_crossings: Optional[int] = None    # times it crosses a freeway
+    downtown_pct: Optional[float] = None       # 0..1 share inside downtown LA
+    turns_per_km: Optional[float] = None       # sharp turns per km
     surface_type: str        # "pavement" | "trail" | "track" | "mixed"
     difficulty: str          # "easy" | "moderate" | "hard"
     scenic: bool = Field(default=False)

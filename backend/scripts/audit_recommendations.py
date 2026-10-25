@@ -80,6 +80,7 @@ EXTRAS = {
     "hot day (98F)":       dict(conditions=HOT),
     "beginner":            dict(runner=dict(fitness_level="beginner", weekly_km_avg=10.0, usual_pace_min_km=7.0)),
     "avoid hills":         dict(hills_pref="avoid"),
+    "quiet side streets":  dict(quiet_streets=True),
     "wants hills":         dict(hills_pref="want"),
     "scenic + trail":      dict(wants_scenic=True, surface_preference="trail"),
     "easy recovery run":   dict(run_intent="easy"),
@@ -217,7 +218,8 @@ def responsiveness(rows):
 
 CACHE = os.path.join(OUT_DIR, "routes_cache.pkl")
 ROUTE_FIELDS = ["id", "name", "nickname", "hidden", "distance_km", "elevation_gain_m", "elevation_loss_m",
-                "shade_pct", "scenic_pct", "surface_type", "difficulty", "scenic"]
+                "shade_pct", "scenic_pct", "surface_type", "difficulty", "scenic",
+                "busy_pct", "freeway_crossings", "downtown_pct", "turns_per_km"]
 
 
 def load_routes():

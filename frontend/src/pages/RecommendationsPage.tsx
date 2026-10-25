@@ -83,6 +83,10 @@ type Recommendation = {
   target_km?: number | null;
   shade_pct?: number | null;
   scenic_pct?: number | null;
+  busy_pct?: number | null;
+  freeway_crossings?: number | null;
+  downtown_pct?: number | null;
+  turns_per_km?: number | null;
   days_since_run?: number | null;
   your_rating?: number | null;
   feels_like_f?: number | null;
@@ -222,6 +226,8 @@ const HEADLINE_CLAUSES: Record<string, string> = {
   mood: "it suits how you're feeling today",
   intent: "it fits the kind of run you wanted",
   feel: "it's the right kind of run for how you feel",
+  quiet: "it stays on quiet streets and paths",
+  turns: "it has few turns, so it's easy to follow",
 };
 
 function buildHeadline(breakdown: Record<string, number> | undefined, fallback?: string): string | null {
@@ -246,6 +252,7 @@ const WHY_GROUPS: { title: string; keys: string[]; full: number }[] = [
   { title: "Energy & sleep", full: 4, keys: ["energy", "footing", "rhythm", "overload"] },
   { title: "Surface", full: 15, keys: ["surface_pref", "taste_surface"] },
   { title: "Scenery", full: 8, keys: ["appeal", "scenic", "taste_scenic"] },
+  { title: "Roads & turns", full: 6, keys: ["traffic", "quiet", "freeway", "downtown", "turns"] },
   { title: "Location", full: 12, keys: ["proximity", "approach"] },
   { title: "Something new", full: 8, keys: ["novelty", "adventure", "variety"] },
   { title: "Your ratings", full: 8, keys: ["rating", "taste_loop"] },
@@ -277,6 +284,11 @@ const WHY_PHRASES: Record<string, [string, string]> = {
   proximity: ["Starts close to you", "Starts a way from you"],
   approach: ["Short run to the start", "Most of the run is getting to the route"],
   appeal: ["Parks, trees or water along the way", "Mostly plain streets"],
+  traffic: ["Away from busy roads", "Runs along busy roads"],
+  quiet: ["Quiet streets and paths", "Some busy roads"],
+  freeway: ["No freeway crossings", "Crosses a freeway"],
+  downtown: ["Stays out of downtown", "Goes through downtown"],
+  turns: ["Few turns, easy to follow", "Lots of turns to keep track of"],
   novelty: ["Somewhere you haven't run lately", "You ran it recently"],
   rating: ["You've rated it well before", "You've rated it low before"],
   taste_surface: ["The kind of surface you like", "A surface you tend to rate low"],
@@ -299,6 +311,7 @@ const WHY_ICONS: Record<string, string[]> = {
   "Energy & sleep": ["M13 2L4 14h7l-1 8 9-12h-7z"],
   "Surface": ["M12 3l9 5-9 5-9-5 9-5z", "M3 13l9 5 9-5"],
   "Scenery": ["M12 3l6 8h-3.5l4.5 6H5l4.5-6H6z", "M12 17v4"],
+  "Roads & turns": ["M6 21V9a4 4 0 0 1 4-4h8", "M15 2l3 3-3 3", "M14 21v-6"],
   "Location": ["M12 21s-7-6.5-7-12a7 7 0 0 1 14 0c0 5.5-7 12-7 12z", "M12 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"],
   "Something new": ["M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6"],
   "Your ratings": ["M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3l-5.5 2.9 1-6.2L3 9.6l6.2-.9z"],
@@ -337,6 +350,13 @@ function whyFact(title: string, rec: Recommendation): string | null {
       return surface;
     case "Scenery":
       return pct(rec.scenic_pct) != null ? `${pct(rec.scenic_pct)}% parks, trees or water` : null;
+    case "Roads & turns": {
+      const bits = [pct(rec.busy_pct) != null ? `${pct(rec.busy_pct)}% busy roads` : null,
+                    rec.turns_per_km != null ? `${(rec.turns_per_km * 1.609).toFixed(1)} turns/mi` : null,
+                    rec.freeway_crossings ? `${rec.freeway_crossings} freeway crossing${rec.freeway_crossings === 1 ? "" : "s"}` : null]
+        .filter(Boolean);
+      return bits.length ? bits.join(" · ") : null;
+    }
     case "Location":
       if (rec.approach_km && rec.approach_km > 0) return `${kmToMiles(rec.approach_km).toFixed(1)} mi run to the start`;
       return rec.travel_km != null ? `${kmToMiles(rec.travel_km).toFixed(1)} mi away` : null;

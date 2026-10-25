@@ -43,6 +43,7 @@ class DailyCheckin:
     mood: Optional[str] = None                # "stressed" | "flat" | "good" | "restless" | "low"
     run_intent: Optional[str] = None          # "easy" | "workout" | "long" | "explore"
     hills_pref: Optional[str] = None          # "avoid" | "want" | None (don't mind)
+    quiet_streets: bool = False               # "Quiet side streets only": skip busy roads, freeways, downtown
 
 
 @dataclass
@@ -69,6 +70,10 @@ class RouteCandidate:
     shade: Optional[float] = None   # 0..1 share of the path under tree cover (None = unknown)
     elevation_loss_m: Optional[float] = None   # descent along the stored path (None = assume = gain)
     scenic_pct: Optional[float] = None         # 0..1 share near parks/nature/water/trees (None = unknown)
+    busy_pct: Optional[float] = None           # 0..1 share along primary/secondary roads (scripts/update_traffic.py)
+    freeway_crossings: Optional[int] = None    # times it crosses a freeway
+    downtown_pct: Optional[float] = None       # 0..1 share inside downtown LA
+    turns_per_km: Optional[float] = None       # sharp turns per km (fewer = easier to follow)
 
 
 def climb_per_km(distance_km: float, gain_m: float, loss_m: Optional[float] = None) -> float:
@@ -226,6 +231,21 @@ LONG_GENTLE_M_PER_KM = 20     # 'Hard' only because it's long: averages under ~2
 CLOSE_TO_HOME_KM = 3.5        # check-in travel limit at or under this = "close to home" (the app sends 2 mi)
 RUN_FROM_HOME_KM = 4.0        # ...then every route starting within this (straight line) is run from where they are
 STREET_DETOUR = 1.3           # streets are ~30% longer than a straight line (the app draws the real way)
+# busy roads, freeways, downtown and lots of turns (study: 4 of 5 runners raised traffic)
+W_BUSY = 10                   # up to -10 for a route mostly along busy roads
+BUSY_OK = 0.10                # this much along a busy road (crossing / a short stretch) costs nothing
+BUSY_FULL = 0.50              # full penalty at half the route on busy roads
+W_FREEWAY = 3                 # per freeway crossing ...
+W_FREEWAY_MAX = 9             # ... up to this much
+W_DOWNTOWN = 6                # full penalty at half the route downtown
+W_QUIET_BONUS = 2             # all side streets and paths
+W_TURNS = 10                  # up to -10 for a route full of turns
+TURNS_OK_PER_KM = 2.0       # about 3 turns a mile is normal for a street route
+TURNS_FULL_PER_KM = 5.5
+FEW_TURNS_PER_KM = 1.5        # simple to follow: small bonus
+W_FEW_TURNS = 2
+QUIET_MAX_BUSY = 0.15         # "Quiet side streets only" limit
+QUIET_MAX_DOWNTOWN = 0.20
 W_APPEAL = 8                  # always-on: parks, water and trees beat plain street grids
 MIN_ROUTE_SHARE = 0.5         # run from home: under half the run on the route itself starts to cost
 W_MOSTLY_APPROACH = 12        # ...up to this much when the route is a tiny bit at the end of the streets
@@ -732,6 +752,27 @@ def score_route(
         add("appeal", W_APPEAL * route_share * clamp((appeal - 0.15) / 0.6),
             "Runs through parks, trees or along water" if appeal >= 0.6 else None)
 
+    # --- 6c. traffic and turns: busy roads, freeways, downtown, how easy to follow ----
+    busy = route.busy_pct
+    if busy is not None:
+        add("traffic", -W_BUSY * route_share * clamp((busy - BUSY_OK) / (BUSY_FULL - BUSY_OK)),
+            "Much of it runs along busy roads" if busy >= 0.35 else None)
+        if busy <= 0.05 and not (route.freeway_crossings or 0):
+            add("quiet", W_QUIET_BONUS * route_share, "Quiet streets and paths, away from traffic")
+    if route.freeway_crossings:
+        add("freeway", -min(W_FREEWAY_MAX, W_FREEWAY * route.freeway_crossings),
+            "Crosses a freeway" if route.freeway_crossings == 1 else f"Crosses a freeway {route.freeway_crossings} times")
+    if route.downtown_pct:
+        add("downtown", -W_DOWNTOWN * clamp(route.downtown_pct / 0.5),
+            "Goes through downtown" if route.downtown_pct >= 0.2 else None)
+    tpk = route.turns_per_km
+    if tpk is not None:
+        if tpk <= FEW_TURNS_PER_KM:
+            add("turns", W_FEW_TURNS * route_share, "Few turns, so it's easy to follow")
+        else:
+            add("turns", -W_TURNS * route_share * clamp((tpk - TURNS_OK_PER_KM) / (TURNS_FULL_PER_KM - TURNS_OK_PER_KM)),
+                "Lots of turns to keep track of" if tpk >= 5.0 else None)
+
     # --- 7. proximity to home ---------------------------------------------
     if None not in (user.home_lat, user.home_lon, route.start_lat, route.start_lon):
         d = haversine_km(user.home_lat, user.home_lon, route.start_lat, route.start_lon)
@@ -1018,6 +1059,7 @@ def recommend(
         allowed += rest[:top_n - len(allowed)]
     scored = allowed
     scored = limit_hills(scored, checkin.hills_pref, top_n)
+    scored = limit_quiet(scored, getattr(checkin, "quiet_streets", False), top_n)
     scored = fit_time_limit(scored, checkin.available_minutes, top_n)
     # Always rank every eligible route and return the best top_n, even if
     # none is a great distance match, so the user always sees options.
@@ -1039,6 +1081,32 @@ def limit_hills(scored: List[ScoredRoute], hills_pref: Optional[str], top_n: int
         return flat
     rest = sorted((s for s in scored if s not in flat), key=run_climb_rate)
     return flat + rest[:top_n - len(flat)]
+
+
+def is_quiet(r: RouteCandidate) -> bool:
+    """Side streets and paths: little busy road, no freeway crossing, not downtown.
+    A route we haven't measured yet counts as quiet (can't tell)."""
+    return ((r.busy_pct or 0.0) <= QUIET_MAX_BUSY and not (r.freeway_crossings or 0)
+            and (r.downtown_pct or 0.0) < QUIET_MAX_DOWNTOWN)
+
+
+def busyness(r: RouteCandidate) -> float:
+    return (r.busy_pct or 0.0) + 0.15 * (r.freeway_crossings or 0) + (r.downtown_pct or 0.0)
+
+
+def limit_quiet(scored: List[ScoredRoute], quiet: bool, top_n: int) -> List[ScoredRoute]:
+    """They asked for quiet side streets only: a limit, not a nudge. Drop busy routes;
+    if too few are left, fill with the quietest of the rest (and say so)."""
+    if not quiet:
+        return scored
+    ok = [s for s in scored if is_quiet(s.route)]
+    if len(ok) >= top_n:
+        return ok
+    rest = sorted((s for s in scored if s not in ok), key=lambda s: busyness(s.route))
+    extra = rest[:top_n - len(ok)]
+    for s in extra:
+        s.reasons.insert(0, "Not many quiet routes nearby - this is one of the calmest")
+    return ok + extra
 
 
 def fit_time_limit(scored: List[ScoredRoute], minutes: Optional[float], top_n: int) -> List[ScoredRoute]:
