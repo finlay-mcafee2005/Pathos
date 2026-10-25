@@ -141,7 +141,7 @@ def passes_difficulty_gate(difficulty: str, user: UserProfile) -> bool:
 # hips and lower back. Firm, even surfaces (pavement) give stable footing for
 # ankles, calves, Achilles and feet, which uneven trail terrain stresses more.
 # A track is both even and somewhat forgiving, so it strains neither group.
-IMPACT_SENSITIVE_PARTS = {"shin", "knee", "hip", "lower_back"}
+IMPACT_SENSITIVE_PARTS = {"shin", "knee", "itband", "hip", "lower_back"}
 STABILITY_SENSITIVE_PARTS = {"ankle", "calf", "achilles", "foot"}
 
 # How strongly each surface strains each group (mixed routes count for half).
@@ -163,11 +163,18 @@ SURFACE_NOUN = {"pavement": "pavement", "trail": "uneven trail", "mixed": "mixed
 
 
 def normalize_body_part(part: str) -> str:
-    """'left_shin' -> 'shin', so muscle-map IDs and injury tags compare equally."""
-    for prefix in ("left_", "right_"):
-        if part.startswith(prefix):
-            return part[len(prefix):]
-    return part
+    """'left_shin' -> 'shin', so muscle-map IDs and injury tags compare equally.
+    Also takes typed injuries from signup: 'Left knee', 'IT band', 'right IT-band' ..."""
+    p = (part or "").strip().lower().replace("-", "_").replace(" ", "_")
+    for prefix in ("left_", "right_", "l_", "r_"):
+        if p.startswith(prefix):
+            p = p[len(prefix):]
+            break
+    if p in ("it_band", "itband", "itb", "iliotibial_band", "it_band_syndrome"):
+        return "itband"
+    if p in ("knees", "kneecap", "patella"):
+        return "knee"
+    return p
 
 
 def surface_strain(surface: str, parts: List[str]):
@@ -324,7 +331,7 @@ W_HILLS_PREF = 18             # the runner said outright: avoid hills / want hil
 
 LOWER_BODY_PARTS = {
     "quad", "hamstring", "glutes", "calf", "shin", "knee", "ankle",
-    "hip", "achilles", "foot", "lower_back", "adductor",
+    "hip", "achilles", "foot", "lower_back", "adductor", "itband",
 }
 
 
