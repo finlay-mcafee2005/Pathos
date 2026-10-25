@@ -2,6 +2,7 @@
 Rules-based scoring engine for route recommendations.
 """
 
+import math
 from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import List, Optional
@@ -441,6 +442,26 @@ def match_pct(score: float, perfect: float) -> int:
     return int(max(0, min(99, round((score - BASE_SCORE) / perfect * 100))))
 
 
+# planned distance: how far off is still a match. Tighter than before (a 3 mi plan
+# shouldn't come back as 2.3 mi), and coming in under counts more than going a bit over.
+DIST_TOL_UNDER = 0.12         # share of the plan you can come in under ...
+DIST_TOL_OVER = 0.18          # ... or go over
+DIST_TOL_MIN_UNDER_KM = 0.35
+DIST_TOL_MIN_OVER_KM = 0.5
+UNDER_COST = 1.5              # when picking laps etc., 1 km short counts like 1.5 km over
+
+
+def distance_tolerance(target: float, effective: float) -> float:
+    if effective >= target:
+        return max(DIST_TOL_MIN_OVER_KM, target * DIST_TOL_OVER)
+    return max(DIST_TOL_MIN_UNDER_KM, target * DIST_TOL_UNDER)
+
+
+def distance_cost(d: float, target: float) -> float:
+    """How far off d is from the target, with coming in short counting extra."""
+    return (target - d) * UNDER_COST if d < target else d - target
+
+
 def choose_format(route: RouteCandidate, target: float, max_repeats: int, allow_partial: bool = False,
                   shape_pref: Optional[str] = None):
     """Best way to run this route to hit target km.
@@ -451,19 +472,20 @@ def choose_format(route: RouteCandidate, target: float, max_repeats: int, allow_
     along its first part and turn around (turnaround_km = how far along the route)."""
     if not route.is_loop:
         d = route.distance_km * 2
-        best = (abs(d - target), "out_and_back", 1, d, None)
+        best = (distance_cost(d, target), "out_and_back", 1, d, None)
     else:
-        best = (abs(route.distance_km - target), "single", 1, route.distance_km, None)
+        best = (distance_cost(route.distance_km, target), "single", 1, route.distance_km, None)
         # laps repeat only the loop: a lollipop is out along the stem, round the loop
         # n times, back along the stem - not the whole thing (stem and all) n times
         stem = route.stem_km or 0.0
         loop = route.distance_km - 2 * stem
         if loop > 0.2:
-            n = max(1, round((target - 2 * stem) / loop))
-            if 1 < n <= max_repeats:
-                d = 2 * stem + n * loop
-                if abs(d - target) < best[0]:
-                    best = (abs(d - target), "repeat", n, d, None)
+            x = (target - 2 * stem) / loop
+            for n in {math.floor(x), math.ceil(x)}:      # one lap short or one over: whichever fits better
+                if 1 < n <= max_repeats:
+                    d = 2 * stem + n * loop
+                    if distance_cost(d, target) < best[0]:
+                        best = (distance_cost(d, target), "repeat", n, d, None)
     if allow_partial and best[3] > target * PARTIAL_OVER and target >= 0.4:
         best = (0.0, "out_and_back", 1, target, target / 2)
     # they asked for an out-and-back: run out along the loop for half the distance and
@@ -610,7 +632,7 @@ def score_route(
             shape_pref=shape_pref)
         effective_distance += 2 * approach
         err = abs(effective_distance - target)
-        tol = max(0.5, target * 0.25)
+        tol = distance_tolerance(target, effective_distance)
         distance_matched = err <= tol
         add("distance", distance_points(err, tol) * goal["distance_weight"])
         if turnaround and shape_pref != "out_and_back":

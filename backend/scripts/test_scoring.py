@@ -365,6 +365,17 @@ def check_difficulty():
     assert "line" not in [x.route.id for x in r] and all(x.run_format != "out_and_back" for x in r)
     print("  shape preference: out-and-back turns loops into out-and-backs; loops-only drops out-and-backs")
 
+    # distance: a 3 mi plan prefers 3.3 mi over 2.3 mi, and 2.3 mi isn't a match any more
+    short_ = RouteCandidate(id="s23", name="2.3 mi", distance_km=2.3 * 1.609, elevation_gain_m=20,
+                            difficulty="easy", surface_type="pavement", is_loop=True)
+    long_ = RouteCandidate(id="l33", name="3.3 mi", distance_km=3.3 * 1.609, elevation_gain_m=22,
+                           difficulty="easy", surface_type="pavement", is_loop=True)
+    ck3 = DailyCheckin(energy_score=6, sleep_hours=7, planned_distance_km=3 * 1.609, today=THURSDAY)
+    r = recommend(INTERMEDIATE, ck3, RecentRuns(last_7_days_km=20), [short_, long_], top_n=2)
+    assert r[0].route.id == "l33" and not [x for x in r if x.route.id == "s23"][0].distance_matched, \
+        [(x.route.id, x.score, x.distance_matched) for x in r]
+    print("  3 mi plan: 3.3 mi beats 2.3 mi, and 2.3 mi no longer counts as a match")
+
     # beginners are gated on that run difficulty
     beginner = UserProfile(fitness_level="beginner", weekly_km_avg=12)
     steep = RouteCandidate(id="steep", name="Steep 3 km", distance_km=3.0, elevation_gain_m=200,
