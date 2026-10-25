@@ -14,11 +14,12 @@ type Props = {
   approachPath?: [number, number][];
   runFromHere?: boolean;        // true = they run from where they are; false = they drive to the start
   plan?: PlanInput;             // lengths for "Out 0.5 mi → loop ×2 → back 0.5 mi"
+  totalKm?: number;             // the whole run as recommended (laps, out-and-back, run to the start)
   compact?: boolean;
 };
 
 // eslint-disable-next-line react-refresh/only-export-components
-export function useRouteActions({ routeId, recommendationId, name, loadPath, format, repeatCount, surface, approachPath, runFromHere, plan }: Omit<Props, "compact">) {
+export function useRouteActions({ routeId, recommendationId, name, loadPath, format, repeatCount, surface, approachPath, runFromHere, plan, totalKm }: Omit<Props, "compact">) {
   const navigate = useNavigate();
   const [busy, setBusy] = useState<"gpx" | "maps" | "follow" | null>(null);
 
@@ -26,7 +27,7 @@ export function useRouteActions({ routeId, recommendationId, name, loadPath, for
     setBusy("follow");
     try {
       const path = await loadPath();
-      navigate("/follow", { state: { routeId, recommendationId, name, path, format, repeatCount, surface, approachPath, runFromHere, plan } });
+      navigate("/follow", { state: { routeId, recommendationId, name, path, format, repeatCount, surface, approachPath, runFromHere, plan, totalKm } });
     } finally {
       setBusy(null);
     }

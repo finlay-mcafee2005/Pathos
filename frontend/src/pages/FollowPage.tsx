@@ -68,6 +68,7 @@ type FollowState = {
   approachPath?: [number, number][];   // home -> start, from the card (shown until GPS is ready)
   runFromHere?: boolean;               // false = they drive to the trailhead: the run starts there
   plan?: PlanInput;                    // "Out 0.5 mi → loop ×2 → back 0.5 mi"
+  totalKm?: number;                    // the whole run, as on the card (laps, run there and back)
 };
 
 type GetThere = { path: [number, number][]; distance_m: number; cues: Cue[] };
@@ -515,6 +516,13 @@ function FollowPage() {
     : [];
   const turnaround = state.format === "out_and_back" ? state.path[state.path.length - 1] : null;
   const done = cum[progressIdx] ?? 0;
+  // the whole run (same number as the card), and what's left beyond this pass of the
+  // drawn route: more laps, and the run home if they ran here
+  const approachM = state.runFromHere ? (state.plan?.approachKm ?? 0) * 1000 : 0;
+  const runTotal = state.totalKm ? state.totalKm * 1000 : total;
+  const extraAfter = Math.max(0, runTotal - approachM - total);
+  const partLabel = state.format === "repeat" && (state.repeatCount ?? 1) > 1 ? "One lap"
+    : state.format === "out_and_back" ? "Out & back" : "Route";
   const started = progressIdx > 0;
   const toStart = me ? metersBetween(me.pos, start) : null;
   const elapsedS = finished
@@ -640,18 +648,24 @@ function FollowPage() {
             {!started ? (
               <>
                 <div>
-                  <span className="follow-num">{(total / MI).toFixed(1)}<small>mi</small></span>
-                  <span className="follow-label">Route</span>
+                  <span className="follow-num">{(runTotal / MI).toFixed(1)}<small>mi</small></span>
+                  <span className="follow-label">Total run</span>
                 </div>
+                {Math.abs(runTotal - total) > 0.05 * MI && (
+                  <div>
+                    <span className="follow-num">{(total / MI).toFixed(1)}<small>mi</small></span>
+                    <span className="follow-label">{partLabel}</span>
+                  </div>
+                )}
               </>
             ) : (
               <>
                 <div>
-                  <span className="follow-num">{(done / MI).toFixed(2)}<small>mi</small></span>
+                  <span className="follow-num">{((done + approachM) / MI).toFixed(2)}<small>mi</small></span>
                   <span className="follow-label">Done</span>
                 </div>
                 <div>
-                  <span className="follow-num">{(Math.max(0, total - done) / MI).toFixed(2)}<small>mi</small></span>
+                  <span className="follow-num">{(Math.max(0, total - done + extraAfter) / MI).toFixed(2)}<small>mi</small></span>
                   <span className="follow-label">To go</span>
                 </div>
                 <div>

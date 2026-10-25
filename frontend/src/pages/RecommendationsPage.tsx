@@ -438,6 +438,7 @@ function RecActions({ rec, saved, onSave, onLog }: {
     // "close to home" = run there from where you are; 15/30/45 min = drive to the trailhead
     runFromHere: (rec.approach_km ?? 0) > 0,
     plan: planInput(rec),
+    totalKm: rec.effective_distance_km ?? rec.distance_km,
   });
   const hasPath = rec.path.length > 1;
   return (
