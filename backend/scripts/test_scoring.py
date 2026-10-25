@@ -351,6 +351,20 @@ def check_difficulty():
     assert fmt == "repeat" and n == 2 and abs(eff - 6.0) < 1e-6, (fmt, n, eff)
     print("  lollipop laps: out 1 km -> loop 2 km x2 -> back 1 km = 6 km")
 
+    # shape preference: out-and-back runs a loop out and back; loops-only keeps loops
+    loops = [RouteCandidate(id=f"L{i}", name=f"Loop {i}", distance_km=8.0, elevation_gain_m=40, difficulty="easy",
+                            surface_type="pavement", is_loop=True) for i in range(3)]
+    line = RouteCandidate(id="line", name="Path", distance_km=4.0, elevation_gain_m=20, difficulty="easy",
+                          surface_type="pavement", is_loop=False)
+    oab = DailyCheckin(energy_score=5, sleep_hours=7, planned_distance_km=8.0, shape_pref="out_and_back", today=THURSDAY)
+    r = recommend(INTERMEDIATE, oab, RecentRuns(last_7_days_km=20), loops + [line], top_n=3)
+    assert all(x.run_format == "out_and_back" for x in r), [(x.route.id, x.run_format) for x in r]
+    assert any(x.turnaround_km and abs(x.turnaround_km - 4.0) < 0.01 for x in r)
+    loop_ck = DailyCheckin(energy_score=5, sleep_hours=7, planned_distance_km=8.0, shape_pref="loop", today=THURSDAY)
+    r = recommend(INTERMEDIATE, loop_ck, RecentRuns(last_7_days_km=20), loops + [line], top_n=3)
+    assert "line" not in [x.route.id for x in r] and all(x.run_format != "out_and_back" for x in r)
+    print("  shape preference: out-and-back turns loops into out-and-backs; loops-only drops out-and-backs")
+
     # beginners are gated on that run difficulty
     beginner = UserProfile(fitness_level="beginner", weekly_km_avg=12)
     steep = RouteCandidate(id="steep", name="Steep 3 km", distance_km=3.0, elevation_gain_m=200,

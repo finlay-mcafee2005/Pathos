@@ -103,6 +103,7 @@ function CheckinPage() {
   const [showNote, setShowNote] = useState(false);
   const [hillsPref, setHillsPref] = useState<"" | "avoid" | "want">("");
   const [quietStreets, setQuietStreets] = useState(false);
+  const [shapePref, setShapePref] = useState<"" | "loop" | "out_and_back">("");
 
   // who you're running with today: just you, or one of your Run together groups
   const [searchParams] = useSearchParams();
@@ -127,6 +128,7 @@ function CheckinPage() {
     planned_distance_miles: number | null; available_minutes: number | null;
     willing_to_drive_miles: number | null; surface_preference: "trail" | "road" | null;
     wants_scenic: boolean; hills_pref: "avoid" | "want" | null; quiet_streets?: boolean;
+    shape_pref?: "loop" | "out_and_back" | null;
   };
   const [last, setLast] = useState<LastCheckin | null>(null);
   const [copied, setCopied] = useState(false);
@@ -136,6 +138,7 @@ function CheckinPage() {
     mood: Mood | null; runIntent: Intent | null; lengthMode: "miles" | "minutes";
     plannedDistance: string; availableMinutes: string; willingToDrive: string;
     surfacePreference: "" | "trail" | "road"; wantsScenic: boolean; hillsPref: "" | "avoid" | "want"; quietStreets: boolean;
+    shapePref: "" | "loop" | "out_and_back";
   }>(null);
 
   function undoCopy() {
@@ -155,6 +158,7 @@ function CheckinPage() {
     setWantsScenic(b.wantsScenic);
     setHillsPref(b.hillsPref);
     setQuietStreets(b.quietStreets);
+    setShapePref(b.shapePref);
     setBeforeCopy(null);
     setCopied(false);
   }
@@ -170,7 +174,7 @@ function CheckinPage() {
     if (!last) return;
     setBeforeCopy({
       energy, sleepHours, sleepQuality, soreParts, mood, runIntent, lengthMode,
-      plannedDistance, availableMinutes, willingToDrive, surfacePreference, wantsScenic, hillsPref, quietStreets,
+      plannedDistance, availableMinutes, willingToDrive, surfacePreference, wantsScenic, hillsPref, quietStreets, shapePref,
     });
     setEnergy(last.energy_score);
     setSleepHours(last.sleep_hours != null ? String(last.sleep_hours) : "");
@@ -198,6 +202,7 @@ function CheckinPage() {
     setWantsScenic(last.wants_scenic);
     setHillsPref(last.hills_pref ?? "");
     setQuietStreets(!!last.quiet_streets);
+    setShapePref(last.shape_pref ?? "");
     setCopied(true);
   }
   const [loading, setLoading] = useState(false);
@@ -243,6 +248,7 @@ function CheckinPage() {
           run_intent: runIntent,
           hills_pref: hillsPref || null,
           quiet_streets: quietStreets,
+          shape_pref: shapePref || null,
         }),
       });
       if (!response.ok) throw new Error(`Server responded with ${response.status}`);
@@ -312,6 +318,8 @@ function CheckinPage() {
   if (soreNames.length > 0) extras.push("goes easy on the sore spots");
   if (wantsScenic) extras.push("has a view");
   if (quietStreets) extras.push("sticks to quiet side streets");
+  if (shapePref === "out_and_back") extras.push("is an out-and-back");
+  if (shapePref === "loop") extras.push("is a loop");
   if (wantsAdventure) extras.push("is somewhere new");
   const surfaceWord = surfacePreference === "trail" ? " of trail" : surfacePreference === "road" ? " of road" : "";
   const intentWord = runIntent ? { easy: "easy ", workout: "workout ", long: "long ", explore: "" }[runIntent] : "";
@@ -706,6 +714,21 @@ function CheckinPage() {
                           type="button"
                           className={hillsPref === v ? "on" : ""}
                           onClick={() => setHillsPref(v)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="ci-row">
+                    <span className="ci-row-label">Route shape</span>
+                    <div className="ci-segmented compact">
+                      {([["loop", "Loop"], ["", "Either"], ["out_and_back", "Out & back"]] as const).map(([v, label]) => (
+                        <button
+                          key={label}
+                          type="button"
+                          className={shapePref === v ? "on" : ""}
+                          onClick={() => setShapePref(v)}
                         >
                           {label}
                         </button>

@@ -43,7 +43,8 @@ class DailyCheckin:
     mood: Optional[str] = None                # "stressed" | "flat" | "good" | "restless" | "low"
     run_intent: Optional[str] = None          # "easy" | "workout" | "long" | "explore"
     hills_pref: Optional[str] = None          # "avoid" | "want" | None (don't mind)
-    quiet_streets: bool = False               # "Quiet side streets only": skip busy roads, freeways, downtown
+    quiet_streets: bool = False               # "Quiet side streets only": skip busy roads, freeway, downtown
+    shape_pref: Optional[str] = None          # "loop" | "out_and_back" | None (either)
 
 
 @dataclass
@@ -313,6 +314,7 @@ LONG_RUN_VS_USUAL = 1.6       # ...and 1.6x their usual run, or run type "long",
 LONG_RUN_HILL_IDEAL = 12.0    # long run: ideal climb (m/km) unless they asked for hills (~65 ft/mi)
 LONG_RUN_HILL_WANT = 20.0     # long run with "want hills": still capped (~105 ft/mi, ~1,500 ft over 14 mi)
 WANT_HILLS_MAX = 50.0         # "want hills": steeper than this stops helping and starts to cost
+W_SHAPE_PREF = 12             # the runner picked loop or out-and-back
 W_HILLS_PREF = 18             # the runner said outright: avoid hills / want hills
 
 LOWER_BODY_PARTS = {
@@ -425,6 +427,8 @@ def perfect_points(checkin) -> float:
         pts += W_ADVENTURE
     if getattr(checkin, "hills_pref", None):
         pts += W_HILLS_PREF
+    if getattr(checkin, "shape_pref", None):
+        pts += W_SHAPE_PREF
     if getattr(checkin, "mood", None):
         pts += W_MOOD
     if getattr(checkin, "run_intent", None):
@@ -437,7 +441,8 @@ def match_pct(score: float, perfect: float) -> int:
     return int(max(0, min(99, round((score - BASE_SCORE) / perfect * 100))))
 
 
-def choose_format(route: RouteCandidate, target: float, max_repeats: int, allow_partial: bool = False):
+def choose_format(route: RouteCandidate, target: float, max_repeats: int, allow_partial: bool = False,
+                  shape_pref: Optional[str] = None):
     """Best way to run this route to hit target km.
     Returns (diff_km, format, repeat_count, effective_km, turnaround_km).
     Point-to-point routes are always out-and-back (running one-way would
@@ -460,6 +465,11 @@ def choose_format(route: RouteCandidate, target: float, max_repeats: int, allow_
                 if abs(d - target) < best[0]:
                     best = (abs(d - target), "repeat", n, d, None)
     if allow_partial and best[3] > target * PARTIAL_OVER and target >= 0.4:
+        best = (0.0, "out_and_back", 1, target, target / 2)
+    # they asked for an out-and-back: run out along the loop for half the distance and
+    # turn around (if the loop is long enough), instead of going all the way round
+    if shape_pref == "out_and_back" and route.is_loop and best[1] != "out_and_back" \
+            and target >= 0.8 and route.distance_km >= target / 2:
         best = (0.0, "out_and_back", 1, target, target / 2)
     return best
 
@@ -591,17 +601,19 @@ def score_route(
         if straight <= RUN_FROM_HOME_KM:
             approach = straight * STREET_DETOUR
     typical = ctx.typical_km
+    shape_pref = getattr(checkin, "shape_pref", None)
     if checkin.planned_distance_km:
         target = checkin.planned_distance_km
         err, run_format, repeat_count, effective_distance, turnaround = choose_format(
             route, max(0.4, target - 2 * approach), MAX_REPEATS,
-            allow_partial=bool(checkin.available_minutes) or target <= SHORT_RUN_KM)
+            allow_partial=bool(checkin.available_minutes) or (target <= SHORT_RUN_KM and shape_pref != "loop"),
+            shape_pref=shape_pref)
         effective_distance += 2 * approach
         err = abs(effective_distance - target)
         tol = max(0.5, target * 0.25)
         distance_matched = err <= tol
         add("distance", distance_points(err, tol) * goal["distance_weight"])
-        if turnaround:
+        if turnaround and shape_pref != "out_and_back":
             add("format", W_PARTIAL)
         if distance_matched:
             mi = effective_distance * 0.621371
@@ -620,12 +632,13 @@ def score_route(
         # fresh, longer still on a weekend
         target = typical * (0.7 + 0.5 * ready) * ctx.long_run_factor
         err, run_format, repeat_count, effective_distance, turnaround = choose_format(
-            route, max(0.4, target - 2 * approach), 1, allow_partial=target <= SHORT_RUN_KM)
+            route, max(0.4, target - 2 * approach), 1,
+            allow_partial=target <= SHORT_RUN_KM and shape_pref != "loop", shape_pref=shape_pref)
         effective_distance += 2 * approach
         err = abs(effective_distance - target)
         tol = max(0.8, target * 0.3)
         distance_matched = True
-        if turnaround:
+        if turnaround and shape_pref != "out_and_back":
             add("format", W_PARTIAL)
         pts = distance_points(err, tol) * INFERRED_DISTANCE_SCALE
         reason = None
@@ -756,6 +769,13 @@ def score_route(
         appeal = 0.6 * (route.scenic_pct or 0.0) + 0.4 * (route.shade or 0.0)
         add("appeal", W_APPEAL * route_share * clamp((appeal - 0.15) / 0.6),
             "Runs through parks, trees or along water" if appeal >= 0.6 else None)
+
+    # --- 6b2. the shape they asked for: loop or out-and-back --------------
+    if shape_pref:
+        is_oab = run_format == "out_and_back"
+        if (shape_pref == "out_and_back") == is_oab:
+            add("shape", W_SHAPE_PREF,
+                "An out-and-back, like you wanted" if is_oab else "A loop, like you wanted")
 
     # --- 6c. traffic and turns: busy roads, freeways, downtown, how easy to follow ----
     busy = route.busy_pct
@@ -1065,6 +1085,7 @@ def recommend(
     scored = allowed
     scored = limit_hills(scored, checkin.hills_pref, top_n)
     scored = limit_quiet(scored, getattr(checkin, "quiet_streets", False), top_n)
+    scored = limit_shape(scored, getattr(checkin, "shape_pref", None), top_n)
     scored = fit_time_limit(scored, checkin.available_minutes, top_n)
     # Always rank every eligible route and return the best top_n, even if
     # none is a great distance match, so the user always sees options.
@@ -1086,6 +1107,19 @@ def limit_hills(scored: List[ScoredRoute], hills_pref: Optional[str], top_n: int
         return flat
     rest = sorted((s for s in scored if s not in flat), key=run_climb_rate)
     return flat + rest[:top_n - len(flat)]
+
+
+def limit_shape(scored: List[ScoredRoute], shape_pref: Optional[str], top_n: int) -> List[ScoredRoute]:
+    """They picked loop or out-and-back: show that shape. If too few routes can be run
+    that way, fill with the best of the rest."""
+    if not shape_pref:
+        return scored
+    want_oab = shape_pref == "out_and_back"
+    ok = [s for s in scored if (s.run_format == "out_and_back") == want_oab]
+    if len(ok) >= top_n:
+        return ok
+    rest = sorted((s for s in scored if s not in ok), key=lambda s: -s.score)
+    return ok + rest[:top_n - len(ok)]
 
 
 def is_quiet(r: RouteCandidate) -> bool:

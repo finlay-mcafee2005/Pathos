@@ -228,6 +228,7 @@ const HEADLINE_CLAUSES: Record<string, string> = {
   overload: "it keeps your weekly mileage in check",
   mood: "it suits how you're feeling today",
   intent: "it fits the kind of run you wanted",
+  shape: "it's the route shape you asked for",
   feel: "it's the right kind of run for how you feel",
   quiet: "it stays on quiet streets and paths",
   turns: "it has few turns, so it's easy to follow",
@@ -259,7 +260,7 @@ const WHY_GROUPS: { title: string; keys: string[]; full: number }[] = [
   { title: "Location", full: 12, keys: ["proximity", "approach"] },
   { title: "Something new", full: 8, keys: ["novelty", "adventure", "variety"] },
   { title: "Your ratings", full: 8, keys: ["rating", "taste_loop"] },
-  { title: "Run type & mood", full: 6, keys: ["intent", "goal", "mood"] },
+  { title: "Run type & mood", full: 6, keys: ["intent", "goal", "mood", "shape"] },
   { title: "Weather", full: 6, keys: ["heat", "shade", "air", "wind", "mud", "daylight"] },
 ];
 
@@ -284,6 +285,7 @@ const WHY_PHRASES: Record<string, [string, string]> = {
   rhythm: ["Easy enough for a recovery day", "Hilly or long for a recovery day"],
   overload: ["Keeps your week in check", "Long for a week you've already run a lot"],
   mood: ["Suits your mood", "Doesn't suit your mood"],
+  shape: ["The route shape you picked", "Not the route shape you picked"],
   proximity: ["Starts close to you", "Starts a way from you"],
   approach: ["Short run to the start", "Most of the run is getting to the route"],
   appeal: ["Parks, trees or water along the way", "Mostly plain streets"],

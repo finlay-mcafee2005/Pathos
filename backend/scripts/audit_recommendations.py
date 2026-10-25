@@ -81,6 +81,8 @@ EXTRAS = {
     "beginner":            dict(runner=dict(fitness_level="beginner", weekly_km_avg=10.0, usual_pace_min_km=7.0)),
     "avoid hills":         dict(hills_pref="avoid"),
     "quiet side streets":  dict(quiet_streets=True),
+    "out-and-back only":   dict(shape_pref="out_and_back"),
+    "loops only":          dict(shape_pref="loop"),
     "wants hills":         dict(hills_pref="want"),
     "scenic + trail":      dict(wants_scenic=True, surface_preference="trail"),
     "easy recovery run":   dict(run_intent="easy"),

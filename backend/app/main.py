@@ -112,6 +112,7 @@ def add_new_columns():
                          ("downtown_pct", "FLOAT"), ("turns_per_km", "FLOAT"), ("stem_km", "FLOAT")]:
             conn.execute(text(f"ALTER TABLE route ADD COLUMN IF NOT EXISTS {col} {typ}"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS quiet_streets BOOLEAN DEFAULT FALSE"))
+        conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS shape_pref VARCHAR"))
         # recommendation logging
         conn.execute(text("ALTER TABLE recommendation ALTER COLUMN route_id DROP NOT NULL"))
         for col, typ in [("checkin_id", "UUID"), ("rank", "INTEGER"), ("route_name", "VARCHAR"),
@@ -350,6 +351,8 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
                 CHALLENGE_NOTE if CHALLENGE_NOTE in r.reasons else
                 (f"To fit your time, run {r.turnaround_km * 0.621371:.1f} mi out along this route, then turn back"
                  if checkin.available_minutes else
+                 f"Out-and-back: run {r.turnaround_km * 0.621371:.1f} mi out along this route, then turn back"
+                 if getattr(checkin, "shape_pref", None) == "out_and_back" else
                  f"For a short run, go {r.turnaround_km * 0.621371:.1f} mi out along this route, then turn back")
                 if r.turnaround_km else
                 LONG_ROUGH_NOTE if rough_today and long_but_gentle(r.effective_distance_km, r.run_gain_m or 0) else
@@ -605,6 +608,7 @@ class CheckinRequest(BaseModel):
     run_intent: Optional[Literal["easy", "workout", "long", "explore"]] = None
     hills_pref: Optional[Literal["avoid", "want"]] = None
     quiet_streets: bool = False
+    shape_pref: Optional[Literal["loop", "out_and_back"]] = None
 
 
 @app.get("/checkins/{user_id}/last")
@@ -635,6 +639,7 @@ def last_checkin(user_id: UUID, session: Session = Depends(get_session),
         "run_time": c.run_time,
         "hills_pref": c.hills_pref,
         "quiet_streets": bool(c.quiet_streets),
+        "shape_pref": c.shape_pref,
     }
 
 
@@ -661,6 +666,7 @@ def create_checkin(payload: CheckinRequest, session: Session = Depends(get_sessi
         run_intent=payload.run_intent,
         hills_pref=payload.hills_pref,
         quiet_streets=payload.quiet_streets,
+        shape_pref=payload.shape_pref,
     )
     session.add(checkin)
     session.commit()

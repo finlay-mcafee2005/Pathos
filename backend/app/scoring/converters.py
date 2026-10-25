@@ -54,6 +54,7 @@ def build_daily_checkin(checkin: Checkin) -> DailyCheckin:
         run_intent=getattr(checkin, "run_intent", None),
         hills_pref=getattr(checkin, "hills_pref", None),
         quiet_streets=bool(getattr(checkin, "quiet_streets", False)),
+        shape_pref=getattr(checkin, "shape_pref", None),
     )
 
 
