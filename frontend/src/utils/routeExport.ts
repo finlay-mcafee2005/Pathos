@@ -17,7 +17,48 @@ export function runPath(path: [number, number][], format: RunFormat): [number, n
   return path;
 }
 
-export function formatNote(format: RunFormat, repeatCount?: number): string {
+// How to run it, step by step: "Out 0.5 mi → loop 1.9 mi ×2 → back 0.5 mi".
+// Laps repeat only the loop; a lollipop's stem is run once out and once back.
+export type PlanInput = {
+  format?: RunFormat;
+  repeatCount?: number;
+  routeKm?: number;          // the stored route's length
+  stemKm?: number | null;    // lollipop stem, one way (0 = plain loop)
+  approachKm?: number | null;    // running there from home, each way
+  turnaroundKm?: number | null;  // short on time: out this far along the route and back
+};
+
+const mi = (km: number) => {
+  const m = km * 0.621371;
+  return `${m < 10 ? m.toFixed(1) : Math.round(m)} mi`;
+};
+
+export function runPlan(p: PlanInput): string[] {
+  const steps: string[] = [];
+  const route = p.routeKm ?? 0;
+  const stem = p.stemKm && route > 2 * p.stemKm + 0.2 ? p.stemKm : 0;
+  const loop = route - 2 * stem;
+  const laps = p.format === "repeat" ? Math.max(1, p.repeatCount ?? 1) : 1;
+  if (p.approachKm && p.approachKm > 0) steps.push(`${mi(p.approachKm)} to the start`);
+  if (p.format === "out_and_back") {
+    const out = p.turnaroundKm ?? route;
+    steps.push(`out ${mi(out)}`, "turn around", `back ${mi(out)}`);
+  } else if (stem > 0) {
+    steps.push(`out ${mi(stem)}`, `loop ${mi(loop)}${laps > 1 ? ` ×${laps}` : ""}`, `back ${mi(stem)}`);
+  } else if (laps > 1) {
+    steps.push(`loop ${mi(loop)} ×${laps}`);
+  }
+  if (p.approachKm && p.approachKm > 0) steps.push(`${mi(p.approachKm)} home`);
+  // a plain single loop needs no instructions
+  return steps.length > (p.approachKm && p.approachKm > 0 ? 2 : 0) ? steps : [];
+}
+
+export function formatNote(format: RunFormat, repeatCount?: number, plan?: PlanInput): string {
+  const steps = runPlan({ format, repeatCount, ...plan });
+  if (steps.length) {
+    const s = steps.join(" → ");
+    return `How to run it: ${s.charAt(0).toUpperCase()}${s.slice(1)}.`;
+  }
   if (format === "out_and_back") return "Out-and-back: turn around at the far end and return the same way.";
   if (format === "repeat" && repeatCount && repeatCount > 1) return `Loop: run it ${repeatCount} times.`;
   return "";
@@ -43,9 +84,9 @@ ${points}
 `;
 }
 
-export function downloadGpx(name: string, path: [number, number][], format?: RunFormat, repeatCount?: number) {
+export function downloadGpx(name: string, path: [number, number][], format?: RunFormat, repeatCount?: number, plan?: PlanInput) {
   if (path.length < 2) return;
-  const gpx = buildGpx(`Pathos · ${name}`, runPath(path, format), formatNote(format, repeatCount));
+  const gpx = buildGpx(`Pathos · ${name}`, runPath(path, format), formatNote(format, repeatCount, plan));
   const blob = new Blob([gpx], { type: "application/gpx+xml" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

@@ -8928,3 +8928,29 @@ body::before {
   text-decoration: none;
   background: linear-gradient(100deg, #1D4ED8, #3B82F6);
 }
+
+/* "How to run it": Out 0.5 mi → Loop 1.9 mi ×2 → Back 0.5 mi */
+.rec-plan {
+  list-style: none;
+  margin: -0.5rem 0 1.1rem;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.rec-plan li {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.rec-plan li.rec-plan-arrow {
+  padding: 0;
+  background: none;
+  color: color-mix(in srgb, var(--accent) 55%, transparent);
+  font-weight: 700;
+}

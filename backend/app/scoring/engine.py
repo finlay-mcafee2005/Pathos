@@ -74,6 +74,7 @@ class RouteCandidate:
     freeway_crossings: Optional[int] = None    # times it crosses a freeway
     downtown_pct: Optional[float] = None       # 0..1 share inside downtown LA
     turns_per_km: Optional[float] = None       # sharp turns per km (fewer = easier to follow)
+    stem_km: Optional[float] = None            # lollipop: shared out-and-back stretch at the start, one way
 
 
 def climb_per_km(distance_km: float, gain_m: float, loss_m: Optional[float] = None) -> float:
@@ -448,10 +449,14 @@ def choose_format(route: RouteCandidate, target: float, max_repeats: int, allow_
         best = (abs(d - target), "out_and_back", 1, d, None)
     else:
         best = (abs(route.distance_km - target), "single", 1, route.distance_km, None)
-        if route.distance_km > 0:
-            n = max(1, round(target / route.distance_km))
+        # laps repeat only the loop: a lollipop is out along the stem, round the loop
+        # n times, back along the stem - not the whole thing (stem and all) n times
+        stem = route.stem_km or 0.0
+        loop = route.distance_km - 2 * stem
+        if loop > 0.2:
+            n = max(1, round((target - 2 * stem) / loop))
             if 1 < n <= max_repeats:
-                d = route.distance_km * n
+                d = 2 * stem + n * loop
                 if abs(d - target) < best[0]:
                     best = (abs(d - target), "repeat", n, d, None)
     if allow_partial and best[3] > target * PARTIAL_OVER and target >= 0.4:

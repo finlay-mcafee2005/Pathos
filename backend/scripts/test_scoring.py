@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from datetime import date, timedelta
 
 from app.scoring.engine import (
+    choose_format,
     UserProfile, DailyCheckin, RecentRuns, RouteCandidate, recommend,
 )
 from app.scoring.personalization import RunRecord
@@ -342,6 +343,13 @@ def check_difficulty():
     r = recommend(INTERMEDIATE, quiet_ck, RecentRuns(last_7_days_km=20), [busy, downtown, calm], top_n=3)
     assert len(r) == 3, [x.route.id for x in r]
     print("  quiet side streets only: busy and downtown routes left out, filled only if short")
+
+    # laps repeat only the loop of a lollipop: out 1 km, loop 2 km x2, back 1 km = 6 km
+    lolly = RouteCandidate(id="lolly", name="Lollipop", distance_km=4.0, elevation_gain_m=40, difficulty="easy",
+                           surface_type="pavement", is_loop=True, stem_km=1.0)
+    _, fmt, n, eff, _ = choose_format(lolly, 6.0, 2)
+    assert fmt == "repeat" and n == 2 and abs(eff - 6.0) < 1e-6, (fmt, n, eff)
+    print("  lollipop laps: out 1 km -> loop 2 km x2 -> back 1 km = 6 km")
 
     # beginners are gated on that run difficulty
     beginner = UserProfile(fitness_level="beginner", weekly_km_avg=12)

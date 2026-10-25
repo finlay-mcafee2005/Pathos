@@ -1,7 +1,8 @@
 """
 Measure how "quiet" and how easy to follow each route is, from OpenStreetMap:
 
-  busy_pct           share of the route along a busy road (primary / secondary / trunk)
+  busy_pct           share of the route along a busy road (primary / secondary / trunk);
+                     a separate bike path or trail beside the road doesn't count
   freeway_crossings  how many times it crosses a freeway (over or under it)
   downtown_pct       share of the route inside downtown LA
   turns_per_km       sharp turns (over 60 degrees) per km - fewer = simpler to follow
@@ -33,6 +34,11 @@ ROADS = os.path.join(HERE, ".shade_cache", "roads_local.json")
 CACHE = os.path.join(HERE, "audit_output", "routes_cache.pkl")
 BUSY = {"primary", "primary_link", "secondary", "secondary_link", "trunk", "trunk_link"}
 FREEWAY = {"motorway", "motorway_link"}
+# paths separate from traffic: a route ON one of these isn't "on a busy road" even when the
+# road is right beside it (the Chandler bikeway in the middle of Chandler Blvd, river paths)
+PATHS = {"cycleway", "path", "footway", "bridleway", "pedestrian", "track"}
+SIDEWALK_TAGS = {"sidewalk", "crossing", "traffic_island"}   # these ARE the busy road
+ON_PATH_M = 6                                    # this close to a separate path = running on it
 BBOX = (-118.60, 33.90, -117.95, 34.40)          # lon/lat box around the routes
 NEAR_BUSY_M = 15                                 # this close to a busy road = running along it
 SAMPLE_M = 20
@@ -52,12 +58,14 @@ def extract_roads():
     pbf = (glob.glob(os.path.join(HERE, "..", "..", "osrm-data", "*.osm.pbf")) or [None])[0]
     if not pbf:
         sys.exit("No .osm.pbf map file in osrm-data/.")
-    busy, freeway = [], []
+    busy, freeway, paths = [], [], []
 
     class H(osmium.SimpleHandler):
         def way(self, w):
             hw = w.tags.get("highway")
-            if hw not in BUSY and hw not in FREEWAY:
+            sep = hw in PATHS and w.tags.get("footway") not in SIDEWALK_TAGS \
+                and w.tags.get("cycleway") not in ("lane", "crossing") and w.tags.get("path") not in SIDEWALK_TAGS
+            if hw not in BUSY and hw not in FREEWAY and not sep:
                 return
             try:
                 pts = [(n.lon, n.lat) for n in w.nodes]
@@ -65,27 +73,29 @@ def extract_roads():
                 return
             if len(pts) < 2 or not any(BBOX[0] <= x <= BBOX[2] and BBOX[1] <= y <= BBOX[3] for x, y in pts):
                 return
-            (busy if hw in BUSY else freeway).append(pts)
+            (busy if hw in BUSY else freeway if hw in FREEWAY else paths).append(pts)
 
     print("Reading the map file for busy roads and freeways (about a minute)...")
     H().apply_file(pbf, locations=True, idx="flex_mem")
     os.makedirs(os.path.dirname(ROADS), exist_ok=True)
     with open(ROADS, "w") as f:
-        json.dump({"busy": busy, "freeway": freeway}, f)
-    print(f"  {len(busy)} busy-road pieces, {len(freeway)} freeway pieces")
+        json.dump({"busy": busy, "freeway": freeway, "paths": paths}, f)
+    print(f"  {len(busy)} busy-road pieces, {len(freeway)} freeway pieces, {len(paths)} separate paths")
 
 
 def load_index():
-    if not os.path.exists(ROADS):
+    d = json.load(open(ROADS)) if os.path.exists(ROADS) else {}
+    if "paths" not in d:              # older cache without the separate paths
         extract_roads()
-    d = json.load(open(ROADS))
+        d = json.load(open(ROADS))
     busy = [LineString([m(*p) for p in w]) for w in d["busy"]]
     fwy = [LineString([m(*p) for p in w]) for w in d["freeway"]]
-    return busy, STRtree(busy), fwy, STRtree(fwy), Polygon([m(*p) for p in DOWNTOWN])
+    paths = [LineString([m(*p) for p in w]) for w in d["paths"]]
+    return busy, STRtree(busy), fwy, STRtree(fwy), Polygon([m(*p) for p in DOWNTOWN]), paths, STRtree(paths)
 
 
 def measure(coords, index):
-    busy, busy_tree, fwy, fwy_tree, downtown = index
+    busy, busy_tree, fwy, fwy_tree, downtown, paths, path_tree = index
     line = LineString([m(*p) for p in coords])
     L = line.length
     if L < 50:
@@ -94,8 +104,14 @@ def measure(coords, index):
     pts = [line.interpolate(k * L / n) for k in range(n + 1)]
     near = 0
     for p in pts:
-        if any(busy[int(i)].distance(p) <= NEAR_BUSY_M for i in busy_tree.query(p.buffer(NEAR_BUSY_M))):
-            near += 1
+        d_busy = min((busy[int(i)].distance(p) for i in busy_tree.query(p.buffer(NEAR_BUSY_M))), default=1e9)
+        if d_busy > NEAR_BUSY_M:
+            continue
+        # on a separate bike path / trail that happens to sit beside the road: quiet
+        d_path = min((paths[int(i)].distance(p) for i in path_tree.query(p.buffer(ON_PATH_M))), default=1e9)
+        if d_path <= ON_PATH_M and d_path < d_busy:
+            continue
+        near += 1
     # freeway crossings: where the line crosses a freeway, grouping nearby hits (both directions, ramps)
     hits = []
     for i in fwy_tree.query(line):

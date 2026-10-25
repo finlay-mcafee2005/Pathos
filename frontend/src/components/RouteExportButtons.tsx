@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { downloadGpx, googleMapsUrl, type RunFormat } from "../utils/routeExport";
+import { downloadGpx, googleMapsUrl, type PlanInput, type RunFormat } from "../utils/routeExport";
 
 type Props = {
   routeId?: string | null;
@@ -13,11 +13,12 @@ type Props = {
   surface?: string | null;
   approachPath?: [number, number][];
   runFromHere?: boolean;        // true = they run from where they are; false = they drive to the start
+  plan?: PlanInput;             // lengths for "Out 0.5 mi → loop ×2 → back 0.5 mi"
   compact?: boolean;
 };
 
 // eslint-disable-next-line react-refresh/only-export-components
-export function useRouteActions({ routeId, recommendationId, name, loadPath, format, repeatCount, surface, approachPath, runFromHere }: Omit<Props, "compact">) {
+export function useRouteActions({ routeId, recommendationId, name, loadPath, format, repeatCount, surface, approachPath, runFromHere, plan }: Omit<Props, "compact">) {
   const navigate = useNavigate();
   const [busy, setBusy] = useState<"gpx" | "maps" | "follow" | null>(null);
 
@@ -25,7 +26,7 @@ export function useRouteActions({ routeId, recommendationId, name, loadPath, for
     setBusy("follow");
     try {
       const path = await loadPath();
-      navigate("/follow", { state: { routeId, recommendationId, name, path, format, repeatCount, surface, approachPath, runFromHere } });
+      navigate("/follow", { state: { routeId, recommendationId, name, path, format, repeatCount, surface, approachPath, runFromHere, plan } });
     } finally {
       setBusy(null);
     }
@@ -34,7 +35,7 @@ export function useRouteActions({ routeId, recommendationId, name, loadPath, for
   async function handleGpx() {
     setBusy("gpx");
     try {
-      downloadGpx(name, await loadPath(), format, repeatCount);
+      downloadGpx(name, await loadPath(), format, repeatCount, plan);
     } finally {
       setBusy(null);
     }

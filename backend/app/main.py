@@ -109,7 +109,7 @@ def add_new_columns():
         conn.execute(text("ALTER TABLE route ADD COLUMN IF NOT EXISTS shade_pct FLOAT"))
         conn.execute(text("ALTER TABLE route ADD COLUMN IF NOT EXISTS scenic_pct FLOAT"))
         for col, typ in [("busy_pct", "FLOAT"), ("freeway_crossings", "INTEGER"),
-                         ("downtown_pct", "FLOAT"), ("turns_per_km", "FLOAT")]:
+                         ("downtown_pct", "FLOAT"), ("turns_per_km", "FLOAT"), ("stem_km", "FLOAT")]:
             conn.execute(text(f"ALTER TABLE route ADD COLUMN IF NOT EXISTS {col} {typ}"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS quiet_streets BOOLEAN DEFAULT FALSE"))
         # recommendation logging
@@ -373,6 +373,7 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             "freeway_crossings": getattr(r.route, "freeway_crossings", None),
             "downtown_pct": getattr(r.route, "downtown_pct", None),
             "turns_per_km": getattr(r.route, "turns_per_km", None),
+            "stem_km": getattr(r.route, "stem_km", None) or 0.0,   # for "out 0.5 mi -> loop x2 -> back"
             "days_since_run": recent_runs.days_since_last_run_by_route_id.get(r.route.id),
             "your_rating": recent_runs.avg_rating_by_route_id.get(r.route.id),
             "feels_like_f": getattr(daily_checkin.conditions, "feels_like_f", None)
@@ -444,7 +445,13 @@ def run_climb_m(route, run_format: str, repeat_count: int) -> float:
         loss = getattr(route, "elevation_loss_m", None)
         return round(gain + (loss if loss is not None else gain), 1)
     if run_format == "repeat":
-        return round(gain * max(1, repeat_count or 1), 1)
+        # only the loop is repeated; the stem (if any) is run once out and once back
+        dist = getattr(route, "distance_km", 0) or 0
+        stem = getattr(route, "stem_km", None) or 0.0
+        n = max(1, repeat_count or 1)
+        if dist and 0 < 2 * stem < dist:
+            return round(gain * (2 * stem + n * (dist - 2 * stem)) / dist, 1)
+        return round(gain * n, 1)
     return round(gain, 1)
 
 

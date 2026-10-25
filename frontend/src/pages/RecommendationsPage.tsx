@@ -1,10 +1,11 @@
 import type React from "react";
-import { useState, useEffect } from "react";
+import { Fragment, useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { MapContainer, TileLayer, Polyline, CircleMarker, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useRouteActions } from "../components/RouteExportButtons";
+import { runPlan, type PlanInput } from "../utils/routeExport";
 import { type GroupMatch, formatMeetTime, sessionTitle } from "./GroupsPage";
 import { API_URL } from "../utils/format";
 
@@ -87,6 +88,8 @@ type Recommendation = {
   freeway_crossings?: number | null;
   downtown_pct?: number | null;
   turns_per_km?: number | null;
+  stem_km?: number | null;
+  turnaround_km?: number | null;
   days_since_run?: number | null;
   your_rating?: number | null;
   feels_like_f?: number | null;
@@ -409,6 +412,13 @@ function metersToFeet(m: number): number {
   return m * 3.28084;
 }
 
+function planInput(rec: Recommendation): PlanInput {
+  return {
+    format: rec.run_format, repeatCount: rec.repeat_count, routeKm: rec.distance_km,
+    stemKm: rec.stem_km, approachKm: rec.approach_km, turnaroundKm: rec.turnaround_km,
+  };
+}
+
 // Card actions, grouped by purpose: run it / log it / save it, then take it with you
 function RecActions({ rec, saved, onSave, onLog }: {
   rec: Recommendation;
@@ -427,6 +437,7 @@ function RecActions({ rec, saved, onSave, onLog }: {
     approachPath: rec.approach_path,
     // "close to home" = run there from where you are; 15/30/45 min = drive to the trailhead
     runFromHere: (rec.approach_km ?? 0) > 0,
+    plan: planInput(rec),
   });
   const hasPath = rec.path.length > 1;
   return (
@@ -731,7 +742,7 @@ function RecommendationsPage() {
                     <span className="rec-split-label">
                       {/* say how the distance is made up, so 3 laps of a 3.3 mi loop doesn't read as one 9.8 mi route */}
                       {rec.run_format === "repeat" && (rec.repeat_count ?? 1) > 1
-                        ? `${rec.repeat_count} laps of ${((miles - 2 * kmToMiles(rec.approach_km ?? 0)) / (rec.repeat_count ?? 1)).toFixed(1)} mi`
+                        ? `${rec.repeat_count} laps`
                         : rec.run_format === "out_and_back"
                           ? "Out & back"
                           : (rec.approach_km ?? 0) > 0
@@ -759,6 +770,17 @@ function RecommendationsPage() {
                     <span className="rec-split-label">{surface ?? "Effort"}</span>
                   </div>
                 </div>
+
+                {runPlan(planInput(rec)).length > 0 && (
+                  <ol className="rec-plan" aria-label="How to run it">
+                    {runPlan(planInput(rec)).map((step, i) => (
+                      <Fragment key={i}>
+                        {i > 0 && <li className="rec-plan-arrow" aria-hidden="true">→</li>}
+                        <li>{step.charAt(0).toUpperCase() + step.slice(1)}</li>
+                      </Fragment>
+                    ))}
+                  </ol>
+                )}
 
                 <RecActions
                   rec={rec}

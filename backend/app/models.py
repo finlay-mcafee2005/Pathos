@@ -116,6 +116,7 @@ class Route(SQLModel, table=True):
     freeway_crossings: Optional[int] = None    # times it crosses a freeway
     downtown_pct: Optional[float] = None       # 0..1 share inside downtown LA
     turns_per_km: Optional[float] = None       # sharp turns per km
+    stem_km: Optional[float] = None            # lollipop stem, one way (scripts/update_route_shape.py)
     surface_type: str        # "pavement" | "trail" | "track" | "mixed"
     difficulty: str          # "easy" | "moderate" | "hard"
     scenic: bool = Field(default=False)

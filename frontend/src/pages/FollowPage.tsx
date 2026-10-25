@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { MapContainer, TileLayer, Polyline, CircleMarker, Circle, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { runPath, cumulativeMeters, metersBetween, formatNote, type RunFormat } from "../utils/routeExport";
+import { runPath, cumulativeMeters, metersBetween, formatNote, type PlanInput, type RunFormat } from "../utils/routeExport";
 import { API_URL } from "../utils/format";
 
 type Cue = { text: string; street: string; icon: string; lat: number; lon: number };
@@ -67,6 +67,7 @@ type FollowState = {
   surface?: string | null;
   approachPath?: [number, number][];   // home -> start, from the card (shown until GPS is ready)
   runFromHere?: boolean;               // false = they drive to the trailhead: the run starts there
+  plan?: PlanInput;                    // "Out 0.5 mi → loop ×2 → back 0.5 mi"
 };
 
 type GetThere = { path: [number, number][]; distance_m: number; cues: Cue[] };
@@ -529,7 +530,7 @@ function FollowPage() {
   };
   const nextCue = cues?.find((c) => (started ? c.at > done + 8 : true)) ?? null;
   const nextIn = nextCue ? Math.max(0, nextCue.at - done) : null;
-  const note = formatNote(state.format, state.repeatCount);
+  const note = formatNote(state.format, state.repeatCount, state.plan);
 
   const icons = {
     voiceOn: (
