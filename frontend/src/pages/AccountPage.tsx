@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_URL } from "../utils/format";
 import { clearSession } from "../utils/session";
+import ProfileSettings from "../components/ProfileSettings";
 
 type Me = { email: string; first_name: string; email_verified: boolean };
 
@@ -49,9 +50,11 @@ function AccountPage() {
   return (
     <div className="app account-page">
       <header className="ci-intro">
-        <span className="ci-eyebrow">Account</span>
-        <h1>Your account</h1>
+        <span className="ci-eyebrow">Settings</span>
+        <h1>Your settings</h1>
       </header>
+
+      <ProfileSettings />
 
       <section className="ac-card">
         <h2>Email</h2>

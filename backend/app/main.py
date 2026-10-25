@@ -1554,6 +1554,75 @@ def me(session: Session = Depends(get_session), me: UUID = Depends(current_user)
             "email_verified": bool(user.email_verified)}
 
 
+# ---------------------------------------------------------------------------
+# Settings: change where you run from and your running profile after signup
+# ---------------------------------------------------------------------------
+
+FITNESS_LEVELS = ("beginner", "intermediate", "advanced")
+GOALS = ("race_training", "general_fitness", "weight_loss")
+
+
+def profile_out(user: User) -> dict:
+    return {
+        "full_name": user.full_name,
+        "address": user.address,
+        "latitude": user.latitude,
+        "longitude": user.longitude,
+        "fitness_level": user.fitness_level,
+        "goal": user.goal,
+        "weekly_mileage_avg": user.weekly_mileage_avg,          # miles per week, as entered at signup
+        "usual_pace_min_mile": round(user.usual_pace_min_km * 1.60934, 2) if user.usual_pace_min_km else None,
+    }
+
+
+@app.get("/me/profile")
+def my_profile(session: Session = Depends(get_session), me: UUID = Depends(current_user)):
+    user = session.get(User, me)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return profile_out(user)
+
+
+class ProfileUpdate(BaseModel):
+    """Only the fields sent are changed."""
+    full_name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    address: Optional[str] = Field(default=None, min_length=2, max_length=200)
+    fitness_level: Optional[Literal["beginner", "intermediate", "advanced"]] = None
+    goal: Optional[Literal["race_training", "general_fitness", "weight_loss"]] = None
+    weekly_mileage_avg: Optional[float] = Field(default=None, ge=0, le=200)
+    usual_pace_min_mile: Optional[float] = Field(default=None, ge=4, le=20)
+    clear_pace: bool = False
+
+
+@app.patch("/me/profile")
+def update_profile(payload: ProfileUpdate, session: Session = Depends(get_session),
+                   me: UUID = Depends(current_user)):
+    user = session.get(User, me)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    label = None
+    if payload.address is not None and payload.address.strip() != (user.address or ""):
+        # same check as signup: inside LA, with routes nearby
+        lat, lon, label, _count = check_coverage(session, payload.address.strip())
+        user.address, user.latitude, user.longitude = payload.address.strip(), lat, lon
+    if payload.full_name is not None:
+        user.full_name = payload.full_name.strip()
+    if payload.fitness_level is not None:
+        user.fitness_level = payload.fitness_level
+    if payload.goal is not None:
+        user.goal = payload.goal
+    if payload.weekly_mileage_avg is not None:
+        user.weekly_mileage_avg = payload.weekly_mileage_avg
+    if payload.clear_pace:
+        user.usual_pace_min_km = None
+    elif payload.usual_pace_min_mile is not None:
+        user.usual_pace_min_km = payload.usual_pace_min_mile / 1.60934
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return {**profile_out(user), "location_label": label}
+
+
 class VerifyEmailRequest(BaseModel):
     token: str
 
