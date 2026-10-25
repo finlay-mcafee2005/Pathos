@@ -177,6 +177,7 @@ def build_route_candidates(routes: List[Route]) -> List[RouteCandidate]:
             downtown_pct=getattr(r, "downtown_pct", None),
             turns_per_km=getattr(r, "turns_per_km", None),
             stem_km=getattr(r, "stem_km", None),
+            steepest_grade=getattr(r, "steepest_grade", None),
             elevation_loss_m=getattr(r, "elevation_loss_m", None),
         )
         for r in routes

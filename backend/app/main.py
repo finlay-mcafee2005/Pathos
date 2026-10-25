@@ -109,7 +109,8 @@ def add_new_columns():
         conn.execute(text("ALTER TABLE route ADD COLUMN IF NOT EXISTS shade_pct FLOAT"))
         conn.execute(text("ALTER TABLE route ADD COLUMN IF NOT EXISTS scenic_pct FLOAT"))
         for col, typ in [("busy_pct", "FLOAT"), ("freeway_crossings", "INTEGER"),
-                         ("downtown_pct", "FLOAT"), ("turns_per_km", "FLOAT"), ("stem_km", "FLOAT")]:
+                         ("downtown_pct", "FLOAT"), ("turns_per_km", "FLOAT"), ("stem_km", "FLOAT"),
+                         ("steepest_grade", "FLOAT")]:
             conn.execute(text(f"ALTER TABLE route ADD COLUMN IF NOT EXISTS {col} {typ}"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS quiet_streets BOOLEAN DEFAULT FALSE"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS shape_pref VARCHAR"))
@@ -379,6 +380,7 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             "downtown_pct": getattr(r.route, "downtown_pct", None),
             "turns_per_km": getattr(r.route, "turns_per_km", None),
             "stem_km": getattr(r.route, "stem_km", None) or 0.0,   # for "out 0.5 mi -> loop x2 -> back"
+            "steepest_grade": getattr(r.route, "steepest_grade", None),
             "days_since_run": recent_runs.days_since_last_run_by_route_id.get(r.route.id),
             "your_rating": recent_runs.avg_rating_by_route_id.get(r.route.id),
             "feels_like_f": getattr(daily_checkin.conditions, "feels_like_f", None)

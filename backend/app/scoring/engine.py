@@ -77,6 +77,7 @@ class RouteCandidate:
     downtown_pct: Optional[float] = None       # 0..1 share inside downtown LA
     turns_per_km: Optional[float] = None       # sharp turns per km (fewer = easier to follow)
     stem_km: Optional[float] = None            # lollipop: shared out-and-back stretch at the start, one way
+    steepest_grade: Optional[float] = None     # steepest 200 m, as a fraction (scripts/update_steepness.py)
 
 
 def climb_per_km(distance_km: float, gain_m: float, loss_m: Optional[float] = None) -> float:
@@ -315,6 +316,9 @@ LONG_RUN_VS_USUAL = 1.6       # ...and 1.6x their usual run, or run type "long",
 LONG_RUN_HILL_IDEAL = 12.0    # long run: ideal climb (m/km) unless they asked for hills (~65 ft/mi)
 LONG_RUN_HILL_WANT = 20.0     # long run with "want hills": still capped (~105 ft/mi, ~1,500 ft over 14 mi)
 WANT_HILLS_MAX = 50.0         # "want hills": steeper than this stops helping and starts to cost
+W_STEEP = 10                  # up to -10 for a route with a near-unrunnable stretch
+STEEP_OK = 0.12               # steepest 200 m under 12%: no penalty
+STEEP_FULL = 0.20             # full penalty at 20%
 W_SHAPE_PREF = 12             # the runner picked loop or out-and-back
 W_HILLS_PREF = 18             # the runner said outright: avoid hills / want hills
 
@@ -792,6 +796,13 @@ def score_route(
         add("appeal", W_APPEAL * route_share * clamp((appeal - 0.15) / 0.6),
             "Runs through parks, trees or along water" if appeal >= 0.6 else None)
 
+    # --- 6b1. a very steep stretch: barely runnable for most, brutal when tired ----
+    g = route.steepest_grade
+    if g is not None and g > STEEP_OK:
+        scale = 0.3 if checkin.hills_pref == "want" else 1.5 if ctx.readiness < 0.5 else 1.0
+        add("steep", -W_STEEP * scale * clamp((g - STEEP_OK) / (STEEP_FULL - STEEP_OK)),
+            f"Has a very steep stretch ({g:.0%})" if g >= 0.15 else None)
+
     # --- 6b2. the shape they asked for: loop or out-and-back --------------
     if shape_pref:
         is_oab = run_format == "out_and_back"
@@ -930,9 +941,12 @@ def score_route(
         add("intent", W_INTENT * (0.8 * flat - clamp((hill - 5) / 20)) - (4 if route.difficulty == "hard" else 0),
             "Flat and easy, like you wanted" if hill < 8 else None)
     elif intent == "workout":
-        even = surface in ("pavement", "track")
-        add("intent", W_INTENT * (0.8 if even else -0.6),
-            "Even footing for a workout" if even else None)
+        # a pace workout (tempo, intervals): flat, even footing, few turns to break stride
+        even = 1.0 if surface in ("pavement", "track") else 0.3 if surface == "mixed" else -0.6
+        flat = clamp(1 - hill / 20)
+        simple = 0.5 if route.turns_per_km is None else clamp(1 - (route.turns_per_km - 1) / 4)
+        add("intent", W_INTENT * (0.45 * even + 0.35 * flat + 0.2 * simple) + (3 if surface == "track" else 0),
+            "Flat, even and few turns: good for holding a pace" if even >= 1 and flat >= 0.6 else None)
     elif intent == "long":
         add("intent", W_INTENT * (0.3 if route.scenic else 0))
     elif intent == "explore":

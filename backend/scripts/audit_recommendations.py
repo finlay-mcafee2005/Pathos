@@ -221,7 +221,7 @@ def responsiveness(rows):
 CACHE = os.path.join(OUT_DIR, "routes_cache.pkl")
 ROUTE_FIELDS = ["id", "name", "nickname", "hidden", "distance_km", "elevation_gain_m", "elevation_loss_m",
                 "shade_pct", "scenic_pct", "surface_type", "difficulty", "scenic",
-                "busy_pct", "freeway_crossings", "downtown_pct", "turns_per_km", "stem_km"]
+                "busy_pct", "freeway_crossings", "downtown_pct", "turns_per_km", "stem_km", "steepest_grade"]
 
 
 def load_routes():

@@ -118,6 +118,7 @@ class Route(SQLModel, table=True):
     downtown_pct: Optional[float] = None       # 0..1 share inside downtown LA
     turns_per_km: Optional[float] = None       # sharp turns per km
     stem_km: Optional[float] = None            # lollipop stem, one way (scripts/update_route_shape.py)
+    steepest_grade: Optional[float] = None     # steepest 200 m, fraction (scripts/update_steepness.py)
     surface_type: str        # "pavement" | "trail" | "track" | "mixed"
     difficulty: str          # "easy" | "moderate" | "hard"
     scenic: bool = Field(default=False)

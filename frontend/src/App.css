@@ -8971,3 +8971,13 @@ body::before {
 [data-theme="dark"] .rec-drive-pill { color: #FDBA74; }
 .rec-title-row h2 { flex: 1 1 auto; }
 .rec-title-row .rec-drive-pill + .rec-match-pill { margin-left: -0.5rem; }
+
+.ci-intent-help {
+  margin: 0.6rem 0 0;
+  padding: 0.6rem 0.8rem;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--ink);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}

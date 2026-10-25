@@ -52,7 +52,7 @@ const MOODS: { value: Mood; label: string; hint: string }[] = [
 ];
 const INTENTS: { value: Intent; label: string; hint: string }[] = [
   { value: "easy", label: "Easy", hint: "Recovery pace" },
-  { value: "workout", label: "Workout", hint: "Speed or tempo" },
+  { value: "workout", label: "Workout", hint: "Tempo or intervals" },
   { value: "long", label: "Long run", hint: "Go the distance" },
   { value: "explore", label: "Explore", hint: "Somewhere new" },
 ];
@@ -324,7 +324,7 @@ function CheckinPage() {
   const surfaceWord = surfacePreference === "trail" ? " of trail" : surfacePreference === "road" ? " of road" : "";
   const intentWord = runIntent ? { easy: "easy ", workout: "workout ", long: "long ", explore: "" }[runIntent] : "";
   const what = plannedDistance
-    ? `${plannedDistance} miles${surfaceWord}${runIntent === "easy" ? ", nice and flat" : runIntent === "workout" ? " with even footing" : ""}`
+    ? `${plannedDistance} miles${surfaceWord}${runIntent === "easy" ? ", nice and flat" : runIntent === "workout" ? ", flat with few turns for holding a pace" : ""}`
     : runIntent && !availableMinutes
       ? `a ${intentWord}${surfacePreference || ""} run`.replace("  ", " ").replace(" run", runIntent === "explore" ? " run somewhere new" : " run").replace(/^a easy/, "an easy")
     : availableMinutes
@@ -565,6 +565,12 @@ function CheckinPage() {
                     </button>
                   ))}
                 </div>
+                {runIntent === "workout" && (
+                  <p className="ci-intent-help">
+                    For a pace workout: we'll pick flat routes with even footing and few turns, so
+                    you can hold your speed. Tracks count. Want hills instead? Set Hills to "Want them".
+                  </p>
+                )}
 
                 <div className="ci-length">
                   <div className="ci-length-head">
