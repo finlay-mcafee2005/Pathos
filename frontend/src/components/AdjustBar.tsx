@@ -93,10 +93,22 @@ function AdjustBar({ prefs, currentMiles, busy, onAdjust, onDifferent }: {
               <circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" /></svg>
           </span>
           <span className="adj-toggle-text">
-            <b>Adjust picks</b>
-            <small>{[miles != null ? `${miles.toFixed(1)} mi` : null, ...active].filter(Boolean).join(" · ") || "Hills, distance, surface, shape"}</small>
+            <span className="adj-title-row">
+              <b>Adjust picks</b>
+              <span className="adj-edit">{open ? "Done" : "Edit"}
+                <span className={`chevron ${open ? "open" : ""}`} aria-hidden="true">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
+                </span>
+              </span>
+            </span>
+            {/* what today's picks are set to, as small chips */}
+            <span className="adj-set">
+              {[miles != null ? `${miles.toFixed(1)} mi` : null, ...active].filter(Boolean).length
+                ? [miles != null ? `${miles.toFixed(1)} mi` : null, ...active].filter(Boolean).map((t) => (
+                    <span key={t as string} className="adj-set-chip">{t}</span>))
+                : <span className="adj-set-empty">Hills, distance, surface, shape</span>}
+            </span>
           </span>
-          <span className={`chevron ${open ? "open" : ""}`} aria-hidden="true">▾</span>
         </button>
         <button type="button" className="adj-shuffle" onClick={onDifferent} disabled={busy} title="Show 3 routes you haven't seen yet">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
