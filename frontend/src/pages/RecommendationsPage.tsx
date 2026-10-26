@@ -625,10 +625,16 @@ function RecommendationsPage() {
         .then((res) => (res.ok ? res.json() : null))
         .then(setPrefs)
         .catch(() => setPrefs(null));
-      fetch(`${API_URL}/conditions/${userId}`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then(setConditions)
-        .catch(() => setConditions(null));
+      // weather: if the first try comes back empty (the weather service is slow at times), try once more
+      const loadConditions = (again: boolean) =>
+        fetch(`${API_URL}/conditions/${userId}`)
+          .then((res) => (res.ok ? res.json() : null))
+          .then((c) => {
+            if (c) setConditions(c);
+            else if (again) setTimeout(() => loadConditions(false), 2500);
+          })
+          .catch(() => { if (again) setTimeout(() => loadConditions(false), 2500); });
+      loadConditions(true);
       fetch(`${API_URL}/groups/${userId}`)
         .then((res) => (res.ok ? res.json() : null))
         .then((g) => setGroupToday(g?.today ?? null))
@@ -680,6 +686,8 @@ function RecommendationsPage() {
       )}
       {error && error !== "checkin" && <p className="error">Error: {error}</p>}
 
+      {/* today: the weather and the adjust bar, together in one panel */}
+      <div className={`recs-today ${conditions && count > 0 ? "with-weather" : ""}`}>
       {conditions && count > 0 && (() => {
         const rt = conditions.run_time.replace("tomorrow_", "");
         const base = { now: "Right now", morning: "morning", midday: "midday", evening: "evening" }[rt] ?? "today";
@@ -762,6 +770,7 @@ function RecommendationsPage() {
           onDifferent={showDifferent}
         />
       )}
+      </div>
       {adjustMsg && count > 0 && !loading && <p className="adj-msg">{adjustMsg}</p>}
 
       <div className="recs-list">

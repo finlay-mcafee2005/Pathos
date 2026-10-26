@@ -9334,3 +9334,37 @@ body::before {
 }
 .ci-workout-alt:hover { text-decoration: underline; text-underline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) { .ci-workout { animation: none; } }
+
+
+/* Recommendations: weather + adjust picks as one panel, edges lined up */
+.recs-today.with-weather {
+  margin: 0 0 22px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--card-bg);
+  overflow: hidden;
+  box-shadow: 0 6px 22px color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.recs-today.with-weather .conditions {
+  margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
+  padding: 1.1rem 1.25rem 0.95rem;
+}
+.recs-today.with-weather .adj-card {
+  margin: 0; border: 0; border-radius: 0; box-shadow: none;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 3%, var(--card-bg));
+  padding: 10px 1.25rem;
+}
+.recs-today.with-weather .adj-card.open { padding-bottom: 16px; }
+.recs-today.with-weather .adj-card::before { display: none; }
+/* the four weather numbers in one even row */
+.recs-page .recs-today .cond-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; }
+.recs-page .recs-today .cond-stat { flex: none; min-width: 0; border-radius: 14px; padding: 0.5rem 0.6rem; }
+.recs-page .recs-today .cond-stat-text { flex-direction: column; align-items: flex-start; gap: 0.1rem; min-width: 0; }
+.recs-page .recs-today .cond-stat-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+@media (max-width: 560px) {
+  .recs-page .recs-today .cond-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .recs-page .recs-today .cond-stat-label { white-space: normal; line-height: 1.2; }
+  .recs-today.with-weather .conditions { padding: 1rem 1rem 0.85rem; }
+  .recs-today.with-weather .adj-card { padding: 10px 1rem; }
+}

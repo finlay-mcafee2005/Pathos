@@ -21,6 +21,7 @@ FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 AIR_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 TIMEOUT_S = 4
 CACHE_TTL_S = 30 * 60
+STALE_OK_S = 6 * 3600
 
 # when the runner says they're heading out
 RUN_TIME_HOURS = {"morning": 7, "midday": 12, "evening": 18}
@@ -56,13 +57,20 @@ def _get_json(url: str, params: dict) -> Optional[dict]:
     cached = _cache.get(full)
     if cached and time.time() - cached[0] < CACHE_TTL_S:
         return cached[1]
-    try:
-        with urllib.request.urlopen(full, timeout=TIMEOUT_S) as resp:
-            data = json.loads(resp.read().decode())
-    except Exception:
-        return None
-    _cache[full] = (time.time(), data)
-    return data
+    # the weather service is sometimes slow: try twice, then fall back to the last answer
+    # (up to 6 hours old) rather than showing no weather at all
+    for timeout in (TIMEOUT_S, TIMEOUT_S * 2):
+        try:
+            req = urllib.request.Request(full, headers={"User-Agent": "Pathos/1.0 (student running-route project)"})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = json.loads(resp.read().decode())
+            _cache[full] = (time.time(), data)
+            return data
+        except Exception:
+            continue
+    if cached and time.time() - cached[0] < STALE_OK_S:
+        return cached[1]
+    return None
 
 
 def _local_now(utc_offset_seconds: int) -> datetime:
