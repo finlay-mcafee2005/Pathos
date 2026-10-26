@@ -115,6 +115,7 @@ def add_new_columns():
                          ("park_lon", "FLOAT"), ("start_street", "VARCHAR")]:
             conn.execute(text(f"ALTER TABLE route ADD COLUMN IF NOT EXISTS {col} {typ}"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS quiet_streets BOOLEAN DEFAULT FALSE"))
+        conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS no_laps BOOLEAN DEFAULT FALSE"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS shape_pref VARCHAR"))
         conn.execute(text("ALTER TABLE run ADD COLUMN IF NOT EXISTS notes VARCHAR"))
         # recommendation logging
@@ -677,6 +678,7 @@ class CheckinRequest(BaseModel):
     run_intent: Optional[Literal["easy", "workout", "long", "explore"]] = None
     hills_pref: Optional[Literal["avoid", "want"]] = None
     quiet_streets: bool = False
+    no_laps: bool = False
     shape_pref: Optional[Literal["loop", "out_and_back"]] = None
 
 
@@ -708,6 +710,7 @@ def last_checkin(user_id: UUID, session: Session = Depends(get_session),
         "run_time": c.run_time,
         "hills_pref": c.hills_pref,
         "quiet_streets": bool(c.quiet_streets),
+        "no_laps": bool(c.no_laps),
         "shape_pref": c.shape_pref,
     }
 
@@ -723,6 +726,7 @@ def checkin_prefs(c: Checkin) -> dict:
         "shape_pref": c.shape_pref,
         "surface_preference": c.surface_preference,
         "quiet_streets": bool(c.quiet_streets),
+        "no_laps": bool(c.no_laps),
         "wants_scenic": bool(c.wants_scenic),
         "planned_distance_miles": round(c.planned_distance_km / 1.60934, 1) if c.planned_distance_km else None,
         "available_minutes": c.available_minutes,
@@ -753,6 +757,7 @@ class CheckinAdjust(BaseModel):
     shape_pref: Optional[Literal["loop", "out_and_back"]] = None
     surface_preference: Optional[Literal["trail", "road"]] = None
     quiet_streets: Optional[bool] = None
+    no_laps: Optional[bool] = None
     wants_scenic: Optional[bool] = None
     planned_distance_miles: Optional[float] = Field(default=None, ge=0.5, le=40)
 
@@ -767,7 +772,7 @@ def adjust_checkin(user_id: UUID, payload: CheckinAdjust, session: Session = Dep
     sent = payload.model_fields_set
     for k in sent & {"hills_pref", "shape_pref", "surface_preference"}:
         data[k] = getattr(payload, k)
-    for k in sent & {"quiet_streets", "wants_scenic"}:
+    for k in sent & {"quiet_streets", "wants_scenic", "no_laps"}:
         data[k] = bool(getattr(payload, k))
     if "planned_distance_miles" in sent:
         miles = payload.planned_distance_miles
@@ -804,6 +809,7 @@ def create_checkin(payload: CheckinRequest, session: Session = Depends(get_sessi
         run_intent=payload.run_intent,
         hills_pref=payload.hills_pref,
         quiet_streets=payload.quiet_streets,
+        no_laps=payload.no_laps,
         shape_pref=payload.shape_pref,
     )
     session.add(checkin)

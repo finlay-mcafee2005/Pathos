@@ -45,6 +45,7 @@ class DailyCheckin:
     run_intent: Optional[str] = None          # "easy" | "workout" | "long" | "explore"
     hills_pref: Optional[str] = None          # "avoid" | "want" | None (don't mind)
     quiet_streets: bool = False               # "Quiet side streets only": skip busy roads, freeway, downtown
+    no_laps: bool = False                     # "1 lap only": never repeat a loop
     shape_pref: Optional[str] = None          # "loop" | "out_and_back" | None (either)
 
 
@@ -638,7 +639,7 @@ def score_route(
     if checkin.planned_distance_km:
         target = checkin.planned_distance_km
         err, run_format, repeat_count, effective_distance, turnaround = choose_format(
-            route, max(0.4, target - 2 * approach), MAX_REPEATS,
+            route, max(0.4, target - 2 * approach), 1 if getattr(checkin, "no_laps", False) else MAX_REPEATS,
             allow_partial=bool(checkin.available_minutes) or (target <= SHORT_RUN_KM and shape_pref != "loop"),
             shape_pref=shape_pref)
         effective_distance += 2 * approach

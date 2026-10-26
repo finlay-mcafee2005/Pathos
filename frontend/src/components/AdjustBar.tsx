@@ -8,6 +8,7 @@ export type TodayPrefs = {
   shape_pref: "loop" | "out_and_back" | null;
   surface_preference: "trail" | "road" | null;
   quiet_streets: boolean;
+  no_laps?: boolean;
   wants_scenic: boolean;
   planned_distance_miles: number | null;
   available_minutes: number | null;
@@ -25,6 +26,7 @@ const ICONS: Record<string, string> = {
   trail: "M5 20c3-4 1-7 5-9s6-3 9-7",
   loop: "M12 5a7 7 0 1 1-6.3 4M5 4v5h5",
   oab: "M4 9h13l-3-3M20 15H7l3 3",
+  once: "M12 4a8 8 0 1 0 8 8M20 4v5h-5",
   quiet: "M12 21s-7-6-7-11a7 7 0 0 1 14 0c0 5-7 11-7 11zM12 8v4",
   scenic: "M3 19l6-8 4 5 3-3 5 6zM17 5a2 2 0 1 0 0 .1",
 };
@@ -112,6 +114,7 @@ function AdjustBar({ prefs, currentMiles, busy, onAdjust, onDifferent }: {
         <Group label="Extras" busy={busy} onAdjust={onAdjust} opts={[
           { label: "Quiet streets", icon: "quiet", on: prefs.quiet_streets, change: { quiet_streets: !prefs.quiet_streets } },
           { label: "Scenic", icon: "scenic", on: prefs.wants_scenic, change: { wants_scenic: !prefs.wants_scenic } },
+          { label: "1 lap only", icon: "once", on: !!prefs.no_laps, change: { no_laps: !prefs.no_laps } },
         ]} />
       </div>
       <p className="adj-foot">Tap again to turn an option off. Changes update today's check-in.</p>

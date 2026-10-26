@@ -376,6 +376,16 @@ def check_difficulty():
         [(x.route.id, x.score, x.distance_matched) for x in r]
     print("  3 mi plan: 3.3 mi beats 2.3 mi, and 2.3 mi no longer counts as a match")
 
+    # "1 lap only": a 3 km loop for a 6 km plan stays 1 lap, and a 6 km loop wins
+    lap3 = RouteCandidate(id="lap3", name="3 km loop", distance_km=3.0, elevation_gain_m=20, difficulty="easy",
+                          surface_type="pavement", is_loop=True)
+    one6 = RouteCandidate(id="one6", name="6 km loop", distance_km=6.0, elevation_gain_m=40, difficulty="easy",
+                          surface_type="pavement", is_loop=True)
+    nl = DailyCheckin(energy_score=6, sleep_hours=7, planned_distance_km=6.0, no_laps=True, today=THURSDAY)
+    r = recommend(INTERMEDIATE, nl, RecentRuns(last_7_days_km=20), [lap3, one6], top_n=2)
+    assert all(x.repeat_count == 1 for x in r) and r[0].route.id == "one6", [(x.route.id, x.repeat_count) for x in r]
+    print("  1 lap only: no repeats, the full-length loop comes first")
+
     # beginners are gated on that run difficulty
     beginner = UserProfile(fitness_level="beginner", weekly_km_avg=12)
     steep = RouteCandidate(id="steep", name="Steep 3 km", distance_km=3.0, elevation_gain_m=200,

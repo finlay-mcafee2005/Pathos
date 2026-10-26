@@ -107,6 +107,7 @@ function CheckinPage() {
   const [showNote, setShowNote] = useState(false);
   const [hillsPref, setHillsPref] = useState<"" | "avoid" | "want">("");
   const [quietStreets, setQuietStreets] = useState(false);
+  const [noLaps, setNoLaps] = useState(false);
   const [shapePref, setShapePref] = useState<"" | "loop" | "out_and_back">("");
 
   // who you're running with today: just you, or one of your Run together groups
@@ -131,7 +132,7 @@ function CheckinPage() {
     sore_body_parts: string[]; mood: Mood | null; run_intent: Intent | null;
     planned_distance_miles: number | null; available_minutes: number | null;
     willing_to_drive_miles: number | null; surface_preference: "trail" | "road" | null;
-    wants_scenic: boolean; hills_pref: "avoid" | "want" | null; quiet_streets?: boolean;
+    wants_scenic: boolean; hills_pref: "avoid" | "want" | null; quiet_streets?: boolean; no_laps?: boolean;
     shape_pref?: "loop" | "out_and_back" | null;
   };
   const [last, setLast] = useState<LastCheckin | null>(null);
@@ -141,7 +142,7 @@ function CheckinPage() {
     energy: number; sleepHours: string; sleepQuality: number; soreParts: string[];
     mood: Mood | null; runIntent: Intent | null; lengthMode: "miles" | "minutes";
     plannedDistance: string; availableMinutes: string; willingToDrive: string;
-    surfacePreference: "" | "trail" | "road"; wantsScenic: boolean; hillsPref: "" | "avoid" | "want"; quietStreets: boolean;
+    surfacePreference: "" | "trail" | "road"; wantsScenic: boolean; hillsPref: "" | "avoid" | "want"; quietStreets: boolean; noLaps: boolean;
     shapePref: "" | "loop" | "out_and_back";
   }>(null);
 
@@ -162,6 +163,7 @@ function CheckinPage() {
     setWantsScenic(b.wantsScenic);
     setHillsPref(b.hillsPref);
     setQuietStreets(b.quietStreets);
+    setNoLaps(b.noLaps);
     setShapePref(b.shapePref);
     setBeforeCopy(null);
     setCopied(false);
@@ -178,7 +180,7 @@ function CheckinPage() {
     if (!last) return;
     setBeforeCopy({
       energy, sleepHours, sleepQuality, soreParts, mood, runIntent, lengthMode,
-      plannedDistance, availableMinutes, willingToDrive, surfacePreference, wantsScenic, hillsPref, quietStreets, shapePref,
+      plannedDistance, availableMinutes, willingToDrive, surfacePreference, wantsScenic, hillsPref, quietStreets, shapePref, noLaps,
     });
     setEnergy(last.energy_score);
     setSleepHours(last.sleep_hours != null ? String(last.sleep_hours) : "");
@@ -206,6 +208,7 @@ function CheckinPage() {
     setWantsScenic(last.wants_scenic);
     setHillsPref(last.hills_pref ?? "");
     setQuietStreets(!!last.quiet_streets);
+    setNoLaps(!!last.no_laps);
     setShapePref(last.shape_pref ?? "");
     setCopied(true);
   }
@@ -252,6 +255,7 @@ function CheckinPage() {
           run_intent: runIntent,
           hills_pref: hillsPref || null,
           quiet_streets: quietStreets,
+          no_laps: noLaps,
           shape_pref: shapePref || null,
         }),
       });
@@ -322,6 +326,7 @@ function CheckinPage() {
   if (soreNames.length > 0) extras.push("goes easy on the sore spots");
   if (wantsScenic) extras.push("has a view");
   if (quietStreets) extras.push("sticks to quiet side streets");
+  if (noLaps) extras.push("never repeats a loop");
   if (shapePref === "out_and_back") extras.push("is an out-and-back");
   if (shapePref === "loop") extras.push("is a loop");
   if (wantsAdventure) extras.push("is somewhere new");
@@ -758,6 +763,20 @@ function CheckinPage() {
                         type="checkbox"
                         checked={wantsScenic}
                         onChange={(e) => setWantsScenic(e.target.checked)}
+                      />
+                      <span aria-hidden="true" />
+                    </span>
+                  </label>
+                  <label className="ci-row ci-row-toggle">
+                    <span className="ci-row-label">
+                      1 lap only
+                      <small>Never repeat a loop to make up the distance</small>
+                    </span>
+                    <span className={`ci-switch ${noLaps ? "on" : ""}`}>
+                      <input
+                        type="checkbox"
+                        checked={noLaps}
+                        onChange={(e) => setNoLaps(e.target.checked)}
                       />
                       <span aria-hidden="true" />
                     </span>

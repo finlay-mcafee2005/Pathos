@@ -9107,8 +9107,8 @@ body::before {
   .adj-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
   .adj-seg button { padding: 8px 4px; font-size: 0.8rem; gap: 4px; }
   .adj-seg button svg { display: none; }
-  .adj-grid > .adj-group:nth-child(n + 4) { grid-column: 1 / -1; }   /* Shape, Extras: full width */
-  .adj-grid > .adj-group:nth-child(n + 4) .adj-seg button svg { display: inline; }
+  .adj-grid > .adj-group:nth-child(n + 3) { grid-column: 1 / -1; }   /* Surface, Shape, Extras: full width */
+  .adj-grid > .adj-group:nth-child(n + 3) .adj-seg button svg { display: inline; }
 }
 
 /* Log a run: notes + "don't recommend again" */
@@ -9144,3 +9144,6 @@ body::before {
 
 .route-arrow { background: none; border: 0; }
 .route-arrow svg { display: block; filter: drop-shadow(0 1px 2px rgba(15, 23, 42, .3)); }
+/* adjust panel: Extras has three options, give it room */
+@media (min-width: 561px) { .adj-grid > .adj-group:last-child { grid-column: span 2; } }
+@media (max-width: 560px) { .adj-grid > .adj-group:last-child .adj-seg button svg { display: none; } }

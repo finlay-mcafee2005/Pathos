@@ -95,6 +95,7 @@ class Checkin(SQLModel, table=True):
     run_intent: Optional[str] = None           # "easy" | "workout" | "long" | "explore"
     hills_pref: Optional[str] = None           # "avoid" | "want" | None
     quiet_streets: Optional[bool] = Field(default=False)   # "Quiet side streets only"
+    no_laps: Optional[bool] = Field(default=False)         # "1 lap only": never repeat a loop
     shape_pref: Optional[str] = None           # "loop" | "out_and_back" | None (either)
 
     user: User = Relationship(back_populates="checkins")
