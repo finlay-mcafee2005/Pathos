@@ -9293,3 +9293,8 @@ body::before {
   .recs-page .rec-difficulty-bars { display: none; }
   .recs-page .rec-difficulty { font-size: 0.74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 }
+
+/* route map: shaped to the route (aspect-ratio set inline), within sensible limits */
+.recs-page .rec-map-wrap { height: auto; min-height: 210px; max-height: 380px; }
+.recs-page .rec-map-wrap::after { height: 26px; }
+@media (max-width: 560px) { .recs-page .rec-map-wrap { height: auto; min-height: 190px; max-height: 300px; } }

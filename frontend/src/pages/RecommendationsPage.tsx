@@ -45,7 +45,7 @@ function MapResizer({ path, extra = [] }: { path: [number, number][]; extra?: [n
       );
       // room on the left for the rank badge, and at the bottom for the fade into the card;
       // otherwise fill the map (fractional zoom, so a tall route isn't zoomed a whole level too far out)
-      map.fitBounds(bounds, { paddingTopLeft: [64, 18], paddingBottomRight: [22, 34], animate: false });
+      map.fitBounds(bounds, { paddingTopLeft: [56, 16], paddingBottomRight: [18, 26], animate: false });
     };
     const t = setTimeout(fit, 60);
     // refit whenever the card changes size (images/fonts loading, rotating the phone)
@@ -55,6 +55,18 @@ function MapResizer({ path, extra = [] }: { path: [number, number][]; extra?: [n
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, JSON.stringify(path[0]), JSON.stringify(path[path.length - 1]), path.length, extra.length]);
   return null;
+}
+
+// The map's shape follows the route's: a wide route gets a wide, shorter map, a tall one a
+// taller map (height / width of the route's box, kept between 0.42 and 0.8).
+function mapAspect(path: [number, number][]): number {
+  if (path.length < 2) return 0.5;
+  const lats = path.map((p) => p[0]), lons = path.map((p) => p[1]);
+  const kx = Math.cos((lats[0] * Math.PI) / 180);
+  const h = Math.max(...lats) - Math.min(...lats);
+  const w = (Math.max(...lons) - Math.min(...lons)) * kx;
+  if (w <= 0) return 0.8;
+  return Math.min(0.8, Math.max(0.42, (h / w) * 1.15 + 0.06));   // a little extra for the badge and fade
 }
 
 type Recommendation = {
@@ -760,7 +772,7 @@ function RecommendationsPage() {
           const headline = rec.notice ? `${rec.notice}.` : buildHeadline(rec.score_breakdown, rec.reasons[0]);
           return (
             <article key={i} className={`rec-card ${i === 0 ? "top" : ""}`}>
-              <div className="rec-map-wrap">
+              <div className="rec-map-wrap" style={{ aspectRatio: `1 / ${mapAspect(fullLine(rec))}` }}>
                 {rec.path.length > 1 && (
                   <MapContainer
  center={rec.path[Math.floor(rec.path.length / 2)]}
