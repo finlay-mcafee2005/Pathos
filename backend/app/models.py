@@ -119,6 +119,9 @@ class Route(SQLModel, table=True):
     turns_per_km: Optional[float] = None       # sharp turns per km
     stem_km: Optional[float] = None            # lollipop stem, one way (scripts/update_route_shape.py)
     steepest_grade: Optional[float] = None     # steepest 200 m, fraction (scripts/update_steepness.py)
+    start_label: Optional[str] = None          # where to park: "Fryman Trailhead" (scripts/update_starts.py)
+    park_lat: Optional[float] = None
+    park_lon: Optional[float] = None
     surface_type: str        # "pavement" | "trail" | "track" | "mixed"
     difficulty: str          # "easy" | "moderate" | "hard"
     scenic: bool = Field(default=False)

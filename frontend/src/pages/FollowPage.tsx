@@ -69,6 +69,8 @@ type FollowState = {
   runFromHere?: boolean;               // false = they drive to the trailhead: the run starts there
   plan?: PlanInput;                    // "Out 0.5 mi → loop ×2 → back 0.5 mi"
   totalKm?: number;                    // the whole run, as on the card (laps, run there and back)
+  park?: [number, number] | null;      // driving there: the lot / trailhead to drive to
+  startLabel?: string | null;          // "Fryman Trailhead", "Parking: Griffith Park lot", "Street parking"
 };
 
 type GetThere = { path: [number, number][]; distance_m: number; cues: Cue[] };
@@ -708,8 +710,10 @@ function FollowPage() {
 
           {!started && driving && (toStart == null || toStart >= DRIVE_NEAR_M) && (
             <a className="follow-drive-link" target="_blank" rel="noreferrer"
-               href={`https://www.google.com/maps/dir/?api=1&destination=${start[0]},${start[1]}&travelmode=driving`}>
-              Drive to the start
+               href={`https://www.google.com/maps/dir/?api=1&destination=${(state.park ?? start)[0]},${(state.park ?? start)[1]}&travelmode=driving`}>
+              {state.startLabel && state.startLabel !== "Street parking"
+                ? `Drive to ${state.startLabel.replace(/^Parking: /, "")}`
+                : "Drive to the start"}
             </a>
           )}
 

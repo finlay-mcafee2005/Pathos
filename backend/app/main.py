@@ -111,7 +111,8 @@ def add_new_columns():
         conn.execute(text("ALTER TABLE route ADD COLUMN IF NOT EXISTS scenic_pct FLOAT"))
         for col, typ in [("busy_pct", "FLOAT"), ("freeway_crossings", "INTEGER"),
                          ("downtown_pct", "FLOAT"), ("turns_per_km", "FLOAT"), ("stem_km", "FLOAT"),
-                         ("steepest_grade", "FLOAT")]:
+                         ("steepest_grade", "FLOAT"), ("start_label", "VARCHAR"), ("park_lat", "FLOAT"),
+                         ("park_lon", "FLOAT")]:
             conn.execute(text(f"ALTER TABLE route ADD COLUMN IF NOT EXISTS {col} {typ}"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS quiet_streets BOOLEAN DEFAULT FALSE"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS shape_pref VARCHAR"))
@@ -397,14 +398,16 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             "turnaround_km": r.turnaround_km,
             "perfect_points": r.perfect_points,        # match % = (score - 100) / this
             # a short-on-time run goes partway along the route and back: draw only that part
-            "path": first_part([
+            # driving there: start at the trailhead / parking lot, not wherever the line happens to begin
+            "path": first_part(start_at_park([
                 [lat, lon]
                 for lon, lat in (
                     route_by_id[r.route.id].coords
                     if hasattr(route_by_id[r.route.id], "coords")
                     else to_shape(route_by_id[r.route.id].gps_path).coords
                 )
-            ], r.turnaround_km),
+            ], r, route_by_id[r.route.id]), r.turnaround_km),
+            **park_fields(r, route_by_id[r.route.id]),
         }
         for i, r in enumerate(results)
     ]
@@ -421,6 +424,39 @@ def closest_routes(session, lat, lon, exclude: set, n: int) -> list:
     """), params={"lon": lon, "lat": lat, "n": n + len(exclude)}).all()
     ids = [r[0] for r in rows if str(r[0]) not in exclude][:n]
     return session.exec(select(Route).where(Route.id.in_(ids))).all() if ids else []
+
+
+def park_point(r, route):
+    """(lat, lon) of the lot / trailhead to drive to, or None. Only for drive-to runs:
+    running from home starts wherever home reaches the route."""
+    if (getattr(r, "approach_km", 0) or 0) > 0:
+        return None
+    la, lo = getattr(route, "park_lat", None), getattr(route, "park_lon", None)
+    return (la, lo) if la is not None and lo is not None else None
+
+
+def park_fields(r, route) -> dict:
+    if (getattr(r, "approach_km", 0) or 0) > 0:
+        return {"start_label": None, "park": None}
+    p = park_point(r, route)
+    return {"start_label": getattr(route, "start_label", None), "park": [p[0], p[1]] if p else None}
+
+
+def start_at_park(path: list, r, route) -> list:
+    """Re-start the run at the point nearest the parking lot: a plain loop can start
+    anywhere on it; an out-and-back runs from whichever end is nearer. Lollipops keep
+    their start (the stem leads in from it)."""
+    p = park_point(r, route)
+    if not p or len(path) < 3:
+        return path
+    closed = _hav(path[0][0], path[0][1], path[-1][0], path[-1][1]) <= 0.15
+    if closed and not (getattr(route, "stem_km", None) or 0):
+        ring = path[:-1]
+        k = min(range(len(ring)), key=lambda j: _hav(ring[j][0], ring[j][1], p[0], p[1]))
+        return ring[k:] + ring[:k] + [ring[k]]
+    if not closed and _hav(path[-1][0], path[-1][1], p[0], p[1]) + 0.05 < _hav(path[0][0], path[0][1], p[0], p[1]):
+        return list(reversed(path))
+    return path
 
 
 def first_part(path: list, km) -> list:

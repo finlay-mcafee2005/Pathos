@@ -91,6 +91,8 @@ type Recommendation = {
   downtown_pct?: number | null;
   turns_per_km?: number | null;
   stem_km?: number | null;
+  start_label?: string | null;          // driving there: where to park
+  park?: [number, number] | null;
   turnaround_km?: number | null;
   days_since_run?: number | null;
   your_rating?: number | null;
@@ -444,6 +446,8 @@ function RecActions({ rec, saved, onSave, onLog }: {
     runFromHere: (rec.approach_km ?? 0) > 0,
     plan: planInput(rec),
     totalKm: rec.effective_distance_km ?? rec.distance_km,
+    park: rec.park ?? null,
+    startLabel: rec.start_label ?? null,
   });
   const hasPath = rec.path.length > 1;
   return (
@@ -835,6 +839,12 @@ function RecommendationsPage() {
                   </div>
                 </div>
 
+                {rec.start_label && (
+                  <p className={`rec-park ${rec.park ? "" : "street"}`}>
+                    <span className="rec-park-badge" aria-hidden="true">P</span>
+                    {rec.park ? `Park at ${rec.start_label.replace(/^Parking: /, "")}. The route starts there.` : "Street parking near the start."}
+                  </p>
+                )}
                 {runPlan(planInput(rec)).length > 0 && (
                   <ol className="rec-plan" aria-label="How to run it">
                     {runPlan(planInput(rec)).map((step, i) => (

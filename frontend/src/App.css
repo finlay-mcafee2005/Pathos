@@ -9102,3 +9102,11 @@ body::before {
 .av-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .av-text strong { font-size: 0.95rem; color: var(--ink); }
 .av-text small { font-size: 0.82rem; color: var(--ink); opacity: .65; overflow-wrap: anywhere; }
+
+/* drive-to runs: where to park */
+.rec-park { display: flex; align-items: center; gap: 8px; margin: -0.4rem 0 0.9rem; font-size: 0.86rem; font-weight: 600;
+  color: var(--ink); text-align: left; }
+.rec-park.street { opacity: .7; font-weight: 500; }
+.rec-park-badge { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; flex-shrink: 0;
+  background: #2563eb; color: #fff; font: 800 12px Inter, sans-serif; }
+.rec-park.street .rec-park-badge { background: #94a3b8; }
