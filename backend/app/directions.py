@@ -234,43 +234,70 @@ def directions_for(path: List[Point]) -> Optional[dict]:
     return result
 
 
-def walk_path(a: Point, b: Point) -> Tuple[List[Point], float]:
-    """Foot route from a to b (lat, lon) as (path, metres). Falls back to a
-    straight line (x1.3) if the routing server is slow or unavailable."""
-    key = ("walk", round(a[0], 5), round(a[1], 5), round(b[0], 5), round(b[1], 5))
+TURN_COST_M = 150        # a turn is "worth" ~150 m: a slightly longer way with fewer turns wins
+MAX_DETOUR = 1.2         # ...but never more than 20% longer than the shortest way
+
+
+def _turns(route: dict) -> int:
+    """Real turns in an OSRM route (not slight bends or name changes)."""
+    n = 0
+    for leg in route.get("legs", []):
+        for st in leg.get("steps", []):
+            m = st.get("maneuver", {})
+            if m.get("type") in ("depart", "arrive", "new name", "continue") and \
+                    m.get("modifier") in (None, "", "straight", "slight left", "slight right"):
+                continue
+            if m.get("modifier") in ("straight", "slight left", "slight right"):
+                continue
+            n += 1
+    return n
+
+
+def _simplest_foot_route(a: Point, b: Point) -> Optional[dict]:
+    """The foot route a -> b with the fewest turns (OSRM's alternatives), as long as it's
+    within 20% of the shortest. Shared by the card's line and the follow page's directions
+    so both show the same way."""
+    key = ("simple", round(a[0], 5), round(a[1], 5), round(b[0], 5), round(b[1], 5))
     if key in _cache:
         return _cache[key]
-    url = (f"{OSRM_URL}/route/v1/foot/{a[1]:.6f},{a[0]:.6f};{b[1]:.6f},{b[0]:.6f}"
-           "?overview=full&geometries=geojson")
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    params = urllib.parse.urlencode({"steps": "true", "overview": "full", "geometries": "geojson",
+                                     "alternatives": "3"})
+    try:     # short timeout: this runs for every pick while the recommendations load
+        req = urllib.request.Request(
+            f"{OSRM_URL}/route/v1/foot/{a[1]:.6f},{a[0]:.6f};{b[1]:.6f},{b[0]:.6f}?{params}",
+            headers={"User-Agent": USER_AGENT})
         with urllib.request.urlopen(req, timeout=4) as r:
             data = json.load(r)
-        route = data["routes"][0]
-        path = [(lat, lon) for lon, lat in route["geometry"]["coordinates"]]
-        out = (path, float(route["distance"]))
     except Exception:
-        out = ([a, b], meters(a, b) * 1.3)
-    _cache[key] = out
-    return out
+        data = None
+    if not data or data.get("code") != "Ok" or not data.get("routes"):
+        return None
+    routes = data["routes"]
+    shortest = min(float(r.get("distance", 0)) for r in routes)
+    ok = [r for r in routes if float(r.get("distance", 0)) <= shortest * MAX_DETOUR]
+    best = min(ok, key=lambda r: float(r.get("distance", 0)) + TURN_COST_M * _turns(r))
+    _cache[key] = best
+    return best
+
+
+def walk_path(a: Point, b: Point) -> Tuple[List[Point], float]:
+    """Foot route from a to b (lat, lon) as (path, metres): the way with the fewest turns.
+    Falls back to a straight line (x1.3) if the routing server is slow or unavailable."""
+    route = _simplest_foot_route(a, b)
+    if route is None:
+        return [a, b], meters(a, b) * 1.3
+    return [(lat, lon) for lon, lat in route["geometry"]["coordinates"]], float(route["distance"])
 
 
 def to_start(a: Point, b: Point) -> Optional[dict]:
     """Walking/jogging directions from where the runner is to the start of the route:
     {path: [(lat, lon)...], distance_m, cues: [...]}. None if routing is unavailable."""
-    key = ("tostart", round(a[0], 4), round(a[1], 4), round(b[0], 5), round(b[1], 5))
-    if key in _cache:
-        return _cache[key]
-    params = urllib.parse.urlencode({"steps": "true", "overview": "full", "geometries": "geojson"})
-    data = _get(f"{OSRM_URL}/route/v1/foot/{a[1]:.6f},{a[0]:.6f};{b[1]:.6f},{b[0]:.6f}?{params}")
-    if not data or data.get("code") != "Ok" or not data.get("routes"):
+    route = _simplest_foot_route(a, b)
+    if route is None:
         return None
-    route = data["routes"][0]
     steps = [st for leg in route.get("legs", []) for st in leg.get("steps", [])]
     cues = steps_to_cues(steps)
     if cues and cues[-1]["icon"] == "finish":
         cues[-1]["text"] = "You're at the start of the route"
-    out = {"path": [(lat, lon) for lon, lat in route["geometry"]["coordinates"]],
-           "distance_m": round(float(route.get("distance", 0))), "cues": cues}
-    _cache[key] = out
-    return out
+    return {"path": [(lat, lon) for lon, lat in route["geometry"]["coordinates"]],
+            "distance_m": round(float(route.get("distance", 0))), "cues": cues}

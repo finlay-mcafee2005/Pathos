@@ -57,6 +57,16 @@ function MapResizer({ path, extra = [] }: { path: [number, number][]; extra?: [n
   return null;
 }
 
+// About one arrow per 700 m of line, 4 to 9 on a card.
+function arrowCount(path: [number, number][]): number {
+  let m = 0;
+  for (let i = 1; i < path.length; i++) {
+    const kx = 111320 * Math.cos((path[i][0] * Math.PI) / 180);
+    m += Math.hypot((path[i][1] - path[i - 1][1]) * kx, (path[i][0] - path[i - 1][0]) * 110540);
+  }
+  return Math.min(9, Math.max(4, Math.round(m / 700)));
+}
+
 // The map's shape follows the route's: a wide route gets a wide, shorter map, a tall one a
 // taller map (height / width of the route's box, kept between 0.42 and 0.8).
 function mapAspect(path: [number, number][]): number {
@@ -791,7 +801,8 @@ function RecommendationsPage() {
                     {/* one continuous line: from you (or home) along the streets to the start, then the route */}
                     <Polyline positions={fullLine(rec)} pathOptions={{ color: "#FFFFFF", weight: 9, opacity: 0.9 }} />
                     <Polyline positions={fullLine(rec)} pathOptions={{ color: "#2563EB", weight: 4.5, opacity: 1 }} />
-                    {rec.run_format !== "out_and_back" && <RouteArrows path={rec.path} count={4} />}
+                    {/* arrows along the whole line: the way to the start too, and the way out on out-and-backs */}
+                    <RouteArrows path={fullLine(rec)} count={arrowCount(fullLine(rec))} />
                     <CircleMarker
                       center={fullLine(rec)[0]}
                       radius={7}
