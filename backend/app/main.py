@@ -351,6 +351,30 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
         rec_ids.append(str(rec.id))
     session.commit()
 
+    # the line to draw for each pick; an out-and-back that has to turn around sooner than
+    # planned (the route starts coming back) says the real, shorter distance
+    paths = []
+    for i, r in enumerate(results):
+        full = start_at_park([
+            [lat, lon]
+            for lon, lat in (
+                route_by_id[r.route.id].coords
+                if hasattr(route_by_id[r.route.id], "coords")
+                else to_shape(route_by_id[r.route.id].gps_path).coords
+            )
+        ], r, route_by_id[r.route.id])
+        line = out_part(full, r.turnaround_km)
+        if r.turnaround_km:
+            out = sum(_hav(a[0], a[1], b[0], b[1]) for a, b in zip(line, line[1:]))
+            if out < r.turnaround_km - 0.05:
+                shorter = 2 * (r.turnaround_km - out)
+                results[i] = r = replace(
+                    r, turnaround_km=round(out, 3),
+                    effective_distance_km=max(0.1, r.effective_distance_km - shorter),
+                    estimated_minutes=round(r.estimated_minutes * max(0.1, r.effective_distance_km - shorter)
+                                            / max(0.1, r.effective_distance_km)))
+        paths.append(line)
+
     response = [
         {
             "recommendation_id": rec_ids[i],
@@ -409,14 +433,7 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             "perfect_points": r.perfect_points,        # match % = (score - 100) / this
             # a short-on-time run goes partway along the route and back: draw only that part
             # driving there: start at the trailhead / parking lot, not wherever the line happens to begin
-            "path": first_part(start_at_park([
-                [lat, lon]
-                for lon, lat in (
-                    route_by_id[r.route.id].coords
-                    if hasattr(route_by_id[r.route.id], "coords")
-                    else to_shape(route_by_id[r.route.id].gps_path).coords
-                )
-            ], r, route_by_id[r.route.id]), r.turnaround_km),
+            "path": paths[i],
             **park_fields(r, route_by_id[r.route.id]),
         }
         for i, r in enumerate(results)
@@ -479,6 +496,31 @@ def out_and_back_words(r) -> str:
     if there > 0:
         return f"run {out * 0.621371:.1f} mi out from your start, then turn back the same way"
     return f"run {out * 0.621371:.1f} mi out along this route, then turn back"
+
+
+def _reach(path: list) -> float:
+    """[lat, lon] path: km along it to the point farthest from its start."""
+    along = far = at = 0.0
+    for a, b in zip(path, path[1:]):
+        along += _hav(a[0], a[1], b[0], b[1])
+        d = _hav(path[0][0], path[0][1], b[0], b[1])
+        if d > far:
+            far, at = d, along
+    return at
+
+
+def out_part(path: list, km) -> list:
+    """The way out for an out-and-back: on a loop, go round whichever way heads away from the
+    start longer, and turn around at km or where it starts coming back, whichever is first."""
+    if not km or len(path) < 3:
+        return path
+    closed = _hav(path[0][0], path[0][1], path[-1][0], path[-1][1]) <= 0.15
+    if not closed:
+        return first_part(path, km)
+    rev = list(reversed(path))
+    fwd_reach, rev_reach = _reach(path), _reach(rev)
+    way, reach = (path, fwd_reach) if fwd_reach >= min(km, rev_reach) else (rev, rev_reach)
+    return first_part(way, min(km, reach) if reach > 0 else km)
 
 
 def first_part(path: list, km) -> list:

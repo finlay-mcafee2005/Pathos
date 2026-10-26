@@ -159,6 +159,34 @@ def route_start(route):
     return lat, lon
 
 
+def out_reach_km(coords) -> float:
+    """How far you can run along a loop (either way round) before it starts heading back:
+    the distance along it to the point farthest from the start. 0 if unknown."""
+    import math
+    if not coords or len(coords) < 3:
+        return 0.0
+    kx = 111.32 * math.cos(math.radians(coords[0][1]))
+    best = 0.0
+    for pts in (coords, coords[::-1]):
+        x0, y0 = pts[0]
+        along = far = at = 0.0
+        for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+            along += math.hypot((bx - ax) * kx, (by - ay) * 110.54)
+            d = math.hypot((bx - x0) * kx, (by - y0) * 110.54)
+            if d > far:
+                far, at = d, along
+        best = max(best, at)
+    return best
+
+
+def route_reach(route) -> float:
+    from app.scoring.route_combiner import get_route_coords   # cached geometry
+    try:
+        return out_reach_km(get_route_coords(route))
+    except Exception:
+        return 0.0
+
+
 def build_route_candidates(routes: List[Route]) -> List[RouteCandidate]:
     return [
         RouteCandidate(
@@ -179,6 +207,7 @@ def build_route_candidates(routes: List[Route]) -> List[RouteCandidate]:
             downtown_pct=getattr(r, "downtown_pct", None),
             turns_per_km=getattr(r, "turns_per_km", None),
             stem_km=getattr(r, "stem_km", None),
+            reach_km=(route_reach(r) or None) if is_loop_route(r) else None,
             steepest_grade=getattr(r, "steepest_grade", None),
             elevation_loss_m=getattr(r, "elevation_loss_m", None),
         )

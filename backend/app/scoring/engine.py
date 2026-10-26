@@ -79,6 +79,7 @@ class RouteCandidate:
     downtown_pct: Optional[float] = None       # 0..1 share inside downtown LA
     turns_per_km: Optional[float] = None       # sharp turns per km (fewer = easier to follow)
     stem_km: Optional[float] = None            # lollipop: shared out-and-back stretch at the start, one way
+    reach_km: Optional[float] = None           # loops: how far along it you can go while still heading away from the start (either direction)
     steepest_grade: Optional[float] = None     # steepest 200 m, as a fraction (scripts/update_steepness.py)
 
 
@@ -499,13 +500,21 @@ def choose_format(route: RouteCandidate, target: float, max_repeats: int, allow_
                     d = 2 * stem + n * loop
                     if distance_cost(d, target) < best[0]:
                         best = (distance_cost(d, target), "repeat", n, d, None)
+    def out_and_back(t: float):
+        # turn around at half the distance, or sooner where the route stops heading away from
+        # the start (a loop that doubles back): never "out" along a bit that's coming back
+        reach = (route.reach_km or route.distance_km) if route.is_loop else route.distance_km
+        out = min(t / 2, reach)
+        return (distance_cost(2 * out, t), "out_and_back", 1, 2 * out, out)
+
     if allow_partial and best[3] > target * PARTIAL_OVER and target >= 0.4:
-        best = (0.0, "out_and_back", 1, target, target / 2)
+        best = out_and_back(target)
     # they asked for an out-and-back: run out along the loop for half the distance and
-    # turn around (if the loop is long enough), instead of going all the way round
-    if shape_pref == "out_and_back" and route.is_loop and best[1] != "out_and_back" \
-            and target >= 0.8 and route.distance_km >= target / 2:
-        best = (0.0, "out_and_back", 1, target, target / 2)
+    # turn around (if it heads away from the start long enough), instead of going all the way round
+    if shape_pref == "out_and_back" and route.is_loop and best[1] != "out_and_back" and target >= 0.8:
+        cand = out_and_back(target)
+        if cand[4] >= 0.7 * target / 2:
+            best = cand
     return best
 
 
