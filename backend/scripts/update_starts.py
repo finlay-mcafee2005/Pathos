@@ -86,6 +86,9 @@ def extract():
 
 
 PARK_NEAR_M = 60          # an unnamed lot this close to a named park is that park's lot
+# named lots that aren't for the public (permit / staff / customer lots)
+NOT_PUBLIC = ("student", "staff", "employee", "faculty", "permit", "resident", "private", "customer",
+              "tenant", "reserved", "visitor only", "school", "hospital", "patient", "church", "dealership")
 
 
 def load_places():
@@ -107,6 +110,8 @@ def load_places():
         ptree = STRtree([p for _, p in parks]) if parks else None
     places = []
     for kind, name, lon, lat in raw:
+        if kind == "parking" and name and any(w in name.lower() for w in NOT_PUBLIC):
+            continue
         if kind == "parking" and not name:
             if ptree is None:
                 continue

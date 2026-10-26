@@ -39,6 +39,16 @@ RADIUS_M = 7000
 TARGETS_M = [10 * MI, 12 * MI, 14 * MI]
 BUSY = {"secondary": 2.2, "tertiary": 1.4}     # extra cost on top of gp.COST: stay off busy roads
 MAX_TURNS_KM = 4.5
+# spots where the first batch hit barely-runnable climbs (25%+, update_steepness.py):
+# stairways / embankment paths. The generator now routes around them.
+STEEP_SPOTS = [
+    (34.18759, -118.26677), (34.14916, -118.22360), (34.20069, -118.27081), (34.09888, -118.19991),
+    (34.12925, -118.28445), (34.18439, -118.27244), (34.13442, -118.29818), (34.18596, -118.25680),
+    (34.13364, -118.31424), (34.08148, -118.19882), (34.13479, -118.33351), (34.09509, -118.21974),
+    (34.19908, -118.21802), (34.19898, -118.21851), (34.19205, -118.20795), (34.11932, -118.28113),
+    (34.10924, -118.21338), (34.07585, -118.19000),
+]
+AVOID_M = 120
 MAX_BUSY = 0.30
 
 
@@ -55,7 +65,16 @@ def main():
         g = (min(u, v), max(u, v)) in green
         e["green"] = g or e["hw"] in ("footway", "path", "track", "cycleway", "pedestrian", "bridleway")
         e["w"] = e["length"] * gp.COST.get(e["hw"], 2.5) * BUSY.get(e["hw"], 1.0) * (0.5 if e["green"] else 1.0)
-    print(f"Network ready ({time.time() - t0:.0f}s)")
+    # route around the known too-steep spots: any edge passing within AVOID_M is (nearly) off limits
+    spots = [gp.m(lon, lat) for lat, lon in STEEP_SPOTS]
+    blocked = 0
+    for u, v, e in G.edges(data=True):
+        pts = [gp.m(*c) for c in e["coords"]]
+        if any(math.dist(p, s) <= AVOID_M for p in pts for s in spots):
+            e["w"] *= 200
+            e["steep"] = True
+            blocked += 1
+    print(f"Network ready ({time.time() - t0:.0f}s); {blocked} segments near known steep spots avoided")
 
     cx, cy = gp.m(*OXY)
     xy = [(n, G.nodes[n]["xy"]) for n in G.nodes]
@@ -93,7 +112,9 @@ def main():
             while out[-1] != s:
                 out.append(pred[out[-1]][0])
             return out[::-1]
-        place = gp.place_name(d["places"], *G.nodes[s]["xy_ll"]) or "Neighborhood"
+        lon0, lat0 = G.nodes[s]["xy_ll"]
+        place = gp.place_name(d["places"], lon0, lat0) or min(       # no place within 2.5 km: the nearest one
+            d["places"], key=lambda pl: ((pl[1] - lon0) * math.cos(math.radians(lat0))) ** 2 + (pl[2] - lat0) ** 2)[0]
         for L in TARGETS_M:
             cands = [n for n, dd in real.items() if 0.38 * L <= dd <= 0.50 * L]
             # far away AND spread around the compass, so the loops differ
@@ -113,6 +134,8 @@ def main():
                 except nx.NetworkXNoPath:
                     continue
                 nodes = out + back[1:]
+                if any(H[a][b].get("steep") for a, b in gp.path_edges(nodes)):
+                    continue                            # no way around the steep spot from here
                 sm = gp.summarize(H, nodes)
                 if not sm or sm["retrace"] > 0.15:
                     continue
