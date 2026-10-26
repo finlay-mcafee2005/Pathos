@@ -24,9 +24,10 @@ function arrowIcon(deg: number, color: string): L.DivIcon {
       className: "route-arrow",
       iconSize: [18, 18],
       iconAnchor: [9, 9],
+      // a plain chevron sitting on the line (white edge so it reads on the blue), no badge
       html: `<svg viewBox="0 0 18 18" width="18" height="18" style="transform:rotate(${Math.round(deg / 5) * 5}deg)">
-        <circle cx="9" cy="9" r="8" fill="#fff" stroke="${color}" stroke-width="1.5"/>
-        <path d="M9 4.5 L13 11 L9 9.2 L5 11 Z" fill="${color}"/></svg>`,
+        <path d="M4.5 11.5 L9 6.5 L13.5 11.5" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M4.5 11.5 L9 6.5 L13.5 11.5" fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
     });
     iconCache.set(key, icon);
   }

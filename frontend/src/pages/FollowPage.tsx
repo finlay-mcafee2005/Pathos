@@ -591,14 +591,14 @@ function FollowPage() {
             <Polyline positions={wayThere} pathOptions={{ color: "#93C5FD", weight: 6, opacity: 1, lineJoin: "round", lineCap: "round" }} />
             {/* arrows on the way to the start too, so the whole line shows which way to go */}
             <RouteArrows path={wayThere} color="#1D4ED8"
-                         count={Math.min(8, Math.max(2, Math.round(cumulativeMeters(wayThere).slice(-1)[0] / 600)))} />
+                         count={Math.min(3, Math.max(1, Math.round(cumulativeMeters(wayThere).slice(-1)[0] / 1200)))} />
           </>
         )}
         <Polyline positions={route} pathOptions={{ color: "#FFFFFF", weight: 11, opacity: 0.95 }} />
         <Polyline positions={route} pathOptions={{ color: "#93C5FD", weight: 6, opacity: 1 }} />
         {/* which way to run it: along the route itself (out-and-backs: the way out) */}
         <RouteArrows path={state.path} color="#1D4ED8"
-                     count={Math.min(12, Math.max(4, Math.round(cumulativeMeters(state.path).slice(-1)[0] / 600)))} />
+                     count={Math.min(6, Math.max(3, Math.round(cumulativeMeters(state.path).slice(-1)[0] / 1200)))} />
         {started && (
           <Polyline positions={route.slice(0, progressIdx + 1)} pathOptions={{ color: "#1D4ED8", weight: 6, opacity: 1 }} />
         )}

@@ -7,7 +7,6 @@ import L from "leaflet";
 import { useRouteActions } from "../components/RouteExportButtons";
 import { runPlan, type PlanInput } from "../utils/routeExport";
 import AdjustBar, { type Adjust, type TodayPrefs } from "../components/AdjustBar";
-import RouteArrows from "../components/RouteArrows";
 import { type GroupMatch, formatMeetTime, sessionTitle } from "./GroupsPage";
 import { API_URL } from "../utils/format";
 
@@ -55,16 +54,6 @@ function MapResizer({ path, extra = [] }: { path: [number, number][]; extra?: [n
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, JSON.stringify(path[0]), JSON.stringify(path[path.length - 1]), path.length, extra.length]);
   return null;
-}
-
-// About one arrow per 700 m of line, 4 to 9 on a card.
-function arrowCount(path: [number, number][]): number {
-  let m = 0;
-  for (let i = 1; i < path.length; i++) {
-    const kx = 111320 * Math.cos((path[i][0] * Math.PI) / 180);
-    m += Math.hypot((path[i][1] - path[i - 1][1]) * kx, (path[i][0] - path[i - 1][0]) * 110540);
-  }
-  return Math.min(9, Math.max(4, Math.round(m / 700)));
 }
 
 // The map's shape follows the route's: a wide route gets a wide, shorter map, a tall one a
@@ -802,8 +791,6 @@ function RecommendationsPage() {
                     {/* one continuous line: from you (or home) along the streets to the start, then the route */}
                     <Polyline positions={fullLine(rec)} pathOptions={{ color: "#FFFFFF", weight: 9, opacity: 0.9 }} />
                     <Polyline positions={fullLine(rec)} pathOptions={{ color: "#2563EB", weight: 4.5, opacity: 1 }} />
-                    {/* arrows along the whole line: the way to the start too, and the way out on out-and-backs */}
-                    <RouteArrows path={fullLine(rec)} count={arrowCount(fullLine(rec))} />
                     <CircleMarker
                       center={fullLine(rec)[0]}
                       radius={7}
