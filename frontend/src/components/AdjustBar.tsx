@@ -15,7 +15,45 @@ export type TodayPrefs = {
 
 export type Adjust = Partial<Omit<TodayPrefs, "checkin_id" | "available_minutes">>;
 
-type Chip = { label: string; on: boolean; change: Adjust };
+type Opt = { label: string; on: boolean; change: Adjust; icon?: string };
+
+// small line icons (24x24, currentColor)
+const ICONS: Record<string, string> = {
+  flat: "M3 16h18",
+  hill: "M3 18l6-9 4 5 3-4 5 8",
+  road: "M8 3L5 21M16 3l3 18M12 5v3M12 11v3M12 17v3",
+  trail: "M5 20c3-4 1-7 5-9s6-3 9-7",
+  loop: "M12 5a7 7 0 1 1-6.3 4M5 4v5h5",
+  oab: "M4 9h13l-3-3M20 15H7l3 3",
+  quiet: "M12 21s-7-6-7-11a7 7 0 0 1 14 0c0 5-7 11-7 11zM12 8v4",
+  scenic: "M3 19l6-8 4 5 3-3 5 6zM17 5a2 2 0 1 0 0 .1",
+};
+
+function Icon({ d }: { d: string }) {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+         strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>
+  );
+}
+
+function Group({ label, opts, busy, onAdjust }: {
+  label: string; opts: Opt[]; busy: boolean; onAdjust: (c: Adjust, label: string) => void;
+}) {
+  return (
+    <div className="adj-group">
+      <span className="adj-group-label">{label}</span>
+      <div className="adj-seg" role="group" aria-label={label}>
+        {opts.map((o) => (
+          <button key={o.label} type="button" className={o.on ? "on" : ""} aria-pressed={o.on} disabled={busy}
+                  onClick={() => onAdjust(o.change, o.label)}>
+            {o.icon && <Icon d={ICONS[o.icon]} />}
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function AdjustBar({ prefs, currentMiles, busy, onAdjust, onDifferent }: {
   prefs: TodayPrefs | null;
@@ -26,43 +64,57 @@ function AdjustBar({ prefs, currentMiles, busy, onAdjust, onDifferent }: {
 }) {
   if (!prefs) return null;
   const miles = prefs.planned_distance_miles ?? currentMiles;
-  const toggle = <K extends keyof Adjust>(key: K, value: Adjust[K], off: Adjust[K]): Adjust =>
+  const flip = <K extends keyof Adjust>(key: K, value: Adjust[K], off: Adjust[K]): Adjust =>
     ({ [key]: prefs[key as keyof TodayPrefs] === value ? off : value } as Adjust);
-  const chips: Chip[] = [
-    { label: "No hills", on: prefs.hills_pref === "avoid", change: toggle("hills_pref", "avoid", null) },
-    { label: "Hillier", on: prefs.hills_pref === "want", change: toggle("hills_pref", "want", null) },
-    ...(miles ? [
-      { label: "1 mi shorter", on: false, change: { planned_distance_miles: Math.max(1, Math.round((miles - 1) * 2) / 2) } },
-      { label: "1 mi longer", on: false, change: { planned_distance_miles: Math.round((miles + 1) * 2) / 2 } },
-    ] : []),
-    { label: "Road", on: prefs.surface_preference === "road", change: toggle("surface_preference", "road", null) },
-    { label: "Trail", on: prefs.surface_preference === "trail", change: toggle("surface_preference", "trail", null) },
-    { label: "Loop", on: prefs.shape_pref === "loop", change: toggle("shape_pref", "loop", null) },
-    { label: "Out & back", on: prefs.shape_pref === "out_and_back", change: toggle("shape_pref", "out_and_back", null) },
-    { label: "Quiet streets", on: prefs.quiet_streets, change: { quiet_streets: !prefs.quiet_streets } },
-    { label: "Scenic", on: prefs.wants_scenic, change: { wants_scenic: !prefs.wants_scenic } },
-  ];
+  const half = (x: number) => Math.round(x * 2) / 2;
+
   return (
-    <section className="adj-bar" aria-label="Adjust today's picks">
-      <div className="adj-head">
-        <span className="adj-title">Not quite right? Adjust and get new picks</span>
-        <button type="button" className="adj-different" onClick={onDifferent} disabled={busy}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
+    <section className="adj-card" aria-label="Fine-tune today's picks">
+      <div className="adj-top">
+        <div>
+          <span className="adj-eyebrow">Fine-tune</span>
+          <h2 className="adj-heading">Not quite right? Adjust and get new picks.</h2>
+        </div>
+        <button type="button" className="adj-shuffle" onClick={onDifferent} disabled={busy}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
                strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" />
           </svg>
-          3 different routes
+          Show 3 different routes
         </button>
       </div>
-      <div className="adj-chips">
-        {chips.map((c) => (
-          <button key={c.label} type="button" className={`adj-chip ${c.on ? "on" : ""}`} aria-pressed={c.on}
-                  disabled={busy} onClick={() => onAdjust(c.change, c.label)}>
-            {c.on && <span aria-hidden="true">✓ </span>}{c.label}
-          </button>
-        ))}
+
+      <div className="adj-grid">
+        <Group label="Hills" busy={busy} onAdjust={onAdjust} opts={[
+          { label: "Flatter", icon: "flat", on: prefs.hills_pref === "avoid", change: flip("hills_pref", "avoid", null) },
+          { label: "Hillier", icon: "hill", on: prefs.hills_pref === "want", change: flip("hills_pref", "want", null) },
+        ]} />
+        {miles != null && (
+          <div className="adj-group">
+            <span className="adj-group-label">Distance</span>
+            <div className="adj-stepper">
+              <button type="button" disabled={busy || miles <= 1} aria-label="1 mile shorter"
+                      onClick={() => onAdjust({ planned_distance_miles: Math.max(1, half(miles - 1)) }, "1 mi shorter")}>−</button>
+              <span className="adj-miles"><b>{miles.toFixed(1)}</b> mi</span>
+              <button type="button" disabled={busy} aria-label="1 mile longer"
+                      onClick={() => onAdjust({ planned_distance_miles: half(miles + 1) }, "1 mi longer")}>+</button>
+            </div>
+          </div>
+        )}
+        <Group label="Surface" busy={busy} onAdjust={onAdjust} opts={[
+          { label: "Road", icon: "road", on: prefs.surface_preference === "road", change: flip("surface_preference", "road", null) },
+          { label: "Trail", icon: "trail", on: prefs.surface_preference === "trail", change: flip("surface_preference", "trail", null) },
+        ]} />
+        <Group label="Shape" busy={busy} onAdjust={onAdjust} opts={[
+          { label: "Loop", icon: "loop", on: prefs.shape_pref === "loop", change: flip("shape_pref", "loop", null) },
+          { label: "Out & back", icon: "oab", on: prefs.shape_pref === "out_and_back", change: flip("shape_pref", "out_and_back", null) },
+        ]} />
+        <Group label="Extras" busy={busy} onAdjust={onAdjust} opts={[
+          { label: "Quiet streets", icon: "quiet", on: prefs.quiet_streets, change: { quiet_streets: !prefs.quiet_streets } },
+          { label: "Scenic", icon: "scenic", on: prefs.wants_scenic, change: { wants_scenic: !prefs.wants_scenic } },
+        ]} />
       </div>
-      {miles != null && <span className="adj-note">Planned: {miles.toFixed(1)} mi. Changes update today's check-in.</span>}
+      <p className="adj-foot">Tap again to turn an option off. Changes update today's check-in.</p>
     </section>
   );
 }
