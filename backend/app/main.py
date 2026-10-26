@@ -370,11 +370,11 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             "notice": drive_notice((origin_lat, origin_lon), r, effective_radius_km, match_pct(r)) or (
                 GENTLE_NOTE if GENTLE_NOTE in r.reasons else
                 CHALLENGE_NOTE if CHALLENGE_NOTE in r.reasons else
-                (f"To fit your time, run {r.turnaround_km * 0.621371:.1f} mi out along this route, then turn back"
+                (f"To fit your time, {out_and_back_words(r)}"
                  if checkin.available_minutes else
-                 f"Out-and-back: run {r.turnaround_km * 0.621371:.1f} mi out along this route, then turn back"
+                 f"Out-and-back: {out_and_back_words(r)}"
                  if getattr(checkin, "shape_pref", None) == "out_and_back" else
-                 f"For a short run, go {r.turnaround_km * 0.621371:.1f} mi out along this route, then turn back")
+                 f"For a short run, {out_and_back_words(r)}")
                 if r.turnaround_km else
                 next((x for x in r.reasons if x.startswith("Outside your climb range")), None) or (
                 LONG_ROUGH_NOTE if rough_today and long_but_gentle(r.effective_distance_km, r.run_gain_m or 0) else
@@ -469,6 +469,16 @@ def start_at_park(path: list, r, route) -> list:
     if not closed and _hav(path[-1][0], path[-1][1], p[0], p[1]) + 0.05 < _hav(path[0][0], path[0][1], p[0], p[1]):
         return list(reversed(path))
     return path
+
+
+def out_and_back_words(r) -> str:
+    """One out-and-back for the whole run: from home it's home -> along the route -> turn
+    back, so say the full distance out (not just the part on the route)."""
+    there = getattr(r, "approach_km", 0) or 0
+    out = (r.turnaround_km or 0) + there
+    if there > 0:
+        return f"run {out * 0.621371:.1f} mi out from your start, then turn back the same way"
+    return f"run {out * 0.621371:.1f} mi out along this route, then turn back"
 
 
 def first_part(path: list, km) -> list:

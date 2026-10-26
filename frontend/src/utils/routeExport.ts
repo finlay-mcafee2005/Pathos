@@ -39,18 +39,19 @@ export function runPlan(p: PlanInput): string[] {
   const stem = p.stemKm && route > 2 * p.stemKm + 0.2 ? p.stemKm : 0;
   const loop = route - 2 * stem;
   const laps = p.format === "repeat" ? Math.max(1, p.repeatCount ?? 1) : 1;
-  if (p.approachKm && p.approachKm > 0) steps.push(`${mi(p.approachKm)} to the start`);
+  // running there from home: the way there is part of the one run, not a separate step
+  // (an out-and-back is out from home and back; a loop is out to it, round, and back)
+  const there = p.approachKm && p.approachKm > 0 ? p.approachKm : 0;
   if (p.format === "out_and_back") {
-    const out = p.turnaroundKm ?? route;
+    const out = (p.turnaroundKm ?? route) + there;
     steps.push(`out ${mi(out)}`, "turn around", `back ${mi(out)}`);
-  } else if (stem > 0) {
-    steps.push(`out ${mi(stem)}`, `loop ${mi(loop)}${laps > 1 ? ` ×${laps}` : ""}`, `back ${mi(stem)}`);
+  } else if (stem + there > 0) {
+    steps.push(`out ${mi(stem + there)}`, `loop ${mi(loop)}${laps > 1 ? ` ×${laps}` : ""}`, `back ${mi(stem + there)}`);
   } else if (laps > 1) {
     steps.push(`loop ${mi(loop)} ×${laps}`);
   }
-  if (p.approachKm && p.approachKm > 0) steps.push(`${mi(p.approachKm)} home`);
   // a plain single loop needs no instructions
-  return steps.length > (p.approachKm && p.approachKm > 0 ? 2 : 0) ? steps : [];
+  return steps;
 }
 
 export function formatNote(format: RunFormat, repeatCount?: number, plan?: PlanInput): string {

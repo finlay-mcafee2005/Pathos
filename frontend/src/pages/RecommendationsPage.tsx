@@ -448,7 +448,7 @@ function cardPlan(rec: Recommendation): string[] {
   const laps = rec.run_format === "repeat" && (rec.repeat_count ?? 1) > 1;
   const stem = (rec.stem_km ?? 0) > 0 && rec.run_format !== "out_and_back";
   if (!laps && !stem) return [];
-  return runPlan({ ...planInput(rec), approachKm: null });
+  return runPlan(planInput(rec));   // from home, the way there counts as part of "out" / "back"
 }
 
 function planInput(rec: Recommendation): PlanInput {
