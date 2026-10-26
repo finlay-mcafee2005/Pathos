@@ -1,11 +1,11 @@
 import type React from "react";
-import { Fragment, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { MapContainer, TileLayer, Polyline, CircleMarker, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useRouteActions } from "../components/RouteExportButtons";
-import { runPlan, type PlanInput } from "../utils/routeExport";
+import { type PlanInput } from "../utils/routeExport";
 import AdjustBar, { type Adjust, type TodayPrefs } from "../components/AdjustBar";
 import { type GroupMatch, formatMeetTime, sessionTitle } from "./GroupsPage";
 import { API_URL } from "../utils/format";
@@ -431,14 +431,6 @@ function kmToMiles(km: number): number {
 
 function metersToFeet(m: number): number {
   return m * 3.28084;
-}
-
-function cardPlan(rec: Recommendation): string[] {
-  // laps alone are already in the stats ("2 LAPS"); steps only help when there's a way in
-  // and out to the loop (a stem), e.g. "Out 0.3 mi → loop 1.9 mi ×2 → back 0.3 mi"
-  const stem = (rec.stem_km ?? 0) > 0 && rec.run_format !== "out_and_back";
-  if (!stem) return [];
-  return runPlan(planInput(rec));   // from home, the way there counts as part of "out" / "back"
 }
 
 function planInput(rec: Recommendation): PlanInput {
@@ -895,18 +887,7 @@ function RecommendationsPage() {
                       Joins the route at {rec.join_at}.
                     </p>
                   )}
-                  {/* only when the route isn't obvious: laps, or a loop with a tail (RJ). Out-and-backs are
-                      in the headline, and getting there / home is in Start route's directions. */}
-                  {cardPlan(rec).length > 0 && (
-                    <ol className="rec-plan" aria-label="How to run it">
-                      {cardPlan(rec).map((step, i) => (
-                        <Fragment key={i}>
-                          {i > 0 && <li className="rec-plan-arrow" aria-hidden="true">→</li>}
-                          <li>{step.charAt(0).toUpperCase() + step.slice(1)}</li>
-                        </Fragment>
-                      ))}
-                    </ol>
-                  )}
+                  {/* how to run it (out → loop ×2 → back) lives on the Start route page, not the card */}
                 {(rec.score_breakdown?.mud ?? 0) <= -1 ? (
                     <p className="rec-alert">Recent rain: {rec.surface_type === "trail" ? "the trail" : "the dirt sections"} may be wet or muddy. Watch your footing on the downhills.</p>
                   ) : (rec.score_breakdown?.wet ?? 0) <= -1 && (
