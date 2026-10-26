@@ -422,6 +422,13 @@ function metersToFeet(m: number): number {
   return m * 3.28084;
 }
 
+function cardPlan(rec: Recommendation): string[] {
+  const laps = rec.run_format === "repeat" && (rec.repeat_count ?? 1) > 1;
+  const stem = (rec.stem_km ?? 0) > 0 && rec.run_format !== "out_and_back";
+  if (!laps && !stem) return [];
+  return runPlan({ ...planInput(rec), approachKm: null });
+}
+
 function planInput(rec: Recommendation): PlanInput {
   return {
     format: rec.run_format, repeatCount: rec.repeat_count, routeKm: rec.distance_km,
@@ -848,9 +855,11 @@ function RecommendationsPage() {
                       Joins the route at {rec.join_at}.
                     </p>
                   )}
-                  {runPlan(planInput(rec)).length > 0 && (
+                  {/* only when the route isn't obvious: laps, or a loop with a tail (RJ). Out-and-backs are
+                      in the headline, and getting there / home is in Start route's directions. */}
+                  {cardPlan(rec).length > 0 && (
                     <ol className="rec-plan" aria-label="How to run it">
-                      {runPlan(planInput(rec)).map((step, i) => (
+                      {cardPlan(rec).map((step, i) => (
                         <Fragment key={i}>
                           {i > 0 && <li className="rec-plan-arrow" aria-hidden="true">→</li>}
                           <li>{step.charAt(0).toUpperCase() + step.slice(1)}</li>
