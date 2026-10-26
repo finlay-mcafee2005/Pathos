@@ -95,8 +95,13 @@ def main():
     print("Loading parks, water and viewpoints...")
     green, water, views = build_index()
     engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+    # only add the column if it's missing (ALTER TABLE waits for every other open use of the
+    # table, so it can time out while anything else is reading or saving routes)
     with engine.begin() as conn:
-        conn.execute(text("ALTER TABLE route ADD COLUMN IF NOT EXISTS scenic_pct FLOAT"))
+        has = conn.execute(text("SELECT 1 FROM information_schema.columns "
+                                "WHERE table_name = 'route' AND column_name = 'scenic_pct'")).first()
+        if not has:
+            conn.execute(text("ALTER TABLE route ADD COLUMN scenic_pct FLOAT"))
     with Session(engine) as session:
         rows = session.exec(select(Route)).all()
         routes = [SimpleNamespace(id=r.id, name=r.nickname or r.name, old=bool(r.scenic),
@@ -137,9 +142,22 @@ def main():
     if DRY_RUN:
         print("\nDry run: nothing saved. Run without --dry-run to save.")
         return
-    with engine.begin() as conn:
-        conn.execute(text("UPDATE route SET scenic = :s, scenic_pct = :p WHERE id = :id"),
-                     [{"id": r.id, "s": sc, "p": share} for r, share, view, sc in results])
+    # save in batches, retrying if Supabase drops the connection (it does on long saves)
+    import time
+    rows = [{"id": r.id, "s": sc, "p": share} for r, share, view, sc in results]
+    for k in range(0, len(rows), 200):
+        for attempt in range(1, 5):
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text("UPDATE route SET scenic = :s, scenic_pct = :p WHERE id = :id"),
+                                 rows[k:k + 200])
+                break
+            except Exception as ex:
+                if attempt == 4:
+                    raise
+                print(f"  database connection dropped, retrying ({attempt}/3)...")
+                engine.dispose()
+                time.sleep(3)
     print(f"\nSaved scenic for {len(results)} routes.")
 
 

@@ -98,7 +98,8 @@ def main():
         print(f"Un-hid {len(ids)} routes.")
         return
     with engine.begin() as conn:
-        conn.execute(text("ALTER TABLE route ADD COLUMN IF NOT EXISTS steepest_grade FLOAT"))
+        if not conn.execute(text("SELECT 1 FROM information_schema.columns WHERE table_name = 'route' AND column_name = :c"), {"c": 'steepest_grade'}).first():   # skip ALTER (it can time out) if present
+            conn.execute(text("ALTER TABLE route ADD COLUMN steepest_grade FLOAT"))
     rows = read_routes(engine)
     results = []
     for k, (rid, name, surf, wkt) in enumerate(rows, 1):

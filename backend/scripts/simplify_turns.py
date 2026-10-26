@@ -235,6 +235,19 @@ def simplify(coords, surface, net, spacing):
     return new, t0, t1
 
 
+def overlap_share(coords):
+    """Share of the line that runs along a part of itself 150 m+ earlier (a stem or an out-and-back)."""
+    pts = densify(coords, 10.0)
+    grid, hits = {}, 0
+    for k, (x, y) in enumerate(pts):
+        gx, gy = int(x * KX // 15), int(y * KY // 15)
+        if any(k - j > 15 and dist_m(pts[j], (x, y)) < 15
+               for dx in (-1, 0, 1) for dy in (-1, 0, 1) for j in grid.get((gx + dx, gy + dy), ())):
+            hits += 1
+        grid.setdefault((gx, gy), []).append(k)
+    return hits / max(1, len(pts))
+
+
 NET = None
 
 
@@ -242,10 +255,9 @@ def _one(args):
     coords, surface = args
     if surface != "pavement":
         return None
-    sm = shape_metrics(coords)
     loop = dist_m(coords[0], coords[-1]) < 50
-    if not loop or (sm and sm["stretches"] >= 3):
-        return None          # out-and-backs and lollipops: leave alone
+    if not loop or overlap_share(coords) > 0.3:
+        return None          # out-and-backs and lollipops (much of the line run twice): leave alone
     best = None
     for s in SPACINGS:
         try:

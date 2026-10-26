@@ -175,7 +175,8 @@ def main():
     with engine.begin() as conn:
         for col, typ in [("busy_pct", "FLOAT"), ("freeway_crossings", "INTEGER"),
                          ("downtown_pct", "FLOAT"), ("turns_per_km", "FLOAT")]:
-            conn.execute(text(f"ALTER TABLE route ADD COLUMN IF NOT EXISTS {col} {typ}"))
+            if not conn.execute(text("SELECT 1 FROM information_schema.columns WHERE table_name = 'route' AND column_name = :c"), {"c": col}).first():   # skip ALTER (it can time out) if present
+                conn.execute(text(f"ALTER TABLE route ADD COLUMN {col} {typ}"))
     with engine.connect() as conn:
         rows = conn.execute(text("SELECT id, COALESCE(nickname, name), ST_AsText(gps_path) FROM route "
                                  "WHERE NOT COALESCE(hidden, FALSE)")).all()

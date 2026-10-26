@@ -64,7 +64,8 @@ def main():
     from sqlalchemy import create_engine, text
     engine = create_engine(os.environ["DATABASE_URL"])
     with engine.begin() as conn:
-        conn.execute(text("ALTER TABLE route ADD COLUMN IF NOT EXISTS stem_km FLOAT"))
+        if not conn.execute(text("SELECT 1 FROM information_schema.columns WHERE table_name = 'route' AND column_name = :c"), {"c": 'stem_km'}).first():   # skip ALTER (it can time out) if present
+            conn.execute(text("ALTER TABLE route ADD COLUMN stem_km FLOAT"))
     with engine.connect() as conn:
         rows = conn.execute(text("SELECT id, COALESCE(nickname, name), ST_AsText(gps_path) FROM route "
                                  "WHERE NOT COALESCE(hidden, FALSE)")).all()
