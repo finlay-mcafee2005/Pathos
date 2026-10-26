@@ -445,9 +445,10 @@ function metersToFeet(m: number): number {
 }
 
 function cardPlan(rec: Recommendation): string[] {
-  const laps = rec.run_format === "repeat" && (rec.repeat_count ?? 1) > 1;
+  // laps alone are already in the stats ("2 LAPS"); steps only help when there's a way in
+  // and out to the loop (a stem), e.g. "Out 0.3 mi → loop 1.9 mi ×2 → back 0.3 mi"
   const stem = (rec.stem_km ?? 0) > 0 && rec.run_format !== "out_and_back";
-  if (!laps && !stem) return [];
+  if (!stem) return [];
   return runPlan(planInput(rec));   // from home, the way there counts as part of "out" / "back"
 }
 
