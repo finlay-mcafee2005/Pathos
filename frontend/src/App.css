@@ -9295,6 +9295,7 @@ body::before {
 }
 
 /* route map: shaped to the route (aspect-ratio set inline), within sensible limits */
-.recs-page .rec-map-wrap { height: auto; min-height: 210px; max-height: 380px; }
+/* width stays full; aspect-ratio sets the height, clamped (without width:100% the cap would shrink the width instead) */
+.recs-page .rec-map-wrap { width: 100%; height: auto; min-height: 210px; max-height: 380px; }
 .recs-page .rec-map-wrap::after { height: 26px; }
 @media (max-width: 560px) { .recs-page .rec-map-wrap { height: auto; min-height: 190px; max-height: 300px; } }
