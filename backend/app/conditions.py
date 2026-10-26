@@ -53,7 +53,7 @@ class Conditions:
 
 
 def _get_json(url: str, params: dict) -> Optional[dict]:
-    full = f"{url}?{urllib.parse.urlencode(params)}"
+    full = f"{url}?{urllib.parse.urlencode(params)}" if params else url
     cached = _cache.get(full)
     if cached and time.time() - cached[0] < CACHE_TTL_S:
         return cached[1]
@@ -66,7 +66,9 @@ def _get_json(url: str, params: dict) -> Optional[dict]:
                 data = json.loads(resp.read().decode())
             _cache[full] = (time.time(), data)
             return data
-        except Exception:
+        except Exception as ex:
+            # shows in the server logs (e.g. HTTP 429 = Open-Meteo's limit for a shared server address)
+            print(f"weather fetch failed ({type(ex).__name__}: {ex})", flush=True)
             continue
     if cached and time.time() - cached[0] < STALE_OK_S:
         return cached[1]
@@ -190,12 +192,10 @@ def cooler_time(hourly: dict, run_time: str, now: datetime, feels_f: Optional[fl
     }
 
 
-def fetch_conditions(lat: Optional[float], lon: Optional[float], run_time: str = "now") -> Optional[Conditions]:
-    if lat is None or lon is None:
-        return None
-    # round so nearby users share the cache
+def weather_urls(lat: float, lon: float) -> tuple:
+    """The two Open-Meteo requests for a spot (rounded, so nearby users share the cache)."""
     lat, lon = round(lat, 2), round(lon, 2)
-    forecast = _get_json(FORECAST_URL, {
+    forecast = f"{FORECAST_URL}?" + urllib.parse.urlencode({
         "latitude": lat,
         "longitude": lon,
         "hourly": "temperature_2m,apparent_temperature,uv_index,wind_speed_10m,precipitation",
@@ -207,9 +207,7 @@ def fetch_conditions(lat: Optional[float], lon: Optional[float], run_time: str =
         "wind_speed_unit": "mph",
         "precipitation_unit": "mm",
     })
-    if not forecast:
-        return None
-    air = _get_json(AIR_URL, {
+    air = f"{AIR_URL}?" + urllib.parse.urlencode({
         "latitude": lat,
         "longitude": lon,
         "hourly": "us_aqi",
@@ -217,4 +215,25 @@ def fetch_conditions(lat: Optional[float], lon: Optional[float], run_time: str =
         "forecast_days": 2,
         "timezone": "auto",
     })
+    return forecast, air
+
+
+def remember_weather(lat: float, lon: float, forecast: dict, air: Optional[dict]) -> None:
+    """Weather the runner's browser fetched (when the server couldn't reach Open-Meteo):
+    keep it so the server's own lookups for this spot use it too."""
+    f_url, a_url = weather_urls(lat, lon)
+    now = time.time()
+    _cache[f_url] = (now, forecast)
+    if air:
+        _cache[a_url] = (now, air)
+
+
+def fetch_conditions(lat: Optional[float], lon: Optional[float], run_time: str = "now") -> Optional[Conditions]:
+    if lat is None or lon is None:
+        return None
+    f_url, a_url = weather_urls(lat, lon)
+    forecast = _get_json(f_url, {})
+    if not forecast:
+        return None
+    air = _get_json(a_url, {})
     return parse_conditions(forecast, air, run_time)

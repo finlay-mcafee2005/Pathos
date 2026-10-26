@@ -17,7 +17,7 @@ from geoalchemy2.shape import to_shape
 from datetime import date as date_type
 from pydantic import BaseModel, Field
 from app.geocoding import geocode_address, geocode_la
-from app.conditions import fetch_conditions
+from app.conditions import fetch_conditions, weather_urls, remember_weather, parse_conditions
 from app.directions import directions_for, walk_path, to_start
 from app.activity_import import parse_activity, match_route, ImportProblem
 import base64
@@ -1157,10 +1157,51 @@ def get_conditions(user_id: UUID, session: Session = Depends(get_session),
         .order_by(Checkin.created_at.desc())
     ).first()
     run_time = (checkin.run_time if checkin else None) or "now"
+    lat, lon = weather_spot(user, checkin)
+    cond = fetch_conditions(lat, lon, run_time)
+    if not cond:
+        if lat is None:
+            return None
+        # the server couldn't reach the weather service (it limits shared server addresses):
+        # hand the browser the two requests to make itself, then it posts the answers back
+        f_url, a_url = weather_urls(lat, lon)
+        return {"unavailable": True, "forecast_url": f_url, "air_url": a_url}
+    cut, _ = heat_distance_factor(cond)
+    cond.heat_cut_pct = round((1 - cut) * 100) if cut < 1 else None
+    return cond.to_dict()
+
+
+def weather_spot(user, checkin):
     if checkin and checkin.start_lat is not None:            # planning from a place they picked
-        cond = fetch_conditions(checkin.start_lat, checkin.start_lon, run_time)
-    else:
-        cond = fetch_conditions(user.latitude, user.longitude, run_time)
+        return checkin.start_lat, checkin.start_lon
+    return user.latitude, user.longitude
+
+
+class BrowserWeather(BaseModel):
+    forecast: dict
+    air: Optional[dict] = None
+
+
+@app.post("/conditions/{user_id}")
+def post_conditions(user_id: UUID, payload: BrowserWeather, session: Session = Depends(get_session),
+        _me: UUID = Depends(require_self)):
+    """Weather the browser fetched from Open-Meteo when the server couldn't. Checked to be
+    for this user's spot, kept for the server's own lookups, and returned like GET."""
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    checkin = session.exec(
+        select(Checkin)
+        .where(Checkin.user_id == user_id, Checkin.checkin_date == date.today())
+        .order_by(Checkin.created_at.desc())
+    ).first()
+    lat, lon = weather_spot(user, checkin)
+    f = payload.forecast
+    if lat is None or "hourly" not in f or abs((f.get("latitude") or 999) - lat) > 0.1 \
+            or abs((f.get("longitude") or 999) - lon) > 0.1:
+        raise HTTPException(status_code=422, detail="That weather isn't for your area.")
+    remember_weather(lat, lon, f, payload.air)
+    cond = parse_conditions(f, payload.air, (checkin.run_time if checkin else None) or "now")
     if not cond:
         return None
     cut, _ = heat_distance_factor(cond)

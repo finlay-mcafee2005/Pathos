@@ -626,10 +626,26 @@ function RecommendationsPage() {
         .then(setPrefs)
         .catch(() => setPrefs(null));
       // weather: if the first try comes back empty (the weather service is slow at times), try once more
+      // if the server can't reach the weather service, it sends back the two Open-Meteo requests;
+      // the browser makes them (from the runner's own connection) and posts the answers back
+      const fromBrowser = async (c: { forecast_url: string; air_url: string }) => {
+        const [forecast, air] = await Promise.all([
+          fetch(c.forecast_url).then((r) => (r.ok ? r.json() : null)),
+          fetch(c.air_url).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        ]);
+        if (!forecast) return null;
+        const res = await fetch(`${API_URL}/conditions/${userId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ forecast, air }),
+        });
+        return res.ok ? res.json() : null;
+      };
       const loadConditions = (again: boolean) =>
         fetch(`${API_URL}/conditions/${userId}`)
           .then((res) => (res.ok ? res.json() : null))
-          .then((c) => {
+          .then(async (c) => {
+            if (c?.unavailable) c = await fromBrowser(c).catch(() => null);
             if (c) setConditions(c);
             else if (again) setTimeout(() => loadConditions(false), 2500);
           })
