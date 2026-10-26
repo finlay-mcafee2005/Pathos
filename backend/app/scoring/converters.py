@@ -180,9 +180,18 @@ def out_reach_km(coords) -> float:
 
 
 def route_reach(route) -> float:
+    """Reach from the stored start and, for a drive-to loop, from the parking spot it's
+    re-started at (the smaller, so a route only counts as heading away if it does from both)."""
     from app.scoring.route_combiner import get_route_coords   # cached geometry
     try:
-        return out_reach_km(get_route_coords(route))
+        coords = list(get_route_coords(route))
+        reach = out_reach_km(coords)
+        pl, po = getattr(route, "park_lat", None), getattr(route, "park_lon", None)
+        if pl is not None and po is not None and not (getattr(route, "stem_km", None) or 0) and len(coords) > 3:
+            ring = coords[:-1]
+            k = min(range(len(ring)), key=lambda j: (ring[j][0] - po) ** 2 + (ring[j][1] - pl) ** 2)
+            reach = min(reach, out_reach_km(ring[k:] + ring[:k] + [ring[k]]))
+        return reach
     except Exception:
         return 0.0
 

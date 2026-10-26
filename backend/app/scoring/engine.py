@@ -509,11 +509,13 @@ def choose_format(route: RouteCandidate, target: float, max_repeats: int, allow_
 
     if allow_partial and best[3] > target * PARTIAL_OVER and target >= 0.4:
         best = out_and_back(target)
-    # they asked for an out-and-back: run out along the loop for half the distance and
-    # turn around (if it heads away from the start long enough), instead of going all the way round
+    # they asked for an out-and-back: run out along the loop for half the distance and turn
+    # around - but only if the route keeps heading away from the start that whole way. A loop
+    # that comes back on itself sooner (a lollipop, a loop round a few blocks) stays a loop:
+    # cutting it would mean turning around somewhere odd.
     if shape_pref == "out_and_back" and route.is_loop and best[1] != "out_and_back" and target >= 0.8:
         cand = out_and_back(target)
-        if cand[4] >= 0.7 * target / 2:
+        if cand[4] >= target / 2 - 0.05:
             best = cand
     return best
 
