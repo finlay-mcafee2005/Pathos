@@ -36,6 +36,8 @@ function LogRunPage() {
   const routeId = linkedRoute?.id;
   const recommendationId = location.state?.recommendationId as string | undefined;
   const [pickFit, setPickFit] = useState<"yes" | "sort_of" | "no" | null>(null);
+  const [notes, setNotes] = useState("");
+  const [avoidRoute, setAvoidRoute] = useState(false);
   const cameFromPick = Boolean(recommendationId || routeId);
   const routeName = linkedRoute?.name;
 
@@ -164,6 +166,8 @@ function LogRunPage() {
           source: imported?.source ?? prefill?.source ?? "manual",
           recommendation_id: recommendationId ?? null,
           pick_fit: cameFromPick ? pickFit : null,
+          notes: notes.trim() || null,
+          avoid_route: Boolean(routeId) && avoidRoute,
         }),
       });
       if (!response.ok) throw new Error(`Server responded with ${response.status}`);
@@ -506,6 +510,27 @@ function LogRunPage() {
                 ))}
               </div>
             </>
+          )}
+
+          <div className="lr-divider" />
+          <label className="lr-notes">
+            <span className="ci-field-label">Notes <span className="lr-fit-optional">Optional</span></span>
+            <textarea
+              rows={2}
+              maxLength={500}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Anything to remember? e.g. busy crossing at York, great views at the top"
+            />
+          </label>
+          {routeId && (
+            <label className="lr-avoid">
+              <input type="checkbox" checked={avoidRoute} onChange={(e) => setAvoidRoute(e.target.checked)} />
+              <span>
+                <strong>Don't recommend {routeName ? `${routeName}` : "this route"} again</strong>
+                <small>You can bring it back any time in Settings.</small>
+              </span>
+            </label>
           )}
         </section>
 

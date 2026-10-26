@@ -155,6 +155,7 @@ class Run(SQLModel, table=True):
     # research: which recommendation this run came from, and did it fit
     recommendation_id: Optional[UUID] = None
     pick_fit: Optional[str] = None        # "yes" | "sort_of" | "no"
+    notes: Optional[str] = None           # the runner's own notes ("busy crossing at York, skip next time")
 
     user: User = Relationship(back_populates="runs")
     route: Optional[Route] = Relationship(back_populates="runs")
@@ -254,3 +255,17 @@ class RunGroupMember(SQLModel, table=True):
     group_id: UUID = Field(foreign_key="run_group.id", index=True)
     user_id: UUID = Field(foreign_key="user.id", index=True)
     joined_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ---------------------------------------------------------------------------
+# AvoidedRoute: "don't recommend this route again" (set when logging a run)
+# ---------------------------------------------------------------------------
+
+class AvoidedRoute(SQLModel, table=True):
+    __tablename__ = "avoided_route"
+    __table_args__ = (UniqueConstraint("user_id", "route_id", name="uq_avoided_route"),)
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    user_id: UUID = Field(foreign_key="user.id", index=True)
+    route_id: UUID = Field(foreign_key="route.id")
+    reason: Optional[str] = None          # their note when they chose to avoid it
+    created_at: datetime = Field(default_factory=datetime.utcnow)

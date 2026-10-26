@@ -17,6 +17,7 @@ type PastRun = {
   avg_heart_rate?: number | null;
   source?: string | null;
   pick_fit?: "yes" | "sort_of" | "no" | null;
+  notes?: string | null;
 };
 
 function parseDate(iso: string): Date {
@@ -113,6 +114,7 @@ function RunCard({ run, badge }: { run: PastRun; badge: string | null }) {
           {run.pick_fit && <span className={`lb-fit fit-${run.pick_fit}`}>{FIT_LABELS[run.pick_fit]}</span>}
         </div>
         <p className="lb-details">{details.join("  ·  ")}</p>
+        {run.notes && <p className="lb-notes">“{run.notes}”</p>}
       </div>
 
       <div className="lb-metrics">

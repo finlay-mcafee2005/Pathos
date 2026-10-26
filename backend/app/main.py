@@ -23,7 +23,7 @@ from app.activity_import import parse_activity, match_route, ImportProblem
 import base64
 from zoneinfo import ZoneInfo
 from typing import List, Literal, Optional
-from app.models import User, Checkin, Route, Injury, Run, Club, ClubSchedule, FavoriteRoute, Recommendation, RunGroup, RunGroupMember
+from app.models import User, Checkin, Route, Injury, Run, Club, ClubSchedule, FavoriteRoute, Recommendation, RunGroup, RunGroupMember, AvoidedRoute
 from app.scoring.group_picks import Member, group_recommend
 from app.scoring.engine import haversine_km as _hav
 from app.scoring.converters import route_start
@@ -81,7 +81,8 @@ def add_new_columns():
     """create_all() won't add columns to tables that already exist, so add
     any new ones here. IF NOT EXISTS makes this safe to run every startup."""
     # new tables (no-op if they exist)
-    SQLModel.metadata.create_all(engine, tables=[RunGroup.__table__, RunGroupMember.__table__])
+    SQLModel.metadata.create_all(engine, tables=[RunGroup.__table__, RunGroupMember.__table__,
+                                                 AvoidedRoute.__table__])
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS run_time VARCHAR"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS available_minutes FLOAT"))
@@ -114,6 +115,7 @@ def add_new_columns():
             conn.execute(text(f"ALTER TABLE route ADD COLUMN IF NOT EXISTS {col} {typ}"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS quiet_streets BOOLEAN DEFAULT FALSE"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS shape_pref VARCHAR"))
+        conn.execute(text("ALTER TABLE run ADD COLUMN IF NOT EXISTS notes VARCHAR"))
         # recommendation logging
         conn.execute(text("ALTER TABLE recommendation ALTER COLUMN route_id DROP NOT NULL"))
         for col, typ in [("checkin_id", "UUID"), ("rank", "INTEGER"), ("route_name", "VARCHAR"),
@@ -195,6 +197,9 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
     missing (location not allowed), everything uses the home address from signup.
     exclude = comma-separated route ids already shown ("give me 3 different ones")."""
     excluded = {x.strip() for x in (exclude or "").split(",") if x.strip()}
+    # routes they said not to recommend again (when logging a run)
+    excluded |= {str(rid) for rid in session.exec(
+        select(AvoidedRoute.route_id).where(AvoidedRoute.user_id == user_id)).all()}
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -796,6 +801,44 @@ class RunRequest(BaseModel):
     source: Optional[str] = None
     recommendation_id: Optional[UUID] = None
     pick_fit: Optional[Literal["yes", "sort_of", "no"]] = None
+    notes: Optional[str] = Field(default=None, max_length=500)
+    avoid_route: bool = False          # "don't recommend this route again"
+
+
+def avoid(session: Session, user_id, route_id, reason: Optional[str] = None) -> None:
+    if not session.exec(select(AvoidedRoute).where(AvoidedRoute.user_id == user_id,
+                                                   AvoidedRoute.route_id == route_id)).first():
+        session.add(AvoidedRoute(user_id=user_id, route_id=route_id, reason=reason))
+
+
+@app.get("/avoided/{user_id}")
+def list_avoided(user_id: UUID, session: Session = Depends(get_session), _me: UUID = Depends(require_self)):
+    rows = session.exec(
+        select(AvoidedRoute, Route).join(Route, Route.id == AvoidedRoute.route_id)
+        .where(AvoidedRoute.user_id == user_id).order_by(AvoidedRoute.created_at.desc())
+    ).all()
+    return [{"route_id": str(a.route_id), "route_name": r.nickname or r.name, "reason": a.reason,
+             "since": a.created_at.date().isoformat()} for a, r in rows]
+
+
+@app.post("/avoided/{user_id}/{route_id}")
+def add_avoided(user_id: UUID, route_id: UUID, session: Session = Depends(get_session),
+                _me: UUID = Depends(require_self)):
+    if not session.get(Route, route_id):
+        raise HTTPException(status_code=404, detail="Route not found")
+    avoid(session, user_id, route_id)
+    session.commit()
+    return {"ok": True}
+
+
+@app.delete("/avoided/{user_id}/{route_id}")
+def remove_avoided(user_id: UUID, route_id: UUID, session: Session = Depends(get_session),
+                   _me: UUID = Depends(require_self)):
+    for a in session.exec(select(AvoidedRoute).where(AvoidedRoute.user_id == user_id,
+                                                     AvoidedRoute.route_id == route_id)).all():
+        session.delete(a)
+    session.commit()
+    return {"ok": True}
 
 
 @app.post("/runs")
@@ -816,7 +859,10 @@ def log_run(payload: RunRequest, session: Session = Depends(get_session),
         max_heart_rate=payload.max_heart_rate,
         source=payload.source or "manual",
         pick_fit=payload.pick_fit,
+        notes=(payload.notes or "").strip() or None,
     )
+    if payload.avoid_route and payload.route_id:
+        avoid(session, payload.user_id, payload.route_id, (payload.notes or "").strip() or None)
 
     # link the run to the recommendation it came from. If the app didn't say,
     # match it to a route recommended to this user in the last 2 days.
@@ -1230,6 +1276,7 @@ def list_runs(user_id: UUID, session: Session = Depends(get_session),
             "avg_heart_rate": run.avg_heart_rate,
             "source": run.source,
             "pick_fit": run.pick_fit,
+            "notes": run.notes,
         })
     return result
 
@@ -1805,7 +1852,8 @@ def reset_password(payload: ResetPasswordRequest, session: Session = Depends(get
 
 def delete_user_everything(session: Session, user_id: UUID) -> None:
     p = {"uid": user_id}
-    for table in ("recommendation", "run", "checkin", "injury", "favoriteroute", "run_group_member"):
+    for table in ("recommendation", "run", "checkin", "injury", "favoriteroute", "run_group_member",
+                  "avoided_route"):
         session.exec(text(f"DELETE FROM {table} WHERE user_id = :uid"), params=p)
     for (gid,) in session.exec(text("SELECT id FROM run_group WHERE owner_id = :uid"), params=p).all():
         heir = session.exec(text("SELECT user_id FROM run_group_member WHERE group_id = :g ORDER BY joined_at LIMIT 1"),

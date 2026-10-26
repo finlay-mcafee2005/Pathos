@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { API_URL } from "../utils/format";
 import { clearSession } from "../utils/session";
 import ProfileSettings from "../components/ProfileSettings";
+import AvoidedRoutes from "../components/AvoidedRoutes";
 
 type Me = { email: string; first_name: string; email_verified: boolean };
 
@@ -55,6 +56,7 @@ function AccountPage() {
       </header>
 
       <ProfileSettings />
+      <AvoidedRoutes />
 
       <section className="ac-card">
         <h2>Email</h2>
