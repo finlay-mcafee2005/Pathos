@@ -5,7 +5,7 @@ Tidy two leftovers that make a route look odd, on every kind of route (trails to
    on another one nearby, so the first and last few hundred metres draw a small box
    before the real loop. That box becomes a plain way in and out: the way back to the
    start follows the way out (a short stem), so the route is one clean loop.
-2. Short, straight dead-end dashes near the start or finish (out along a street and
+2. Short, straight dead-end dashes anywhere on a loop (out along a street or path and
    back, maybe on the other side of it), which the first spur cleanup missed.
 
 Run from backend/:
@@ -85,8 +85,8 @@ def fix_start_box(pts):
     return way_in + pts[i + 1:j] + [pts[j]] + list(reversed(way_in))
 
 
-def end_spurs(pts):
-    """Straight dead-end dashes near the start or the finish (out along a street and back,
+def end_spurs(pts, join_m=14):
+    """Straight dead-end dashes anywhere on a loop (out along a street and back,
     maybe on the other side of it). Hairpins and switchbacks aren't straight, so they stay."""
     cum = cumulative(pts)
     total = cum[-1]
@@ -94,12 +94,12 @@ def end_spurs(pts):
     keep, cut, i = [], 0.0, 0
     while i < len(pts):
         keep.append(i)
-        near_end = cum[i] <= HEAD_M or total - cum[i] <= HEAD_M
+        near_end = True          # anywhere along the loop (straight dashes only, so hairpins stay)
         best = None
         if near_end:
             k = i + 6
             while k < len(pts) and cum[k] - cum[i] <= 900:
-                if cum[k] - cum[i] >= 80 and dist_m(pts[i], pts[k]) < 25 and not (i < far < k):
+                if cum[k] - cum[i] >= 80 and dist_m(pts[i], pts[k]) < join_m and not (i < far < k):
                     t = max(range(i, k + 1), key=lambda m: dist_m(pts[i], pts[m]))
                     reach = dist_m(pts[i], pts[t])
                     if reach >= 0.4 * (cum[k] - cum[i]) and \
@@ -121,7 +121,9 @@ def tidy(coords, surface):
         return None              # out-and-backs and one-way trails: their ends are the point
     pts = densify(coords, 10.0)
     changed = []
-    new, cut = end_spurs(pts)
+    # the dash must come back to (almost) the same spot: switchback legs are 15 m+ apart on a
+    # hillside, and jumping across them would cut the slope
+    new, cut = end_spurs(pts, 9 if surface == "trail" else 14)
     if cut >= 60:
         changed.append(f"spur {cut:.0f} m")
         pts = new
