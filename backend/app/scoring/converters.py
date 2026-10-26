@@ -55,6 +55,7 @@ def build_daily_checkin(checkin: Checkin) -> DailyCheckin:
         hills_pref=getattr(checkin, "hills_pref", None),
         quiet_streets=bool(getattr(checkin, "quiet_streets", False)),
         no_laps=bool(getattr(checkin, "no_laps", False)),
+        climb_range=getattr(checkin, "climb_range", None),
         shape_pref=getattr(checkin, "shape_pref", None),
     )
 

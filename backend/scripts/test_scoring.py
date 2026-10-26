@@ -386,6 +386,20 @@ def check_difficulty():
     assert all(x.repeat_count == 1 for x in r) and r[0].route.id == "one6", [(x.route.id, x.repeat_count) for x in r]
     print("  1 lap only: no repeats, the full-length loop comes first")
 
+    # climb range: 700-1,200 ft keeps only runs in range, fills with the closest if short
+    def hilly(i, gain):
+        return RouteCandidate(id=i, name=i, distance_km=16.0, elevation_gain_m=gain, difficulty="moderate",
+                              surface_type="pavement", is_loop=True)
+    hs = [hilly("c150", 150), hilly("c300", 300), hilly("c330", 330), hilly("c600", 600)]
+    ck = DailyCheckin(energy_score=8, sleep_hours=8, planned_distance_km=16.0, climb_range="700_1200", today=THURSDAY)
+    r = recommend(INTERMEDIATE, ck, RecentRuns(last_7_days_km=40), hs, top_n=2)
+    assert {x.route.id for x in r} == {"c300", "c330"}, [(x.route.id, x.run_gain_m) for x in r]
+    ck = DailyCheckin(energy_score=8, sleep_hours=8, planned_distance_km=16.0, climb_range="over1200", today=THURSDAY)
+    r = recommend(INTERMEDIATE, ck, RecentRuns(last_7_days_km=40), hs, top_n=2)
+    assert {x.route.id for x in r} == {"c600", "c330"} and r[0].reasons[0].startswith("Outside your climb range") \
+        or any(x.reasons[0].startswith("Outside") for x in r), [(x.route.id, x.reasons[:1]) for x in r]
+    print("  climb range: only runs in range; closest fill in (and say so) when there aren't enough")
+
     # beginners are gated on that run difficulty
     beginner = UserProfile(fitness_level="beginner", weekly_km_avg=12)
     steep = RouteCandidate(id="steep", name="Steep 3 km", distance_km=3.0, elevation_gain_m=200,

@@ -9145,5 +9145,8 @@ body::before {
 .route-arrow { background: none; border: 0; }
 .route-arrow svg { display: block; filter: drop-shadow(0 1px 2px rgba(15, 23, 42, .3)); }
 /* adjust panel: Extras has three options, give it room */
-@media (min-width: 561px) { .adj-grid > .adj-group:last-child { grid-column: span 2; } }
 @media (max-width: 560px) { .adj-grid > .adj-group:last-child .adj-seg button svg { display: none; } }
+
+/* adjust panel: Extras on its own row now that Climb sits beside Shape */
+@media (min-width: 561px) { .adj-grid > .adj-group.wide { grid-column: span 2; } }
+@media (max-width: 560px) { .adj-grid > .adj-group .adj-seg button { padding-left: 2px; padding-right: 2px; } }

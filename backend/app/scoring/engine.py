@@ -46,6 +46,7 @@ class DailyCheckin:
     hills_pref: Optional[str] = None          # "avoid" | "want" | None (don't mind)
     quiet_streets: bool = False               # "Quiet side streets only": skip busy roads, freeway, downtown
     no_laps: bool = False                     # "1 lap only": never repeat a loop
+    climb_range: Optional[str] = None         # total climb for the run: "under300" | "300_700" | "700_1200" | "over1200"
     shape_pref: Optional[str] = None          # "loop" | "out_and_back" | None (either)
 
 
@@ -1134,6 +1135,7 @@ def recommend(
     scored = limit_hills(scored, checkin.hills_pref, top_n)
     scored = limit_quiet(scored, getattr(checkin, "quiet_streets", False), top_n)
     scored = limit_shape(scored, getattr(checkin, "shape_pref", None), top_n)
+    scored = limit_climb(scored, getattr(checkin, "climb_range", None), top_n)
     scored = fit_time_limit(scored, checkin.available_minutes, top_n)
     # Always rank every eligible route and return the best top_n, even if
     # none is a great distance match, so the user always sees options.
@@ -1155,6 +1157,37 @@ def limit_hills(scored: List[ScoredRoute], hills_pref: Optional[str], top_n: int
         return flat
     rest = sorted((s for s in scored if s not in flat), key=run_climb_rate)
     return flat + rest[:top_n - len(flat)]
+
+
+# total climb ranges (feet) the runner can pick at check-in: a hard limit, like "avoid hills"
+CLIMB_RANGES_FT = {"under300": (0, 300), "300_700": (300, 700), "700_1200": (700, 1200), "over1200": (1200, 1e9)}
+CLIMB_SLACK_FT = 40           # a few feet either side still counts (DEM noise)
+OUTSIDE_CLIMB = "Outside your climb range"
+
+
+def run_climb_ft(s: ScoredRoute) -> float:
+    return (s.run_gain_m or 0.0) * 3.28084
+
+
+def limit_climb(scored: List[ScoredRoute], climb_range: Optional[str], top_n: int) -> List[ScoredRoute]:
+    """They picked a total climb (e.g. 700-1,200 ft): only runs in that range. If too few,
+    fill with the runs closest to it and say so on the card."""
+    rng = CLIMB_RANGES_FT.get(climb_range or "")
+    if not rng:
+        return scored
+    lo, hi = rng[0] - CLIMB_SLACK_FT, rng[1] + CLIMB_SLACK_FT
+    ok = [s for s in scored if lo <= run_climb_ft(s) <= hi]
+    if len(ok) >= top_n:
+        return ok
+
+    def off(s):
+        ft = run_climb_ft(s)
+        return lo - ft if ft < lo else ft - hi
+    rest = sorted((s for s in scored if s not in ok), key=off)
+    extra = rest[:top_n - len(ok)]
+    for s in extra:
+        s.reasons.insert(0, f"{OUTSIDE_CLIMB}: about {run_climb_ft(s):,.0f} ft, one of the closest nearby")
+    return ok + extra
 
 
 def limit_shape(scored: List[ScoredRoute], shape_pref: Optional[str], top_n: int) -> List[ScoredRoute]:

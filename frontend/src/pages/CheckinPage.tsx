@@ -66,6 +66,15 @@ const RUN_TIMES: { value: "now" | "morning" | "midday" | "evening"; label: strin
   { value: "midday", label: "Midday", phrase: " around midday", when: "Around noon" },
   { value: "evening", label: "Evening", phrase: " this evening", when: "Around 6 pm" },
 ];
+type ClimbRange = "" | "under300" | "300_700" | "700_1200" | "over1200";
+const CLIMB_CHIPS: [ClimbRange, string][] = [
+  ["", "Any"], ["under300", "<300"], ["300_700", "300–700"], ["700_1200", "700–1.2k"], ["over1200", "1.2k+"],
+];
+const CLIMB_WORDS: Record<string, string> = {
+  under300: "under 300 ft of climbing", "300_700": "300–700 ft of climbing",
+  "700_1200": "700–1,200 ft of climbing", over1200: "1,200+ ft of climbing",
+};
+
 const DRIVE_CHIPS: { label: string; value: string }[] = [
   { label: "Near home", value: "" },
   { label: "15 min", value: "15" },
@@ -108,6 +117,7 @@ function CheckinPage() {
   const [hillsPref, setHillsPref] = useState<"" | "avoid" | "want">("");
   const [quietStreets, setQuietStreets] = useState(false);
   const [noLaps, setNoLaps] = useState(false);
+  const [climbRange, setClimbRange] = useState<ClimbRange>("");
   const [shapePref, setShapePref] = useState<"" | "loop" | "out_and_back">("");
 
   // who you're running with today: just you, or one of your Run together groups
@@ -133,6 +143,7 @@ function CheckinPage() {
     planned_distance_miles: number | null; available_minutes: number | null;
     willing_to_drive_miles: number | null; surface_preference: "trail" | "road" | null;
     wants_scenic: boolean; hills_pref: "avoid" | "want" | null; quiet_streets?: boolean; no_laps?: boolean;
+    climb_range?: ClimbRange | null;
     shape_pref?: "loop" | "out_and_back" | null;
   };
   const [last, setLast] = useState<LastCheckin | null>(null);
@@ -142,7 +153,7 @@ function CheckinPage() {
     energy: number; sleepHours: string; sleepQuality: number; soreParts: string[];
     mood: Mood | null; runIntent: Intent | null; lengthMode: "miles" | "minutes";
     plannedDistance: string; availableMinutes: string; willingToDrive: string;
-    surfacePreference: "" | "trail" | "road"; wantsScenic: boolean; hillsPref: "" | "avoid" | "want"; quietStreets: boolean; noLaps: boolean;
+    surfacePreference: "" | "trail" | "road"; wantsScenic: boolean; hillsPref: "" | "avoid" | "want"; quietStreets: boolean; noLaps: boolean; climbRange: ClimbRange;
     shapePref: "" | "loop" | "out_and_back";
   }>(null);
 
@@ -164,6 +175,7 @@ function CheckinPage() {
     setHillsPref(b.hillsPref);
     setQuietStreets(b.quietStreets);
     setNoLaps(b.noLaps);
+    setClimbRange(b.climbRange);
     setShapePref(b.shapePref);
     setBeforeCopy(null);
     setCopied(false);
@@ -180,7 +192,7 @@ function CheckinPage() {
     if (!last) return;
     setBeforeCopy({
       energy, sleepHours, sleepQuality, soreParts, mood, runIntent, lengthMode,
-      plannedDistance, availableMinutes, willingToDrive, surfacePreference, wantsScenic, hillsPref, quietStreets, shapePref, noLaps,
+      plannedDistance, availableMinutes, willingToDrive, surfacePreference, wantsScenic, hillsPref, quietStreets, shapePref, noLaps, climbRange,
     });
     setEnergy(last.energy_score);
     setSleepHours(last.sleep_hours != null ? String(last.sleep_hours) : "");
@@ -209,6 +221,7 @@ function CheckinPage() {
     setHillsPref(last.hills_pref ?? "");
     setQuietStreets(!!last.quiet_streets);
     setNoLaps(!!last.no_laps);
+    setClimbRange(last.climb_range ?? "");
     setShapePref(last.shape_pref ?? "");
     setCopied(true);
   }
@@ -256,6 +269,7 @@ function CheckinPage() {
           hills_pref: hillsPref || null,
           quiet_streets: quietStreets,
           no_laps: noLaps,
+          climb_range: climbRange || null,
           shape_pref: shapePref || null,
         }),
       });
@@ -327,6 +341,7 @@ function CheckinPage() {
   if (wantsScenic) extras.push("has a view");
   if (quietStreets) extras.push("sticks to quiet side streets");
   if (noLaps) extras.push("never repeats a loop");
+  if (climbRange) extras.push(`has ${CLIMB_WORDS[climbRange]}`);
   if (shapePref === "out_and_back") extras.push("is an out-and-back");
   if (shapePref === "loop") extras.push("is a loop");
   if (wantsAdventure) extras.push("is somewhere new");
@@ -733,6 +748,20 @@ function CheckinPage() {
                           className={hillsPref === v ? "on" : ""}
                           onClick={() => setHillsPref(v)}
                         >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="ci-row">
+                    <span className="ci-row-label">
+                      Total climb
+                      <small>{climbRange ? "Feet, for the whole run" : "Optional: pick a range in feet"}</small>
+                    </span>
+                    <div className="ci-segmented compact">
+                      {CLIMB_CHIPS.map(([v, label]) => (
+                        <button key={label} type="button" className={climbRange === v ? "on" : ""}
+                                onClick={() => setClimbRange(v)}>
                           {label}
                         </button>
                       ))}
