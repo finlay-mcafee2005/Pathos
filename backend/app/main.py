@@ -117,6 +117,8 @@ def add_new_columns():
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS quiet_streets BOOLEAN DEFAULT FALSE"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS no_laps BOOLEAN DEFAULT FALSE"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS climb_range VARCHAR"))
+        for col, typ in [("start_lat", "FLOAT"), ("start_lon", "FLOAT"), ("start_label", "VARCHAR")]:
+            conn.execute(text(f"ALTER TABLE checkin ADD COLUMN IF NOT EXISTS {col} {typ}"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS shape_pref VARCHAR"))
         conn.execute(text("ALTER TABLE run ADD COLUMN IF NOT EXISTS notes VARCHAR"))
         # recommendation logging
@@ -217,10 +219,14 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
 
     effective_radius_km = checkin.willing_to_drive_km if checkin.willing_to_drive_km else MAX_DISTANCE_KM
 
-    # where the run starts from: current location if we have a sensible one, else home
+    # where the run starts from: a place they picked at check-in, else their current
+    # location if we have a sensible one, else home
     use_here = lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180
-    origin_lat, origin_lon = (lat, lon) if use_here else (user.latitude, user.longitude)
-    origin_source = "current" if use_here else "home"
+    if checkin.start_lat is not None and checkin.start_lon is not None:
+        origin_lat, origin_lon, origin_source = checkin.start_lat, checkin.start_lon, "chosen"
+    else:
+        origin_lat, origin_lon = (lat, lon) if use_here else (user.latitude, user.longitude)
+        origin_source = "current" if use_here else "home"
 
     routes_query = text("""
         SELECT id FROM route
@@ -379,6 +385,7 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             # run from home: the streets from home to the start, drawn on the card
             **approach_fields((origin_lat, origin_lon), r),
             "origin_source": origin_source,
+            "origin_label": checkin.start_label if origin_source == "chosen" else None,
             "difficulty": r.difficulty,
             # a long, flat run is "Hard" by length only: say so instead of just "Hard"
             "difficulty_label": "Long, gentle" if r.difficulty == "hard"
@@ -605,6 +612,29 @@ def check_coverage(session: Session, address: str):
     return lat, lon, label, count
 
 
+class PointCheck(BaseModel):
+    lat: float
+    lon: float
+
+
+@app.post("/check-point")
+def check_point(payload: PointCheck, session: Session = Depends(get_session)):
+    """Check-in "start from somewhere else" with a dropped pin: are there routes near it?"""
+    count = session.exec(
+        text("""
+            SELECT COUNT(*) FROM route
+            WHERE NOT COALESCE(hidden, FALSE) AND ST_DWithin(
+                ST_StartPoint(gps_path)::geography,
+                ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography, :r)
+        """),
+        params={"lon": payload.lon, "lat": payload.lat, "r": SIGNUP_COVERAGE_RADIUS_KM * 1000},
+    ).first()[0]
+    if count == 0:
+        raise HTTPException(status_code=400, detail="Pathos doesn't have routes near that spot yet. "
+                            "Try somewhere in northeast LA, Glendale, Burbank or Pasadena.")
+    return {"lat": payload.lat, "lon": payload.lon, "routes_nearby": count}
+
+
 @app.post("/check-area")
 def check_area(payload: AreaCheck, session: Session = Depends(get_session)):
     """Signup step 2: confirm the location before moving on."""
@@ -682,6 +712,9 @@ class CheckinRequest(BaseModel):
     quiet_streets: bool = False
     no_laps: bool = False
     climb_range: Optional[Literal["under300", "300_700", "700_1200", "over1200"]] = None
+    start_lat: Optional[float] = Field(default=None, ge=33.5, le=34.6)    # LA area only
+    start_lon: Optional[float] = Field(default=None, ge=-118.9, le=-117.6)
+    start_label: Optional[str] = Field(default=None, max_length=120)
     shape_pref: Optional[Literal["loop", "out_and_back"]] = None
 
 
@@ -732,6 +765,7 @@ def checkin_prefs(c: Checkin) -> dict:
         "quiet_streets": bool(c.quiet_streets),
         "no_laps": bool(c.no_laps),
         "climb_range": c.climb_range,
+        "start_label": c.start_label,
         "wants_scenic": bool(c.wants_scenic),
         "planned_distance_miles": round(c.planned_distance_km / 1.60934, 1) if c.planned_distance_km else None,
         "available_minutes": c.available_minutes,
@@ -817,6 +851,9 @@ def create_checkin(payload: CheckinRequest, session: Session = Depends(get_sessi
         quiet_streets=payload.quiet_streets,
         no_laps=payload.no_laps,
         climb_range=payload.climb_range,
+        start_lat=payload.start_lat if payload.start_lon is not None else None,
+        start_lon=payload.start_lon if payload.start_lat is not None else None,
+        start_label=(payload.start_label or "Dropped pin").strip() if payload.start_lat is not None else None,
         shape_pref=payload.shape_pref,
     )
     session.add(checkin)
@@ -1110,7 +1147,10 @@ def get_conditions(user_id: UUID, session: Session = Depends(get_session),
         .order_by(Checkin.created_at.desc())
     ).first()
     run_time = (checkin.run_time if checkin else None) or "now"
-    cond = fetch_conditions(user.latitude, user.longitude, run_time)
+    if checkin and checkin.start_lat is not None:            # planning from a place they picked
+        cond = fetch_conditions(checkin.start_lat, checkin.start_lon, run_time)
+    else:
+        cond = fetch_conditions(user.latitude, user.longitude, run_time)
     if not cond:
         return None
     cut, _ = heat_distance_factor(cond)

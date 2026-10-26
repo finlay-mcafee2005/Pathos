@@ -133,7 +133,8 @@ def main():
 
     ck_cols = ["checkin_no", "submitted", "energy_score", "sleep_hours", "sleep_quality", "sore_body_parts",
                "planned_distance_mi", "travel_limit_mi", "run_time", "available_minutes", "mood", "run_intent",
-               "hills_pref", "surface_preference", "wants_scenic", "wants_adventure", "mood_note", "picks_shown"]
+               "hills_pref", "surface_preference", "wants_scenic", "wants_adventure", "mood_note",
+               "shape_pref", "climb_range", "no_laps", "quiet_streets", "start_from", "picks_shown"]
     with open(os.path.join(out, "checkins.csv"), "w", newline="") as f:
         w = csv.writer(f); w.writerow(ck_cols)
         for c in checkins:
@@ -143,6 +144,8 @@ def main():
                         round(c["willing_to_drive_km"] * MI, 2) if c["willing_to_drive_km"] else "",
                         c["run_time"], c["available_minutes"], c["mood"], c["run_intent"], c["hills_pref"],
                         c["surface_preference"], c["wants_scenic"], c["wants_adventure"], c["mood_note"],
+                        c.get("shape_pref"), c.get("climb_range"), c.get("no_laps"), c.get("quiet_streets"),
+                        c.get("start_label") or "",
                         len(by_checkin.get(c["id"], []))])
 
     pk_cols = ["checkin_no", "shown_at", "rank", "route", "match_pct", "label", "route_distance_mi", "route_climb_ft",

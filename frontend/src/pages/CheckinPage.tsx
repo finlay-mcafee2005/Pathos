@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import BodyMap from "../components/BodyMap";
+import StartPicker, { type StartPoint } from "../components/StartPicker";
 import { API_URL } from "../utils/format";
 
 const MUSCLE_GROUPS = [
@@ -118,6 +119,8 @@ function CheckinPage() {
   const [quietStreets, setQuietStreets] = useState(false);
   const [noLaps, setNoLaps] = useState(false);
   const [climbRange, setClimbRange] = useState<ClimbRange>("");
+  const [startElsewhere, setStartElsewhere] = useState(false);
+  const [startPoint, setStartPoint] = useState<StartPoint | null>(null);
   const [shapePref, setShapePref] = useState<"" | "loop" | "out_and_back">("");
 
   // who you're running with today: just you, or one of your Run together groups
@@ -270,6 +273,9 @@ function CheckinPage() {
           quiet_streets: quietStreets,
           no_laps: noLaps,
           climb_range: climbRange || null,
+          ...(startElsewhere && startPoint
+            ? { start_lat: startPoint.lat, start_lon: startPoint.lon, start_label: startPoint.label }
+            : {}),
           shape_pref: shapePref || null,
         }),
       });
@@ -705,10 +711,27 @@ function CheckinPage() {
                       })}
                     </div>
                   </div>
+                  <div className={`ci-row ${startElsewhere ? "ci-row-stack" : ""}`}>
+                    <div className="ci-row-head">
+                      <span className="ci-row-label">
+                        Start from
+                        <small>{startElsewhere
+                          ? (startPoint ? startPoint.label : "Search or drop a pin")
+                          : "Where you are (or home)"}</small>
+                      </span>
+                      <div className="ci-segmented compact">
+                        <button type="button" className={!startElsewhere ? "on" : ""}
+                                onClick={() => setStartElsewhere(false)}>Here</button>
+                        <button type="button" className={startElsewhere ? "on" : ""}
+                                onClick={() => setStartElsewhere(true)}>Somewhere else</button>
+                      </div>
+                    </div>
+                    {startElsewhere && <StartPicker value={startPoint} onChange={setStartPoint} />}
+                  </div>
                   <div className="ci-row">
                     <span className="ci-row-label">
                       Drive
-                      <small>{willingToDrive ? "Plus routes near home" : "Run from your door"}</small>
+                      <small>{willingToDrive ? "Plus routes near your start" : startElsewhere ? "Run from your start point" : "Run from your door"}</small>
                     </span>
                     <div className="ci-segmented compact">
                       {DRIVE_CHIPS.map((c) => (

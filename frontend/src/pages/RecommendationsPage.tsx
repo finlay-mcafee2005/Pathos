@@ -71,7 +71,8 @@ type Recommendation = {
   approach_path?: [number, number][];   // the streets from home to the start
   home?: [number, number];
   travel_km?: number | null;
-  origin_source?: "current" | "home";   // planned from the phone's location, or the signup address            // home -> start, when it's farther than a run-there   // e.g. "Long, gentle" for a flat run that's Hard only by length   // e.g. a gentler route a little beyond the travel limit
+  origin_source?: "current" | "home" | "chosen";
+  origin_label?: string | null;   // planned from the phone's location, or the signup address            // home -> start, when it's farther than a run-there   // e.g. "Long, gentle" for a flat run that's Hard only by length   // e.g. a gentler route a little beyond the travel limit
   distance_km: number;
   elevation_gain_m: number;
   difficulty: string;
@@ -680,7 +681,7 @@ function RecommendationsPage() {
           <section className="conditions">
             <div className="conditions-head">
               <span className="conditions-when">
-                {when} near home
+                {when} {recommendations[0]?.origin_source === "chosen" ? "near your start" : "near home"}
                 {conditions.run_time !== "now" && nowFeels != null && (
                   <span className="conditions-now"> · {Math.round(nowFeels)}°F right now</span>
                 )}
@@ -737,6 +738,12 @@ function RecommendationsPage() {
         );
       })()}
 
+      {count > 0 && recommendations[0]?.origin_source === "chosen" && (
+        <p className="recs-origin">
+          <span aria-hidden="true">📍</span> Planning from <b>{recommendations[0].origin_label ?? "your chosen start"}</b>
+          <Link to="/checkin" className="recs-origin-change">Change</Link>
+        </p>
+      )}
       {count > 0 && (
         <AdjustBar
           prefs={prefs}
