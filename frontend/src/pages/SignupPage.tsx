@@ -173,17 +173,28 @@ function SignupPage() {
           goal,
           weekly_mileage_avg: parseFloat(weeklyMileage) || 0,
           usual_pace_min_mile: paceValue,
-          injuries: hasInjury ? injuries.filter((i) => i.body_part) : [],
+          injuries: hasInjury
+            ? injuries.filter((i) => i.body_part.trim()).map((i) => ({
+                body_part: i.body_part.trim(), severity: i.severity, reported_at: i.reported_at || null,
+              }))
+            : [],
           club_join_code: clubCode || null,
         }),
       });
 
       if (!response.ok) {
         const body = await response.json().catch(() => null);
-        const detail: string = body?.detail || `Server responded with ${response.status}`;
+        // FastAPI validation errors come back as a list: turn them into one readable line
+        const raw = body?.detail;
+        const detail: string = typeof raw === "string" ? raw
+          : Array.isArray(raw) && raw.length
+            ? `Please check: ${raw.map((e: { loc?: string[]; msg?: string }) =>
+                (e.loc ?? []).filter((x) => typeof x === "string" && x !== "body").join(" ").replace(/_/g, " ") || e.msg).join(", ")}`
+            : `Server responded with ${response.status}`;
         // send them back to the step that needs fixing
         if (/route|address|location/i.test(detail)) setStep(1);
         else if (/club/i.test(detail)) setStep(2);
+        else if (/injur/i.test(detail)) setStep(3);
         else if (/email/i.test(detail)) setStep(0);
         throw new Error(detail);
       }
@@ -305,6 +316,10 @@ function SignupPage() {
                       Pathos currently covers northeast LA, Glendale, Burbank, Pasadena and the nearby foothills.
                     </p>
                   )}
+                  <p className="su-note su-privacy">
+                    🔒 Only used to find routes near you. Other runners never see your address, and a zip code or
+                    nearby intersection works fine.
+                  </p>
                   <details className="su-optional">
                     <summary>Optional details</summary>
                     <label>
@@ -482,6 +497,8 @@ function SignupPage() {
                               value={injury.body_part}
                               onChange={(e) => updateInjury(i, "body_part", e.target.value)}
                               placeholder="e.g. left knee"
+                              list="su-injury-parts"
+                              maxLength={60}
                             />
                           </label>
                           <div className="ci-segmented su-severity">
@@ -497,10 +514,11 @@ function SignupPage() {
                             ))}
                           </div>
                           <label>
-                            When did it start?
+                            When did it start? <span className="su-optional-tag">optional</span>
                             <input
                               type="date"
                               value={injury.reported_at}
+                              max={new Date().toISOString().slice(0, 10)}
                               onChange={(e) => updateInjury(i, "reported_at", e.target.value)}
                             />
                           </label>
@@ -509,6 +527,12 @@ function SignupPage() {
                       <button type="button" className="su-add" onClick={addInjury}>
                         + Add another
                       </button>
+                      <datalist id="su-injury-parts">
+                        {["Left knee", "Right knee", "Left IT band", "Right IT band", "Left shin", "Right shin",
+                          "Left calf", "Right calf", "Left Achilles", "Right Achilles", "Left ankle", "Right ankle",
+                          "Left foot", "Right foot", "Left hip", "Right hip", "Left hamstring", "Right hamstring",
+                          "Lower back"].map((p) => <option key={p} value={p} />)}
+                      </datalist>
                     </div>
                   )}
                 </section>

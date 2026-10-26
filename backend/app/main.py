@@ -112,7 +112,7 @@ def add_new_columns():
         for col, typ in [("busy_pct", "FLOAT"), ("freeway_crossings", "INTEGER"),
                          ("downtown_pct", "FLOAT"), ("turns_per_km", "FLOAT"), ("stem_km", "FLOAT"),
                          ("steepest_grade", "FLOAT"), ("start_label", "VARCHAR"), ("park_lat", "FLOAT"),
-                         ("park_lon", "FLOAT")]:
+                         ("park_lon", "FLOAT"), ("start_street", "VARCHAR")]:
             conn.execute(text(f"ALTER TABLE route ADD COLUMN IF NOT EXISTS {col} {typ}"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS quiet_streets BOOLEAN DEFAULT FALSE"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS shape_pref VARCHAR"))
@@ -437,9 +437,11 @@ def park_point(r, route):
 
 def park_fields(r, route) -> dict:
     if (getattr(r, "approach_km", 0) or 0) > 0:
-        return {"start_label": None, "park": None}
+        # running there from home: say where you join the route
+        return {"start_label": None, "park": None, "join_at": getattr(route, "start_street", None)}
     p = park_point(r, route)
-    return {"start_label": getattr(route, "start_label", None), "park": [p[0], p[1]] if p else None}
+    return {"start_label": getattr(route, "start_label", None), "park": [p[0], p[1]] if p else None,
+            "join_at": None}
 
 
 def start_at_park(path: list, r, route) -> list:
@@ -544,9 +546,9 @@ def unique_titles(cards: list) -> list:
     return cards
 
 class InjuryInput(BaseModel):
-    body_part: str
-    severity: str
-    reported_at: date_type
+    body_part: str = Field(min_length=1, max_length=60)
+    severity: Literal["mild", "moderate", "severe"] = "mild"
+    reported_at: Optional[date_type] = None     # left blank at signup = today
 
 
 class SignupRequest(BaseModel):
@@ -647,7 +649,7 @@ def signup(payload: SignupRequest, background: BackgroundTasks, session: Session
             user_id=user.id,
             body_part=injury.body_part,
             severity=injury.severity,
-            reported_at=injury.reported_at,
+            reported_at=min(injury.reported_at or date_type.today(), date_type.today()),
         ))
     session.commit()
 

@@ -5,6 +5,7 @@ import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { runPath, cumulativeMeters, metersBetween, formatNote, type PlanInput, type RunFormat } from "../utils/routeExport";
 import { API_URL } from "../utils/format";
+import RouteArrows from "../components/RouteArrows";
 
 type Cue = { text: string; street: string; icon: string; lat: number; lon: number };
 type PlacedCue = Cue & { at: number };   // meters from the start of the route
@@ -592,6 +593,9 @@ function FollowPage() {
         )}
         <Polyline positions={route} pathOptions={{ color: "#FFFFFF", weight: 11, opacity: 0.95 }} />
         <Polyline positions={route} pathOptions={{ color: "#93C5FD", weight: 6, opacity: 1 }} />
+        {/* which way to run it: along the route itself (out-and-backs: the way out) */}
+        <RouteArrows path={state.path} color="#1D4ED8"
+                     count={Math.min(12, Math.max(4, Math.round(cumulativeMeters(state.path).slice(-1)[0] / 600)))} />
         {started && (
           <Polyline positions={route.slice(0, progressIdx + 1)} pathOptions={{ color: "#1D4ED8", weight: 6, opacity: 1 }} />
         )}

@@ -122,6 +122,7 @@ class Route(SQLModel, table=True):
     start_label: Optional[str] = None          # where to park: "Fryman Trailhead" (scripts/update_starts.py)
     park_lat: Optional[float] = None
     park_lon: Optional[float] = None
+    start_street: Optional[str] = None         # nearest intersection to the start ("Colorado Blvd & Eagle Rock Blvd")
     surface_type: str        # "pavement" | "trail" | "track" | "mixed"
     difficulty: str          # "easy" | "moderate" | "hard"
     scenic: bool = Field(default=False)

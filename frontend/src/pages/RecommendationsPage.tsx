@@ -7,6 +7,7 @@ import L from "leaflet";
 import { useRouteActions } from "../components/RouteExportButtons";
 import { runPlan, type PlanInput } from "../utils/routeExport";
 import AdjustBar, { type Adjust, type TodayPrefs } from "../components/AdjustBar";
+import RouteArrows from "../components/RouteArrows";
 import { type GroupMatch, formatMeetTime, sessionTitle } from "./GroupsPage";
 import { API_URL } from "../utils/format";
 
@@ -92,6 +93,7 @@ type Recommendation = {
   turns_per_km?: number | null;
   stem_km?: number | null;
   start_label?: string | null;          // driving there: where to park
+  join_at?: string | null;              // running there: the intersection where you join the route
   park?: [number, number] | null;
   turnaround_km?: number | null;
   days_since_run?: number | null;
@@ -776,6 +778,7 @@ function RecommendationsPage() {
                     {/* one continuous line: from you (or home) along the streets to the start, then the route */}
                     <Polyline positions={fullLine(rec)} pathOptions={{ color: "#FFFFFF", weight: 9, opacity: 0.9 }} />
                     <Polyline positions={fullLine(rec)} pathOptions={{ color: "#2563EB", weight: 4.5, opacity: 1 }} />
+                    {rec.run_format !== "out_and_back" && <RouteArrows path={rec.path} count={4} />}
                     <CircleMarker
                       center={fullLine(rec)[0]}
                       radius={7}
@@ -843,6 +846,15 @@ function RecommendationsPage() {
                   <p className={`rec-park ${rec.park ? "" : "street"}`}>
                     <span className="rec-park-badge" aria-hidden="true">P</span>
                     {rec.park ? `Park at ${rec.start_label.replace(/^Parking: /, "")}. The route starts there.` : "Street parking near the start."}
+                  </p>
+                )}
+                {!rec.start_label && rec.join_at && (
+                  <p className="rec-park join">
+                    <span className="rec-park-badge" aria-hidden="true">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"
+                           strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+                    </span>
+                    Joins the route at {rec.join_at}.
                   </p>
                 )}
                 {runPlan(planInput(rec)).length > 0 && (

@@ -9137,3 +9137,10 @@ body::before {
 .rec-park-badge { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; flex-shrink: 0;
   background: #2563eb; color: #fff; font: 800 12px Inter, sans-serif; }
 .rec-park.street .rec-park-badge { background: #94a3b8; }
+
+.ac-privacy { margin: 4px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px;
+  font-size: 0.9rem; line-height: 1.5; color: var(--ink); opacity: .85; }
+.su-privacy { opacity: .8; }
+
+.route-arrow { background: none; border: 0; }
+.route-arrow svg { display: block; filter: drop-shadow(0 1px 2px rgba(15, 23, 42, .3)); }

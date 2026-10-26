@@ -59,6 +59,19 @@ function AccountPage() {
       <AvoidedRoutes />
 
       <section className="ac-card">
+        <h2>Your privacy</h2>
+        <ul className="ac-privacy">
+          <li><b>Home location</b> is only used to find routes near you. Other runners never see it, not even
+            in run-together groups (they see how far you are from the start, nothing more). A zip code or nearby
+            intersection works fine, and you can change it above.</li>
+          <li><b>Your live location</b> is used only if you allow it: to plan from where you are and to follow a
+            route. It isn't saved.</li>
+          <li><b>Check-ins, runs and notes</b> are used to pick your routes and aren't shared. Deleting your
+            account below removes all of it.</li>
+        </ul>
+      </section>
+
+      <section className="ac-card">
         <h2>Email</h2>
         <div className="ac-row">
           <span className="ac-email">{me?.email ?? "…"}</span>
