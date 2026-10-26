@@ -9299,3 +9299,38 @@ body::before {
 .recs-page .rec-map-wrap { width: 100%; height: auto; min-height: 210px; max-height: 380px; }
 .recs-page .rec-map-wrap::after { height: 26px; }
 @media (max-width: 560px) { .recs-page .rec-map-wrap { height: auto; min-height: 190px; max-height: 300px; } }
+
+
+/* Workout explainer on the check-in: a small card, not a paragraph */
+.ci-workout {
+  margin: 0.75rem 0 0;
+  padding: 0.85rem 0.95rem 0.8rem;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 9%, var(--card-bg)), var(--card-bg) 70%);
+  animation: ci-workout-in 0.18s ease-out;
+}
+@keyframes ci-workout-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+.ci-workout-head { display: flex; align-items: center; gap: 0.7rem; }
+.ci-workout-icon {
+  flex: none; display: grid; place-items: center;
+  width: 34px; height: 34px; border-radius: 10px;
+  background: var(--accent); color: #fff;
+  box-shadow: 0 4px 10px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.ci-workout-head strong { display: block; font-size: 0.95rem; color: var(--ink); line-height: 1.25; }
+.ci-workout-head small { display: block; font-size: 0.82rem; color: color-mix(in srgb, var(--ink) 62%, transparent); line-height: 1.35; margin-top: 1px; }
+.ci-workout-tags { list-style: none; margin: 0.7rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.ci-workout-tags li {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  padding: 0.28rem 0.6rem; border-radius: 999px;
+  font-size: 0.78rem; font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--card-bg));
+}
+.ci-workout-alt {
+  margin-top: 0.65rem; padding: 0; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 0.82rem; font-weight: 600; color: var(--accent);
+}
+.ci-workout-alt:hover { text-decoration: underline; text-underline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .ci-workout { animation: none; } }

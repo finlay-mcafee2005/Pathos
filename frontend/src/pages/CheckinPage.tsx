@@ -607,10 +607,38 @@ function CheckinPage() {
                   ))}
                 </div>
                 {runIntent === "workout" && (
-                  <p className="ci-intent-help">
-                    For a pace workout: we'll pick flat routes with even footing and few turns, so
-                    you can hold your speed. Tracks count. Want hills instead? Set Hills to "Want them".
-                  </p>
+                  <div className="ci-workout" aria-live="polite">
+                    <div className="ci-workout-head">
+                      <span className="ci-workout-icon" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          {hillsPref === "want"
+                            ? <path d="M3 19l6-9 4 5 3-4 5 8z" />
+                            : <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />}
+                        </svg>
+                      </span>
+                      <div>
+                        <strong>{hillsPref === "want" ? "Hill workout" : "Built for holding pace"}</strong>
+                        <small>{hillsPref === "want"
+                          ? "We'll find real climbs for repeats, on good footing."
+                          : "Routes where you can lock in and run even splits."}</small>
+                      </div>
+                    </div>
+                    <ul className="ci-workout-tags">
+                      {(hillsPref === "want"
+                        ? ["Real climbs", "Even footing", "Easy to repeat"]
+                        : ["Flat", "Even footing", "Few turns", "Tracks welcome"]).map((t) => (
+                        <li key={t}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+                          {t}
+                        </li>
+                      ))}
+                    </ul>
+                    <button type="button" className="ci-workout-alt"
+                      onClick={() => setHillsPref(hillsPref === "want" ? "" : "want")}>
+                      {hillsPref === "want" ? "Flat pace work instead" : "Doing hill repeats? Find hills"}
+                      <span aria-hidden="true"> →</span>
+                    </button>
+                  </div>
                 )}
 
                 <div className="ci-length">
