@@ -597,6 +597,28 @@ function RecommendationsPage() {
     await fetchRecommendations(unique);
   }
 
+  // Today's weather where the run starts. If the server couldn't reach the weather service it
+  // sends back the two Open-Meteo requests; the browser makes them (its own connection isn't
+  // rate-limited like the shared server's) and posts the answers back, which the server keeps.
+  async function loadWeather(where: string): Promise<Conditions | null> {
+    const res = await fetch(`${API_URL}/conditions/${userId}${where}`);
+    let c = res.ok ? await res.json() : null;
+    if (c?.unavailable) {
+      const [forecast, air] = await Promise.all([
+        fetch(c.forecast_url).then((r) => (r.ok ? r.json() : null)),
+        fetch(c.air_url).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      ]);
+      if (!forecast) return null;
+      const back = await fetch(`${API_URL}/conditions/${userId}${where}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ forecast, air }),
+      });
+      c = back.ok ? await back.json() : null;
+    }
+    return c && !c.unavailable ? c : null;
+  }
+
   async function fetchRecommendations(exclude: string[] = []) {
     if (!userId) {
       setError("No user found. Please log in again.");
@@ -611,6 +633,14 @@ function RecommendationsPage() {
       if (here) { params.set("lat", here[0].toFixed(5)); params.set("lon", here[1].toFixed(5)); }
       if (exclude.length) params.set("exclude", exclude.join(","));
       const where = params.toString() ? `?${params}` : "";
+      // weather first, so the picks can use it (the server can't always reach the weather
+      // service; then this page fetches it and hands it over). Never waits more than ~6 s.
+      const here2 = here ? `?lat=${here[0].toFixed(5)}&lon=${here[1].toFixed(5)}` : "";
+      const weather = await Promise.race([
+        loadWeather(here2).catch(() => null),
+        new Promise<null>((r) => setTimeout(() => r(null), 6000)),
+      ]);
+      if (weather) setConditions(weather);
       const response = await fetch(`${API_URL}/recommendations/${userId}${where}`);
       if (!response.ok) {
         const body = await response.json().catch(() => null);
@@ -625,32 +655,6 @@ function RecommendationsPage() {
         .then((res) => (res.ok ? res.json() : null))
         .then(setPrefs)
         .catch(() => setPrefs(null));
-      // weather: if the first try comes back empty (the weather service is slow at times), try once more
-      // if the server can't reach the weather service, it sends back the two Open-Meteo requests;
-      // the browser makes them (from the runner's own connection) and posts the answers back
-      const fromBrowser = async (c: { forecast_url: string; air_url: string }) => {
-        const [forecast, air] = await Promise.all([
-          fetch(c.forecast_url).then((r) => (r.ok ? r.json() : null)),
-          fetch(c.air_url).then((r) => (r.ok ? r.json() : null)).catch(() => null),
-        ]);
-        if (!forecast) return null;
-        const res = await fetch(`${API_URL}/conditions/${userId}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ forecast, air }),
-        });
-        return res.ok ? res.json() : null;
-      };
-      const loadConditions = (again: boolean) =>
-        fetch(`${API_URL}/conditions/${userId}`)
-          .then((res) => (res.ok ? res.json() : null))
-          .then(async (c) => {
-            if (c?.unavailable) c = await fromBrowser(c).catch(() => null);
-            if (c) setConditions(c);
-            else if (again) setTimeout(() => loadConditions(false), 2500);
-          })
-          .catch(() => { if (again) setTimeout(() => loadConditions(false), 2500); });
-      loadConditions(true);
       fetch(`${API_URL}/groups/${userId}`)
         .then((res) => (res.ok ? res.json() : null))
         .then((g) => setGroupToday(g?.today ?? null))

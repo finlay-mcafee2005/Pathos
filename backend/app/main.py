@@ -1144,8 +1144,8 @@ def get_my_club(user_id: UUID, session: Session = Depends(get_session),
 # ---------------------------------------------------------------------------
 
 @app.get("/conditions/{user_id}")
-def get_conditions(user_id: UUID, session: Session = Depends(get_session),
-        _me: UUID = Depends(require_self)):
+def get_conditions(user_id: UUID, lat: Optional[float] = None, lon: Optional[float] = None,
+        session: Session = Depends(get_session), _me: UUID = Depends(require_self)):
     """Weather / air / daylight for the user's home at the time they said
     they're running today. Returns null if there's no data (e.g. offline)."""
     user = session.get(User, user_id)
@@ -1157,7 +1157,7 @@ def get_conditions(user_id: UUID, session: Session = Depends(get_session),
         .order_by(Checkin.created_at.desc())
     ).first()
     run_time = (checkin.run_time if checkin else None) or "now"
-    lat, lon = weather_spot(user, checkin)
+    lat, lon = weather_spot(user, checkin, lat, lon)
     cond = fetch_conditions(lat, lon, run_time)
     if not cond:
         if lat is None:
@@ -1171,9 +1171,13 @@ def get_conditions(user_id: UUID, session: Session = Depends(get_session),
     return cond.to_dict()
 
 
-def weather_spot(user, checkin):
-    if checkin and checkin.start_lat is not None:            # planning from a place they picked
+def weather_spot(user, checkin, lat=None, lon=None):
+    """Same starting point the recommendations use: a place they picked at check-in,
+    else where they are now (if the page sent it), else home."""
+    if checkin and checkin.start_lat is not None and checkin.start_lon is not None:
         return checkin.start_lat, checkin.start_lon
+    if lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180:
+        return lat, lon
     return user.latitude, user.longitude
 
 
@@ -1183,7 +1187,8 @@ class BrowserWeather(BaseModel):
 
 
 @app.post("/conditions/{user_id}")
-def post_conditions(user_id: UUID, payload: BrowserWeather, session: Session = Depends(get_session),
+def post_conditions(user_id: UUID, payload: BrowserWeather, lat: Optional[float] = None,
+        lon: Optional[float] = None, session: Session = Depends(get_session),
         _me: UUID = Depends(require_self)):
     """Weather the browser fetched from Open-Meteo when the server couldn't. Checked to be
     for this user's spot, kept for the server's own lookups, and returned like GET."""
@@ -1195,7 +1200,7 @@ def post_conditions(user_id: UUID, payload: BrowserWeather, session: Session = D
         .where(Checkin.user_id == user_id, Checkin.checkin_date == date.today())
         .order_by(Checkin.created_at.desc())
     ).first()
-    lat, lon = weather_spot(user, checkin)
+    lat, lon = weather_spot(user, checkin, lat, lon)
     f = payload.forecast
     if lat is None or "hourly" not in f or abs((f.get("latitude") or 999) - lat) > 0.1 \
             or abs((f.get("longitude") or 999) - lon) > 0.1:
