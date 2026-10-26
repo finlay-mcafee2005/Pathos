@@ -1,3 +1,4 @@
+import { useState } from "react";
 // "Adjust and regenerate": tweak today's check-in right from the results
 // ("no hills", "a mile shorter", "out & back") or ask for 3 different routes,
 // without redoing the whole check-in.
@@ -65,28 +66,48 @@ function AdjustBar({ prefs, currentMiles, busy, onAdjust, onDifferent }: {
   onAdjust: (change: Adjust, label: string) => void;
   onDifferent: () => void;
 }) {
+  const [open, setOpen] = useState(false);
   if (!prefs) return null;
   const miles = prefs.planned_distance_miles ?? currentMiles;
+  const CLIMB_TXT: Record<string, string> = { under300: "<300 ft", "300_700": "300–700 ft", "700_1200": "700–1.2k ft", over1200: "1.2k+ ft" };
+  const active = [
+    prefs.hills_pref === "avoid" ? "Flatter" : prefs.hills_pref === "want" ? "Hillier" : null,
+    prefs.surface_preference === "road" ? "Road" : prefs.surface_preference === "trail" ? "Trail" : null,
+    prefs.shape_pref === "loop" ? "Loop" : prefs.shape_pref === "out_and_back" ? "Out & back" : null,
+    prefs.climb_range ? CLIMB_TXT[prefs.climb_range] : null,
+    prefs.quiet_streets ? "Quiet streets" : null,
+    prefs.wants_scenic ? "Scenic" : null,
+    prefs.no_laps ? "1 lap only" : null,
+  ].filter(Boolean) as string[];
   const flip = <K extends keyof Adjust>(key: K, value: Adjust[K], off: Adjust[K]): Adjust =>
     ({ [key]: prefs[key as keyof TodayPrefs] === value ? off : value } as Adjust);
   const half = (x: number) => Math.round(x * 2) / 2;
 
   return (
-    <section className="adj-card" aria-label="Fine-tune today's picks">
+    <section className={`adj-card ${open ? "open" : "closed"}`} aria-label="Fine-tune today's picks">
       <div className="adj-top">
-        <div>
-          <span className="adj-eyebrow">Fine-tune</span>
-          <h2 className="adj-heading">Not quite right? Adjust and get new picks.</h2>
-        </div>
-        <button type="button" className="adj-shuffle" onClick={onDifferent} disabled={busy}>
+        <button type="button" className="adj-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+          <span className="adj-toggle-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
+                 strokeLinecap="round" strokeLinejoin="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" />
+              <circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" /></svg>
+          </span>
+          <span className="adj-toggle-text">
+            <b>Adjust picks</b>
+            <small>{[miles != null ? `${miles.toFixed(1)} mi` : null, ...active].filter(Boolean).join(" · ") || "Hills, distance, surface, shape"}</small>
+          </span>
+          <span className={`chevron ${open ? "open" : ""}`} aria-hidden="true">▾</span>
+        </button>
+        <button type="button" className="adj-shuffle" onClick={onDifferent} disabled={busy} title="Show 3 routes you haven't seen yet">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
                strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" />
           </svg>
-          Show 3 different routes
+          <span>New routes</span>
         </button>
       </div>
 
+      {open && <>
       <div className="adj-grid">
         <Group label="Hills" busy={busy} onAdjust={onAdjust} opts={[
           { label: "Flatter", icon: "flat", on: prefs.hills_pref === "avoid", change: flip("hills_pref", "avoid", null) },
@@ -123,7 +144,8 @@ function AdjustBar({ prefs, currentMiles, busy, onAdjust, onDifferent }: {
           { label: "1 lap only", icon: "once", on: !!prefs.no_laps, change: { no_laps: !prefs.no_laps } },
         ]} />
       </div>
-      <p className="adj-foot">Tap again to turn an option off. Changes update today's check-in.</p>
+      <p className="adj-foot">Each change gets you new picks right away. Tap again to turn an option off.</p>
+      </>}
     </section>
   );
 }

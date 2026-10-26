@@ -121,6 +121,7 @@ function CheckinPage() {
   const [climbRange, setClimbRange] = useState<ClimbRange>("");
   const [startElsewhere, setStartElsewhere] = useState(false);
   const [startPoint, setStartPoint] = useState<StartPoint | null>(null);
+  const [showPrefs, setShowPrefs] = useState(false);
   const [shapePref, setShapePref] = useState<"" | "loop" | "out_and_back">("");
 
   // who you're running with today: just you, or one of your Run together groups
@@ -341,6 +342,16 @@ function CheckinPage() {
     const el = document.getElementById(`ci-step-${i}`);
     if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 140, behavior: "smooth" });
   }
+
+  const prefSummary = [
+    surfacePreference === "trail" ? "Trail" : surfacePreference === "road" ? "Road" : null,
+    hillsPref === "avoid" ? "Avoid hills" : hillsPref === "want" ? "Want hills" : null,
+    climbRange ? CLIMB_CHIPS.find(([v]) => v === climbRange)?.[1] + " ft" : null,
+    shapePref === "loop" ? "Loop" : shapePref === "out_and_back" ? "Out & back" : null,
+    wantsScenic ? "Scenic" : null,
+    noLaps ? "1 lap only" : null,
+    quietStreets ? "Quiet streets" : null,
+  ].filter(Boolean) as string[];
 
   const extras: string[] = [];
   if (soreNames.length > 0) extras.push("goes easy on the sore spots");
@@ -746,6 +757,21 @@ function CheckinPage() {
                       ))}
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* route preferences: optional, folded away with a summary of what's set */}
+              <div className="ci-group ci-prefs">
+                <button type="button" className="ci-prefs-toggle" aria-expanded={showPrefs}
+                        onClick={() => setShowPrefs(!showPrefs)}>
+                  <span className="ci-group-label">Route preferences</span>
+                  <span className="ci-prefs-summary">
+                    {prefSummary.length ? prefSummary.join(" · ") : "Optional: surface, hills, climb, shape"}
+                  </span>
+                  <span className={`chevron ${showPrefs ? "open" : ""}`} aria-hidden="true">▾</span>
+                </button>
+                {showPrefs && (
+                <div className="ci-rows">
                   <div className="ci-row">
                     <span className="ci-row-label">Surface</span>
                     <div className="ci-segmented compact">
@@ -848,6 +874,7 @@ function CheckinPage() {
                     </span>
                   </label>
                 </div>
+                )}
               </div>
 
               {/* note: tucked away until wanted */}

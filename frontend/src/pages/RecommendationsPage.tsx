@@ -436,6 +436,7 @@ function RecActions({ rec, saved, onSave, onLog }: {
   onSave: () => void;
   onLog: () => void;
 }) {
+  const [more, setMore] = useState(false);
   const { busy, handleFollow, handleGpx } = useRouteActions({
     routeId: rec.route_id,
     recommendationId: rec.recommendation_id,
@@ -454,57 +455,49 @@ function RecActions({ rec, saved, onSave, onLog }: {
   });
   const hasPath = rec.path.length > 1;
   return (
-    <div className="rec-actions-v2">
-      <div className="rec-main-actions">
-        {hasPath && (
-          <button className="rec-btn primary" onClick={handleFollow} disabled={busy !== null}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M8 5.5v13a1 1 0 001.5.86l10.5-6.5a1 1 0 000-1.72L9.5 4.64A1 1 0 008 5.5z" />
-            </svg>
-            {busy === "follow" ? "Loading..." : "Start route"}
-          </button>
-        )}
-        <button className="rec-btn secondary" onClick={onLog}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M5 12.5l4.5 4.5L19 7.5" />
+    <div className="rec-actions-v3">
+      {hasPath && (
+        <button className="rec-btn primary" onClick={handleFollow} disabled={busy !== null}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M8 5.5v13a1 1 0 001.5.86l10.5-6.5a1 1 0 000-1.72L9.5 4.64A1 1 0 008 5.5z" />
           </svg>
-          Log this run
+          {busy === "follow" ? "Loading..." : "Start route"}
         </button>
-        {rec.route_id && (
-          <button
-            className={`rec-btn ghost ${saved ? "saved" : ""}`}
-            aria-pressed={saved}
-            onClick={onSave}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill={saved ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true">
-              <path d="M12 20s-7-4.4-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.6-7 10-7 10z" />
-            </svg>
-            {saved ? "Saved" : "Save"}
-          </button>
+      )}
+      {rec.route_id && (
+        <button className={`rec-icon-btn ${saved ? "saved" : ""}`} aria-pressed={saved} onClick={onSave}
+                title={saved ? "Saved" : "Save route"} aria-label={saved ? "Saved" : "Save route"}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill={saved ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 20s-7-4.4-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.6-7 10-7 10z" />
+          </svg>
+        </button>
+      )}
+      <div className="rec-more">
+        <button className="rec-icon-btn" aria-expanded={more} aria-label="More options" title="More"
+                onClick={() => setMore(!more)}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <circle cx="5" cy="12" r="1.9" /><circle cx="12" cy="12" r="1.9" /><circle cx="19" cy="12" r="1.9" />
+          </svg>
+        </button>
+        {more && (
+          <div className="rec-more-menu" role="menu" onMouseLeave={() => setMore(false)}>
+            <button role="menuitem" onClick={() => { setMore(false); onLog(); }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+              Log this run
+            </button>
+            {hasPath && (
+              <button role="menuitem" onClick={() => { setMore(false); handleGpx(); }} disabled={busy !== null}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" /></svg>
+                {busy === "gpx" ? "Preparing GPX…" : "Download GPX (watch / app)"}
+              </button>
+            )}
+          </div>
         )}
       </div>
-
-      {hasPath && (
-        <div className="rec-take">
-          <span className="rec-take-label">Take it with you</span>
-          <div className="rec-take-tiles">
-            <button className="rec-tile" onClick={handleGpx} disabled={busy !== null}>
-              <span className="rec-tile-icon" aria-hidden="true">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
-                </svg>
-              </span>
-              <span className="rec-tile-text">
-                <strong>{busy === "gpx" ? "Preparing..." : "GPX file"}</strong>
-                <small>For your watch or running app</small>
-              </span>
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
+
 
 function RecommendationsPage() {
   const navigate = useNavigate();
@@ -637,18 +630,18 @@ function RecommendationsPage() {
       <header className="recs-intro">
         <div>
           <span className="ci-eyebrow">Today's routes · {today}</span>
-          <h1>
-            {count > 0
-              ? <>{count === 1 ? "One route" : `${["", "One", "Two", "Three", "Four", "Five"][count] ?? count} routes`} picked for how you feel.</>
-              : "Your routes for today."}
-          </h1>
-          <p>Ranked by how well each one fits your check-in. Open "Why this route" to see the reasoning.</p>
+          <h1>{count > 0 ? "Picked for how you feel." : "Your routes for today."}</h1>
+          <p>
+            {count > 0 && recommendations[0]?.origin_source === "chosen"
+              ? <>Planning from <b>{recommendations[0].origin_label ?? "your chosen start"}</b> · <Link to="/checkin">Change</Link></>
+              : "Best match first. Tap “Why this route” on any card to see the reasoning."}
+          </p>
         </div>
         <button className="recs-refresh" onClick={() => { setSeen([]); setAdjustMsg(null); fetchRecommendations(); }} disabled={loading}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={loading ? "spin" : ""}>
             <path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7" />
           </svg>
-          {loading ? "Scoring..." : "Refresh"}
+          <span className="recs-refresh-text">{loading ? "Scoring..." : "Refresh"}</span>
         </button>
       </header>
 
@@ -738,12 +731,6 @@ function RecommendationsPage() {
         );
       })()}
 
-      {count > 0 && recommendations[0]?.origin_source === "chosen" && (
-        <p className="recs-origin">
-          <span aria-hidden="true">📍</span> Planning from <b>{recommendations[0].origin_label ?? "your chosen start"}</b>
-          <Link to="/checkin" className="recs-origin-change">Change</Link>
-        </p>
-      )}
       {count > 0 && (
         <AdjustBar
           prefs={prefs}
@@ -808,11 +795,6 @@ function RecommendationsPage() {
                 </div>
 
                 {headline && <p className="rec-why">{headline}</p>}
-                {(rec.score_breakdown?.mud ?? 0) <= -1 ? (
-                  <p className="rec-alert">Recent rain: {rec.surface_type === "trail" ? "the trail" : "the dirt sections"} may be wet or muddy. Watch your footing on the downhills.</p>
-                ) : (rec.score_breakdown?.wet ?? 0) <= -1 && (
-                  <p className="rec-alert">Recent rain: the steep downhill may be slick. Shorten your stride and take it easy going down.</p>
-                )}
 
                 <div className="rec-splits">
                   <div>
@@ -849,31 +831,39 @@ function RecommendationsPage() {
                   </div>
                 </div>
 
+                {/* the practical bits, one tidy list: how to run it, where to start, heads-ups */}
+                <div className="rec-info">
                 {rec.start_label && (
-                  <p className={`rec-park ${rec.park ? "" : "street"}`}>
-                    <span className="rec-park-badge" aria-hidden="true">P</span>
-                    {rec.park ? `Park at ${rec.start_label.replace(/^Parking: /, "")}. The route starts there.` : "Street parking near the start."}
-                  </p>
-                )}
-                {!rec.start_label && rec.join_at && (
-                  <p className="rec-park join">
-                    <span className="rec-park-badge" aria-hidden="true">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"
-                           strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-                    </span>
-                    Joins the route at {rec.join_at}.
-                  </p>
-                )}
-                {runPlan(planInput(rec)).length > 0 && (
-                  <ol className="rec-plan" aria-label="How to run it">
-                    {runPlan(planInput(rec)).map((step, i) => (
-                      <Fragment key={i}>
-                        {i > 0 && <li className="rec-plan-arrow" aria-hidden="true">→</li>}
-                        <li>{step.charAt(0).toUpperCase() + step.slice(1)}</li>
-                      </Fragment>
-                    ))}
-                  </ol>
-                )}
+                    <p className={`rec-park ${rec.park ? "" : "street"}`}>
+                      <span className="rec-park-badge" aria-hidden="true">P</span>
+                      {rec.park ? `Park at ${rec.start_label.replace(/^Parking: /, "")}. The route starts there.` : "Street parking near the start."}
+                    </p>
+                  )}
+                  {!rec.start_label && rec.join_at && (
+                    <p className="rec-park join">
+                      <span className="rec-park-badge" aria-hidden="true">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"
+                             strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+                      </span>
+                      Joins the route at {rec.join_at}.
+                    </p>
+                  )}
+                  {runPlan(planInput(rec)).length > 0 && (
+                    <ol className="rec-plan" aria-label="How to run it">
+                      {runPlan(planInput(rec)).map((step, i) => (
+                        <Fragment key={i}>
+                          {i > 0 && <li className="rec-plan-arrow" aria-hidden="true">→</li>}
+                          <li>{step.charAt(0).toUpperCase() + step.slice(1)}</li>
+                        </Fragment>
+                      ))}
+                    </ol>
+                  )}
+                {(rec.score_breakdown?.mud ?? 0) <= -1 ? (
+                    <p className="rec-alert">Recent rain: {rec.surface_type === "trail" ? "the trail" : "the dirt sections"} may be wet or muddy. Watch your footing on the downhills.</p>
+                  ) : (rec.score_breakdown?.wet ?? 0) <= -1 && (
+                    <p className="rec-alert">Recent rain: the steep downhill may be slick. Shorten your stride and take it easy going down.</p>
+                  )}
+                </div>
 
                 <RecActions
                   rec={rec}
