@@ -766,7 +766,7 @@ function CheckinPage() {
                         onClick={() => setShowPrefs(!showPrefs)}>
                   <span className="ci-group-label">Route preferences</span>
                   <span className="ci-prefs-summary">
-                    {prefSummary.length ? prefSummary.join(" · ") : "Optional: surface, hills, climb, shape"}
+                    {prefSummary.length ? prefSummary.join(" · ") : "Surface, hills, climb, shape"}
                   </span>
                   <span className={`chevron ${showPrefs ? "open" : ""}`} aria-hidden="true">▾</span>
                 </button>
@@ -805,7 +805,7 @@ function CheckinPage() {
                   <div className="ci-row">
                     <span className="ci-row-label">
                       Total climb
-                      <small>{climbRange ? "Feet, for the whole run" : "Optional: pick a range in feet"}</small>
+                      <small>Feet, for the whole run</small>
                     </span>
                     <div className="ci-segmented compact">
                       {CLIMB_CHIPS.map(([v, label]) => (
