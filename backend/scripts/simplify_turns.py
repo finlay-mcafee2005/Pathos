@@ -10,6 +10,8 @@ old length. Trails, out-and-backs and lollipops are left alone.
 
 Needs scripts/.shade_cache/network.pkl. Run from backend/:
     python3 scripts/simplify_turns.py --cache --preview          # try on the audit cache, drawings only
+    (add --strong for the harder second pass on road and mixed routes; its undo is separate:
+     --strong --undo)
     DATABASE_URL=... python3 scripts/simplify_turns.py --preview # drawings, nothing saved
     DATABASE_URL=... python3 scripts/simplify_turns.py           # save
     DATABASE_URL=... python3 scripts/simplify_turns.py --undo    # put the old lines back
@@ -223,8 +225,11 @@ def simplify(coords, surface, net, spacing):
         return None
     if mess_score(new, surface) > mess_score(coords, surface):
         return None
-    m = shape_metrics(new)
-    if m and (m["cross"] > (shape_metrics(coords) or {"cross": 0})["cross"]):
+    m, m0 = shape_metrics(new), shape_metrics(coords)
+    # fewer turns mustn't buy a messier shape: no new crossings, no new stretches run twice,
+    # no new places where the line comes back to touch itself
+    if m and m0 and (m["cross"] > m0["cross"] or m["stretches"] > m0["stretches"]
+                     or m["contacts"] > m0["contacts"]):
         return None
     t0, t1 = count_turns(coords), count_turns(new)
     if t0 - t1 < max(3, 0.15 * t0):
@@ -248,20 +253,44 @@ def overlap_share(coords):
     return hits / max(1, len(pts))
 
 
+# --strong: a second, harder pass (turns cost twice as much, longer stretches redrawn,
+# up to 15% change in length, mixed routes too, two rounds)
+STRONG = "--strong" in sys.argv
+if STRONG:
+    TURN_COST = 300
+    SPACINGS = (900, 1500, 2200, 3000)
+    SEG_STRETCH = (0.7, 1.15)
+    TOTAL_STRETCH = (0.85, 1.15)
+    BACKUP = os.path.join(HERE, "simplify_turns_strong_backup.json")
+
 NET = None
 
 
 def _one(args):
     coords, surface = args
-    if surface != "pavement":
+    if surface not in (("pavement", "mixed") if STRONG else ("pavement",)):
         return None
+    if STRONG:
+        cur, first, last, changed = coords, None, None, False
+        for _ in range(2):
+            r = _one_round(cur, surface)
+            if not r:
+                break
+            cur, changed = r[0], True
+            first = r[1] if first is None else first
+            last = r[2]
+        return (cur, first, last) if changed else None
+    return _one_round(coords, surface)
+
+
+def _one_round(coords, surface):
     loop = dist_m(coords[0], coords[-1]) < 50
     if not loop or overlap_share(coords) > 0.3:
         return None          # out-and-backs and lollipops (much of the line run twice): leave alone
     best = None
-    for s in SPACINGS:
+    for sp in SPACINGS:
         try:
-            r = simplify(coords, surface, NET, s)
+            r = simplify(coords, surface, NET, sp)
         except Exception:
             r = None
         if r and (best is None or r[2] < best[2]):
@@ -316,7 +345,7 @@ def main():
     else:
         if "DATABASE_URL" not in os.environ:
             sys.exit('DATABASE_URL isn\'t set. Run: export DATABASE_URL="<your Supabase link>"')
-        engine = create_engine(os.environ["DATABASE_URL"])
+        engine = create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True)
         with engine.connect() as conn:
             raw = conn.execute(text("SELECT id, COALESCE(nickname, name), distance_km, surface_type, "
                                     "ST_AsText(gps_path) FROM route WHERE NOT COALESCE(hidden, FALSE)")).all()
@@ -350,11 +379,22 @@ def main():
     for rid, name, km, oc, *_ in changes:
         old.setdefault(str(rid), [to_wkt(oc), km])
     json.dump(old, open(BACKUP, "w"))
-    with engine.begin() as conn:
-        for rid, name, km, oc, new, t0, t1 in changes:
-            conn.execute(text("UPDATE route SET gps_path = ST_GeomFromText(:w, 4326), distance_km = :d, "
-                              "shade_pct = NULL WHERE id = :id"),
-                         {"w": to_wkt(new), "d": round(length_m(new) / 1000, 3), "id": rid})
+    import time
+    rows_out = [{"w": to_wkt(new), "d": round(length_m(new) / 1000, 3), "id": rid}
+                for rid, name, km, oc, new, t0, t1 in changes]
+    for k in range(0, len(rows_out), 100):           # in batches, retrying if Supabase drops us
+        for attempt in range(1, 5):
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text("UPDATE route SET gps_path = ST_GeomFromText(:w, 4326), distance_km = :d, "
+                                      "shade_pct = NULL WHERE id = :id"), rows_out[k:k + 100])
+                break
+            except Exception:
+                if attempt == 4:
+                    raise
+                print(f"  database connection dropped, retrying ({attempt}/3)...")
+                engine.dispose()
+                time.sleep(3)
     print(f"\nSimplified {len(changes)} routes. Now run the re-measure scripts listed at the top of this file.")
 
 
