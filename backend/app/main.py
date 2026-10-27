@@ -199,39 +199,37 @@ def display_name(name: str) -> str:
 KIND_WORDS = {"loop", "trail", "trails", "out-and-back", "path", "route", "green", "long", "short",
               "medium", "central", "north", "south", "east", "west", "upper", "lower", "motorway",
               "fire", "road", "/"}
-PLACE_PREFIX = {"mount", "mt", "lake", "old", "big", "little", "upper", "lower", "san", "santa",
-                "los", "la", "el", "rose", "silver", "eagle", "echo", "highland", "glassell",
-                "atwater", "north", "south", "east", "west", "elysian", "griffith", "lincoln",
-                "montecito", "mount"}
-
-
-def _place(part: str) -> str:
-    """The place in a route name: 'Mount Washington Elyria Loop' -> 'Mount Washington',
-    'Fryman Canyon Trail' -> 'Fryman'."""
+def _place(part: str) -> list:
+    """The place words in a route name, up to two: 'Mount Washington Elyria Loop' ->
+    ['Mount', 'Washington'], 'Valle Vista Motorway' -> ['Valle', 'Vista']."""
     words = [w for w in part.replace("–", " ").split() if w.lower() not in KIND_WORDS]
-    if not words:
-        return part.split()[0] if part.split() else ""
-    if len(words) > 1 and (words[0].lower() in PLACE_PREFIX
-                           or words[1].lower() in ("park", "canyon", "heights", "hills", "village")):
-        return f"{words[0]} {words[1]}"
-    return words[0]
+    return (words or part.split())[:2]
 
 
 def combined_name(parts: list) -> str:
     """Two or three routes run together: one short name, 'A–B Loop' (four words at most,
-    no '+'), e.g. 'Fryman Canyon Trail + Coldwater Loop' -> 'Fryman–Coldwater Route'."""
+    no '+'), e.g. 'Fryman Canyon Trail + Coldwater Loop' -> 'Fryman Canyon–Coldwater Route'.
+    Uses as much of the first two places as fits; a third place is left out."""
     places = []
     for p in parts:
         pl = _place(p)
-        if pl and pl.split()[0].lower() not in [x.split()[0].lower() for x in places]:
+        if pl and pl[0].lower() not in [x[0].lower() for x in places]:
             places.append(pl)
     kinds = [p.split()[-1].lower() if p.split() else "" for p in parts]
     kind = "Loop" if all(k == "loop" for k in kinds) else "Trails" if all(k == "trail" for k in kinds) else "Route"
-    for n in (2, 1):                       # two places if it fits in four words, else one
-        name = "–".join(places[:n]) + f" {kind}"
+    if not places:
+        return kind
+    a = places[0]
+    b = places[1] if len(places) > 1 else []
+    # most words first: both places in full, then shorter versions, until it's 4 words or less
+    for na, nb in ((len(a), len(b)), (len(a), 1), (1, len(b)), (1, 1), (len(a), 0), (1, 0)):
+        if nb > len(b):
+            continue
+        first = " ".join(a[:na])
+        name = f"{first}–{' '.join(b[:nb])} {kind}" if nb else f"{first} {kind}"
         if len(name.split()) <= 4:
             return name
-    return f"{places[0].split()[0]} {kind}" if places else kind
+    return f"{a[0]} {kind}"
 
 
 @app.get("/recommendations/{user_id}")
