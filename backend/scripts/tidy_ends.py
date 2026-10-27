@@ -5,8 +5,13 @@ Tidy two leftovers that make a route look odd, on every kind of route (trails to
    on another one nearby, so the first and last few hundred metres draw a small box
    before the real loop. That box becomes a plain way in and out: the way back to the
    start follows the way out (a short stem), so the route is one clean loop.
-2. Short, straight dead-end dashes anywhere on a loop (out along a street or path and
+2. Dead-end tails: anywhere on a loop, a stretch run out and straight back the same way
+   (up to 2 km each way). And short, straight dead-end dashes anywhere on a loop (out along a street or path and
    back, maybe on the other side of it), which the first spur cleanup missed.
+
+3. A "loop" that's really out one side of a street or path and back the other side,
+   with little jogs where it crosses over: it becomes one line out and back (the way
+   with the fewest turns), so it's a plain out-and-back.
 
 Run from backend/:
     python3 scripts/tidy_ends.py --cache --preview            # try on the audit cache
@@ -116,16 +121,115 @@ def end_spurs(pts, join_m=14):
     return [pts[k] for k in keep], cut
 
 
+def dead_ends(pts):
+    """Long dead-end tails on a loop: the line goes out along a street or trail and comes
+    straight back along the very same way (up to 2 km each way). Only exact retraces count,
+    so switchbacks and hairpins (whose legs are apart) are never touched."""
+    cum = cumulative(pts)
+    total = cum[-1]
+    keep, cut, i = [], 0.0, 0
+    old = spurs.RETRACE_M
+    spurs.RETRACE_M = 12
+    try:
+        while i < len(pts):
+            keep.append(i)
+            best = None
+            if i > 0:
+                k = i + 8
+                while k < len(pts) - 1 and cum[k] - cum[i] <= 4000:
+                    if cum[k] - cum[i] >= 150 and dist_m(pts[i], pts[k]) < 12 \
+                            and spurs.is_retrace(pts, cum, i, k):
+                        best = k
+                    k += 1
+            if best is not None and cut + cum[best] - cum[i] <= 0.35 * total:
+                cut += cum[best] - cum[i]
+                i = best + 1
+            else:
+                i += 1
+    finally:
+        spurs.RETRACE_M = old
+    if keep[-1] != len(pts) - 1:
+        keep.append(len(pts) - 1)
+    return [pts[k] for k in keep], cut
+
+
+SIDE_M = 45            # the way back runs this close to the way out (other side of the street)
+SIDE_SHARE = 0.85     # ...for this much of the route = it's really an out-and-back
+NET = None            # street network, for redrawing the way out (loaded once, in main)
+
+
+def side_share(pts, cum, near=SIDE_M):
+    """Share of the line that has another part of the route (300 m+ further along) within
+    `near`: near 1 = out one side of a street or path and back the other side."""
+    import math as _m
+    SIDE = near
+    cell = SIDE
+    kx = 111320 * _m.cos(_m.radians(pts[0][1]))
+    grid = {}
+    xy = [(x * kx, y * 110540) for x, y in pts]
+    for k, (x, y) in enumerate(xy):
+        grid.setdefault((int(x // cell), int(y // cell)), []).append(k)
+    hits = 0
+    for k, (x, y) in enumerate(xy):
+        gx, gy = int(x // cell), int(y // cell)
+        if any(abs(cum[j] - cum[k]) > 300 and _m.hypot(xy[j][0] - x, xy[j][1] - y) < SIDE
+               for dx in (-1, 0, 1) for dy in (-1, 0, 1) for j in grid.get((gx + dx, gy + dy), ())):
+            hits += 1
+    return hits / len(pts)
+
+
+def collapse_sides(pts):
+    """A 'loop' that's really out one side of a street and back the other (with little jogs
+    where it crosses over): make it a plain out-and-back on one line, the way with the
+    fewest turns from the start to the far end, then back the same way."""
+    cum = cumulative(pts)
+    if cum[-1] < 800 or side_share(pts, cum) < SIDE_SHARE:
+        return None
+    if side_share(pts, cum, 6) >= 0.6:
+        return None               # already a clean out-and-back (back the very same way)
+    # the far end: where the way out turns into the way back - around halfway along, the
+    # point farthest from the start
+    mid = [k for k in range(len(pts)) if 0.3 * cum[-1] <= cum[k] <= 0.7 * cum[-1]]
+    far = max(mid, key=lambda k: dist_m(pts[0], pts[k]))
+    out = pts[:far + 1]
+    if NET is not None:
+        import simplify_turns as st
+        a, b = st.snap(pts[0], NET), st.snap(pts[far], NET)
+        if a is not None and b is not None and a != b:
+            res = st.fewest_turns(NET, a, b, None, None, cum[far] * 1.15)
+            if res and 0.8 * cum[far] <= res[1] <= 1.15 * cum[far] and \
+                    st.count_turns(res[0]) <= st.count_turns(out):
+                out = [pts[0]] + list(res[0]) + [pts[far]]
+    if len(out) < 2:
+        return None
+    line = out + list(reversed(out))[1:]
+    # the one line must still cover the whole route (nothing cut off, no bit left out)
+    from shapely.geometry import LineString, Point
+    kx = 111320 * math.cos(math.radians(pts[0][1]))
+    ls = LineString([(x * kx, y * 110540) for x, y in out])
+    covered = sum(ls.distance(Point(x * kx, y * 110540)) <= 50 for x, y in pts[::3]) / len(pts[::3])
+    return line if covered >= 0.97 else None
+
+
 def tidy(coords, surface):
     if dist_m(coords[0], coords[-1]) > 50:
         return None              # out-and-backs and one-way trails: their ends are the point
     pts = densify(coords, 10.0)
     changed = []
+    straight = collapse_sides(pts)
+    if straight:
+        L0 = length_m(coords)
+        if 0.85 * L0 <= length_m(straight) <= 1.15 * L0:   # one line, not a shortcut
+            return straight, ["one line out and back"]
     # the dash must come back to (almost) the same spot: switchback legs are 15 m+ apart on a
     # hillside, and jumping across them would cut the slope
     new, cut = end_spurs(pts, 9 if surface == "trail" else 14)
     if cut >= 60:
         changed.append(f"spur {cut:.0f} m")
+        pts = new
+    new, cut = dead_ends(pts)
+    if cut >= 150:
+        changed.append(f"dead end {cut:.0f} m")
         pts = new
     box = fix_start_box(pts)
     if box:
@@ -136,7 +240,8 @@ def tidy(coords, surface):
     if mess_score(pts, surface) > mess_score(coords, surface) + 1.0:   # a stem adds a little overlap
         return None
     L0, L1 = length_m(coords), length_m(pts)
-    if not (0.8 * L0 <= L1 <= 1.1 * L0) or dist_m(pts[0], coords[0]) > 60:
+    if not ((0.62 if any(c.startswith("dead end") for c in changed) else 0.8) * L0 <= L1 <= 1.1 * L0) \
+            or dist_m(pts[0], coords[0]) > 60:
         return None
     # thin the 10 m points back out on straight bits
     from shapely.geometry import LineString
@@ -210,6 +315,10 @@ def main():
     if "--only" in sys.argv:
         word = sys.argv[sys.argv.index("--only") + 1].lower()
         rows = [r for r in rows if word in (r[1] or "").lower()]
+    global NET
+    import simplify_turns as st
+    print("Loading the street network...", flush=True)
+    NET = st.load_network()
     from multiprocessing import get_context
     print(f"Checking {len(rows)} routes...", flush=True)
     with get_context("fork").Pool(max(1, os.cpu_count() or 2)) as pool:
@@ -217,8 +326,10 @@ def main():
     changes = [(rid, name, km, coords, res[0], res[1])
                for (rid, name, km, surf, coords), res in zip(rows, results) if res]
     boxes = sum("start box" in c[5] for c in changes)
+    lines = sum("one line out and back" in c[5] for c in changes)
+    print(f"  ({lines} two-sided loops made into one line out and back)")
     print(f"\n{len(rows)} routes checked; {len(changes)} tidied "
-          f"({boxes} start boxes, {len(changes) - boxes} with only a dead-end dash).")
+          f"({boxes} start boxes, {lines} made one line, {len(changes) - boxes - lines} with dead ends / dashes).")
     for rid, name, km, old, new, what in changes[:30]:
         print(f"  {(name or '')[:42]:<42} {', '.join(what)}")
     if "--preview" in sys.argv or "--dry-run" in sys.argv or use_cache:
