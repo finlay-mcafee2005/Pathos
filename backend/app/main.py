@@ -37,7 +37,7 @@ from app.scoring.converters import (
     build_user_profile, build_daily_checkin,
     build_recent_runs, build_route_candidates,
 )
-from app.scoring.route_combiner import generate_combined_routes
+from app.scoring.route_combiner import generate_combined_routes, get_route_coords, load_routes
 from app.scoring.fallbacks import (needs_gentler, add_gentler, GENTLE_EXTRA_KM, GENTLE_NOTE,
                                   wants_challenge, add_challenge, CHALLENGE_NOTE,
                                   drop_weak, match_pct, weak_match_note, LOW_MATCH_PCT)
@@ -284,7 +284,7 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
     ).all()
     nearby_ids = [row[0] for row in nearby_route_ids]
 
-    routes = session.exec(select(Route).where(Route.id.in_(nearby_ids))).all()
+    routes = load_routes(session, nearby_ids)
     routes = [r for r in routes if str(r.id) not in excluded]
 
     # Travel limit is a hard rule. If fewer than 3 routes start inside it, add the
@@ -338,7 +338,7 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             "lon": origin_lon, "lat": origin_lat,
             "max_distance_m": (effective_radius_km + GENTLE_EXTRA_KM) * 1000,
         }).all()]
-        extra = [r for r in session.exec(select(Route).where(Route.id.in_(wider_ids))).all()
+        extra = [r for r in load_routes(session, wider_ids)
                  if str(r.id) not in route_by_id]
         if extra:
             results = add_gentler(results, user_profile, daily_checkin, recent_runs,
@@ -396,9 +396,7 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
         full = start_at_park([
             [lat, lon]
             for lon, lat in (
-                route_by_id[r.route.id].coords
-                if hasattr(route_by_id[r.route.id], "coords")
-                else to_shape(route_by_id[r.route.id].gps_path).coords
+                get_route_coords(route_by_id[r.route.id])
             )
         ], r, route_by_id[r.route.id])
         line = out_part(full, r.turnaround_km)
@@ -488,7 +486,7 @@ def closest_routes(session, lat, lon, exclude: set, n: int) -> list:
         LIMIT :n
     """), params={"lon": lon, "lat": lat, "n": n + len(exclude)}).all()
     ids = [r[0] for r in rows if str(r[0]) not in exclude][:n]
-    return session.exec(select(Route).where(Route.id.in_(ids))).all() if ids else []
+    return load_routes(session, ids)
 
 
 def park_point(r, route):
@@ -1111,8 +1109,8 @@ def import_run_file(payload: ImportRunRequest, session: Session = Depends(get_se
         ids = [row[0] for row in nearby]
         if ids:
             candidates = []
-            for r in session.exec(select(Route).where(Route.id.in_(ids))).all():
-                path = [(lat, lon) for lon, lat in to_shape(r.gps_path).coords]
+            for r in load_routes(session, ids):
+                path = [(lat, lon) for lon, lat in get_route_coords(r)]
                 candidates.append((str(r.id), display_name(r.nickname or r.name), path))
             match = match_route(track, candidates)
 
@@ -1621,7 +1619,7 @@ def list_favorites(user_id: UUID, session: Session = Depends(get_session),
             "times_run": times_run,
             "saved_at": fav.created_at.isoformat(),
             # [lat, lon] points, thinned to ~80 so the response stays small
-            "path": _thin_path([[lat, lon] for lon, lat in to_shape(route.gps_path).coords]),
+            "path": _thin_path([[lat, lon] for lon, lat in get_route_coords(route)]),
         })
     return result
 
@@ -1832,7 +1830,7 @@ def run_group_recommendations(group_id: UUID, user_id: UUID, session: Session = 
             ST_StartPoint(gps_path)::geography,
             ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography, :m)
     """), params={"lon": center[1], "lat": center[0], "m": search_km * 1000}).all()]
-    routes = session.exec(select(Route).where(Route.id.in_(ids))).all() if ids else []
+    routes = load_routes(session, ids)
 
     if g.meet_lat is None and routes:
         # fair for everyone: each member's own travel limit, measured from their home
@@ -1871,7 +1869,7 @@ def run_group_recommendations(group_id: UUID, user_id: UUID, session: Session = 
                 "name": f.name, "fit": f.fit, "reason": f.reason, "extra_laps": f.extra_laps,
                 "start_mi": start_km_for(route_by_id[p.route.id], h),
             } for f, h in zip(p.members, homes)],
-            "path": [[lat, lon] for lon, lat in to_shape(route_by_id[p.route.id].gps_path).coords],
+            "path": [[lat, lon] for lon, lat in get_route_coords(route_by_id[p.route.id])],
         } for p in picks],
     }
 

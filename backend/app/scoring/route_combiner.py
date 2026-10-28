@@ -35,22 +35,49 @@ def path_length_km(coords):
 
 
 
-_coords_cache: dict = {}
+_coords_cache: dict = {}     # route id -> (when fetched, [(lon, lat), ...])
+COORDS_TTL_S = 6 * 3600      # re-read a route's line after this (routes change when the scripts run)
 
 
 def get_route_coords(route):
     """Works for both real SQLModel Route objects and CombinedRoute objects.
-    Real routes' geometry is parsed once and cached (paths don't change while
-    the server runs), which saves re-parsing hundreds of paths per request."""
+    Real routes' lines are kept in memory, so they're downloaded from the database once
+    (every few hours), not on every request: that download is most of the app's data use."""
     if hasattr(route, "coords"):
         return route.coords
+    import time
     key = str(route.id)
-    cached = _coords_cache.get(key)
-    if cached is None:
+    hit = _coords_cache.get(key)
+    if hit is None or time.time() - hit[0] > COORDS_TTL_S:
         from geoalchemy2.shape import to_shape
-        cached = list(to_shape(route.gps_path).coords)
-        _coords_cache[key] = cached
-    return cached
+        hit = (time.time(), list(to_shape(route.gps_path).coords))   # (lazy-loads if deferred)
+        _coords_cache[key] = hit
+    return hit[1]
+
+
+def load_routes(session, ids) -> list:
+    """Route rows for these ids WITHOUT their lines (the big part), plus one query for just
+    the lines we don't already have in memory."""
+    import time
+    from sqlalchemy import text
+    from sqlalchemy.orm import defer
+    from sqlmodel import select
+    from shapely import wkb
+    from app.models import Route
+    ids = list(ids)
+    if not ids:
+        return []
+    routes = session.exec(select(Route).options(defer(Route.gps_path)).where(Route.id.in_(ids))).all()
+    now = time.time()
+    missing = [str(r.id) for r in routes
+               if str(r.id) not in _coords_cache or now - _coords_cache[str(r.id)][0] > COORDS_TTL_S]
+    if missing:
+        rows = session.exec(text("SELECT id::text, ST_AsBinary(gps_path) FROM route "
+                                 "WHERE id = ANY(CAST(:ids AS uuid[]))"), params={"ids": missing}).all()
+        for rid, blob in rows:
+            if blob is not None:
+                _coords_cache[rid] = (now, list(wkb.loads(bytes(blob)).coords))
+    return routes
 
 
 class CombinedRoute:

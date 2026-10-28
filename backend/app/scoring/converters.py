@@ -15,6 +15,7 @@ from app.scoring.engine import (
     UserProfile, DailyCheckin, RecentRuns, RouteCandidate,
 )
 from app.scoring.personalization import RunRecord
+from app.scoring.route_combiner import load_routes   # route rows without their lines
 
 
 def build_user_profile(session: Session, user: User) -> UserProfile:
@@ -98,7 +99,7 @@ def build_recent_runs(session: Session, user_id) -> RecentRuns:
     routes_by_id = {}
     if route_ids:
         routes_by_id = {
-            rt.id: rt for rt in session.exec(select(Route).where(Route.id.in_(route_ids))).all()
+            rt.id: rt for rt in load_routes(session, route_ids)
         }
     history = []
     for r in all_runs:
