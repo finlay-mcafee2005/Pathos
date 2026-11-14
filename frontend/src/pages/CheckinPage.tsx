@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import ClimbSlider from "../components/ClimbSlider";
+import { climbShort, climbWords, normalizeClimb } from "../climb";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import BodyMap from "../components/BodyMap";
 import StartPicker, { type StartPoint } from "../components/StartPicker";
@@ -72,14 +74,7 @@ const RUN_TIMES: { value: "now" | "morning" | "midday" | "evening"; label: strin
   { value: "midday", label: "Midday", phrase: " around midday", when: "Around noon" },
   { value: "evening", label: "Evening", phrase: " this evening", when: "Around 6 pm" },
 ];
-type ClimbRange = "" | "under300" | "300_700" | "700_1200" | "over1200";
-const CLIMB_CHIPS: [ClimbRange, string][] = [
-  ["", "Any"], ["under300", "<300"], ["300_700", "300–700"], ["700_1200", "700–1.2k"], ["over1200", "1.2k+"],
-];
-const CLIMB_WORDS: Record<string, string> = {
-  under300: "under 300 ft of climbing", "300_700": "300–700 ft of climbing",
-  "700_1200": "700–1,200 ft of climbing", over1200: "1,200+ ft of climbing",
-};
+type ClimbRange = string;   // "" (any), "LO_HI" or "LO_max" feet, from the slider (see climb.ts)
 
 const DRIVE_CHIPS: { label: string; value: string }[] = [
   { label: "Near home", value: "" },
@@ -230,7 +225,7 @@ function CheckinPage() {
     setHillsPref(last.hills_pref ?? "");
     setQuietStreets(!!last.quiet_streets);
     setNoLaps(!!last.no_laps);
-    setClimbRange(last.climb_range ?? "");
+    setClimbRange(normalizeClimb(last.climb_range));
     setShapePref(last.shape_pref ?? "");
     setCopied(true);
   }
@@ -351,7 +346,7 @@ function CheckinPage() {
   const prefSummary = [
     surfacePreference === "trail" ? "Trail" : surfacePreference === "road" ? "Road" : null,
     hillsPref === "avoid" ? "Avoid hills" : hillsPref === "want" ? "Want hills" : null,
-    climbRange ? CLIMB_CHIPS.find(([v]) => v === climbRange)?.[1] + " ft" : null,
+    climbShort(climbRange) || null,
     shapePref === "loop" ? "Loop" : shapePref === "out_and_back" ? "Out & back" : null,
     wantsScenic ? "Scenic" : null,
     noLaps ? "1 lap only" : null,
@@ -363,7 +358,7 @@ function CheckinPage() {
   if (wantsScenic) extras.push("has a view");
   if (quietStreets) extras.push("sticks to quiet side streets");
   if (noLaps) extras.push("never repeats a loop");
-  if (climbRange) extras.push(`has ${CLIMB_WORDS[climbRange]}`);
+  if (climbRange) extras.push(`has ${climbWords(climbRange)}`);
   if (shapePref === "out_and_back") extras.push("is an out-and-back");
   if (shapePref === "loop") extras.push("is a loop");
   if (wantsAdventure) extras.push("is somewhere new");
@@ -835,19 +830,12 @@ function CheckinPage() {
                       ))}
                     </div>
                   </div>
-                  <div className="ci-row">
+                  <div className="ci-row ci-row-climb">
                     <span className="ci-row-label">
                       Total climb
-                      <small>Feet, for the whole run</small>
+                      <small>Feet for the whole run: drag both ends</small>
                     </span>
-                    <div className="ci-segmented compact">
-                      {CLIMB_CHIPS.map(([v, label]) => (
-                        <button key={label} type="button" className={climbRange === v ? "on" : ""}
-                                onClick={() => setClimbRange(v)}>
-                          {label}
-                        </button>
-                      ))}
-                    </div>
+                    <ClimbSlider value={climbRange} onChange={setClimbRange} />
                   </div>
                   <div className="ci-row">
                     <span className="ci-row-label">Route shape</span>

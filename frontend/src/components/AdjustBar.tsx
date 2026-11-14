@@ -1,4 +1,6 @@
 import { useState } from "react";
+import ClimbSlider from "./ClimbSlider";
+import { climbShort } from "../climb";
 // "Adjust and regenerate": tweak today's check-in right from the results
 // ("no hills", "a mile shorter", "out & back") or ask for 3 different routes,
 // without redoing the whole check-in.
@@ -10,7 +12,7 @@ export type TodayPrefs = {
   surface_preference: "trail" | "road" | null;
   quiet_streets: boolean;
   no_laps?: boolean;
-  climb_range?: "under300" | "300_700" | "700_1200" | "over1200" | null;
+  climb_range?: string | null;   // "LO_HI" / "LO_max" feet (see climb.ts)
   wants_scenic: boolean;
   planned_distance_miles: number | null;
   available_minutes: number | null;
@@ -69,12 +71,11 @@ function AdjustBar({ prefs, currentMiles, busy, onAdjust, onDifferent }: {
   const [open, setOpen] = useState(false);
   if (!prefs) return null;
   const miles = prefs.planned_distance_miles ?? currentMiles;
-  const CLIMB_TXT: Record<string, string> = { under300: "<300 ft", "300_700": "300–700 ft", "700_1200": "700–1.2k ft", over1200: "1.2k+ ft" };
   const active = [
     prefs.hills_pref === "avoid" ? "Flatter" : prefs.hills_pref === "want" ? "Hillier" : null,
     prefs.surface_preference === "road" ? "Road" : prefs.surface_preference === "trail" ? "Trail" : null,
     prefs.shape_pref === "loop" ? "Loop" : prefs.shape_pref === "out_and_back" ? "Out & back" : null,
-    prefs.climb_range ? CLIMB_TXT[prefs.climb_range] : null,
+    climbShort(prefs.climb_range) || null,
     prefs.quiet_streets ? "Quiet streets" : null,
     prefs.wants_scenic ? "Scenic" : null,
     prefs.no_laps ? "1 lap only" : null,
@@ -145,11 +146,11 @@ function AdjustBar({ prefs, currentMiles, busy, onAdjust, onDifferent }: {
           { label: "Loop", icon: "loop", on: prefs.shape_pref === "loop", change: flip("shape_pref", "loop", null) },
           { label: "Out & back", icon: "oab", on: prefs.shape_pref === "out_and_back", change: flip("shape_pref", "out_and_back", null) },
         ]} />
-        <Group label="Total climb (ft)" wide busy={busy} onAdjust={onAdjust} opts={([
-          ["under300", "<300"], ["300_700", "300–700"], ["700_1200", "700–1.2k"], ["over1200", "1.2k+"],
-        ] as const).map(([v, label]) => ({
-          label, on: prefs.climb_range === v, change: { climb_range: prefs.climb_range === v ? null : v },
-        }))} />
+        <div className="adj-group wide">
+          <span className="adj-group-label">Total climb (ft)</span>
+          <ClimbSlider value={prefs.climb_range ?? ""} commitOnRelease disabled={busy}
+                       onChange={(v) => onAdjust({ climb_range: v || null }, v ? `Climb ${climbShort(v)}` : "Any climb")} />
+        </div>
         <Group label="Extras" wide busy={busy} onAdjust={onAdjust} opts={[
           { label: "Quiet streets", icon: "quiet", on: prefs.quiet_streets, change: { quiet_streets: !prefs.quiet_streets } },
           { label: "Scenic", icon: "scenic", on: prefs.wants_scenic, change: { wants_scenic: !prefs.wants_scenic } },

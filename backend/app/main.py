@@ -16,6 +16,9 @@ from dataclasses import replace
 from geoalchemy2.shape import to_shape
 from datetime import date as date_type
 from pydantic import BaseModel, Field
+
+# total climb from the check-in slider ("200_900", "500_max"), or an old bucket name
+CLIMB_RANGE_PATTERN = r"^(under300|300_700|700_1200|over1200|\d{1,5}_(\d{1,5}|max))$"
 from app.geocoding import geocode_address, geocode_la
 from app.conditions import fetch_conditions, weather_urls, remember_weather, parse_conditions
 from app.directions import directions_for, walk_path, to_start
@@ -799,7 +802,7 @@ class CheckinRequest(BaseModel):
     hills_pref: Optional[Literal["avoid", "want"]] = None
     quiet_streets: bool = False
     no_laps: bool = False
-    climb_range: Optional[Literal["under300", "300_700", "700_1200", "over1200"]] = None
+    climb_range: Optional[str] = Field(default=None, pattern=CLIMB_RANGE_PATTERN)
     start_lat: Optional[float] = Field(default=None, ge=33.5, le=34.6)    # LA area only
     start_lon: Optional[float] = Field(default=None, ge=-118.9, le=-117.6)
     start_label: Optional[str] = Field(default=None, max_length=120)
@@ -885,7 +888,7 @@ class CheckinAdjust(BaseModel):
     surface_preference: Optional[Literal["trail", "road"]] = None
     quiet_streets: Optional[bool] = None
     no_laps: Optional[bool] = None
-    climb_range: Optional[Literal["under300", "300_700", "700_1200", "over1200"]] = None
+    climb_range: Optional[str] = Field(default=None, pattern=CLIMB_RANGE_PATTERN)
     wants_scenic: Optional[bool] = None
     planned_distance_miles: Optional[float] = Field(default=None, ge=0.5, le=40)
 

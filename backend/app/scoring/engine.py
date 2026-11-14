@@ -3,9 +3,10 @@ Rules-based scoring engine for route recommendations.
 """
 
 import math
+import re
 from dataclasses import dataclass, field, replace
 from datetime import date
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from app.scoring.difficulty import classify_difficulty
 from app.scoring.personalization import (
@@ -46,7 +47,7 @@ class DailyCheckin:
     hills_pref: Optional[str] = None          # "avoid" | "want" | None (don't mind)
     quiet_streets: bool = False               # "Quiet side streets only": skip busy roads, freeway, downtown
     no_laps: bool = False                     # "1 lap only": never repeat a loop
-    climb_range: Optional[str] = None         # total climb for the run: "under300" | "300_700" | "700_1200" | "over1200"
+    climb_range: Optional[str] = None         # total climb for the run: "LO_HI" ft from the slider, e.g. "200_900" or "500_max"
     shape_pref: Optional[str] = None          # "loop" | "out_and_back" | None (either)
 
 
@@ -1176,8 +1177,29 @@ def limit_hills(scored: List[ScoredRoute], hills_pref: Optional[str], top_n: int
     return flat + rest[:top_n - len(flat)]
 
 
-# total climb ranges (feet) the runner can pick at check-in: a hard limit, like "avoid hills"
+# total climb range (feet) the runner picks at check-in with a min-max slider: a hard
+# limit, like "avoid hills". Sent as "LO_HI" (e.g. "200_900") or "LO_max" for no top.
+# The old fixed buckets still parse, for check-ins saved before the slider.
 CLIMB_RANGES_FT = {"under300": (0, 300), "300_700": (300, 700), "700_1200": (700, 1200), "over1200": (1200, 1e9)}
+CLIMB_RANGE_RE = re.compile(r"^(\d{1,5})_(\d{1,5}|max)$")
+
+
+def parse_climb_range(value: Optional[str]) -> Optional[Tuple[float, float]]:
+    """(min_ft, max_ft) or None for "any climb"."""
+    if not value:
+        return None
+    if value in CLIMB_RANGES_FT:
+        return CLIMB_RANGES_FT[value]
+    m = CLIMB_RANGE_RE.match(value)
+    if not m:
+        return None
+    lo = float(m.group(1))
+    hi = 1e9 if m.group(2) == "max" else float(m.group(2))
+    if hi < lo:
+        lo, hi = hi, lo
+    if lo <= 0 and hi >= 1e9:
+        return None
+    return lo, hi
 CLIMB_SLACK_FT = 40           # a few feet either side still counts (DEM noise)
 OUTSIDE_CLIMB = "Outside your climb range"
 
@@ -1189,7 +1211,7 @@ def run_climb_ft(s: ScoredRoute) -> float:
 def limit_climb(scored: List[ScoredRoute], climb_range: Optional[str], top_n: int) -> List[ScoredRoute]:
     """They picked a total climb (e.g. 700-1,200 ft): only runs in that range. If too few,
     fill with the runs closest to it and say so on the card."""
-    rng = CLIMB_RANGES_FT.get(climb_range or "")
+    rng = parse_climb_range(climb_range)
     if not rng:
         return scored
     lo, hi = rng[0] - CLIMB_SLACK_FT, rng[1] + CLIMB_SLACK_FT

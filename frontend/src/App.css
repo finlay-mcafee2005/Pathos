@@ -9405,3 +9405,35 @@ body::before {
 .recs-page .recs-today .cond-stat { flex: 1 1 0; min-width: 140px; }
 .recs-today.with-weather .conditions { gap: 0.6rem; }
 @media (max-width: 560px) { .recs-page .recs-today .cond-stat { min-width: calc(50% - 0.25rem); } }
+
+/* total climb: two-handle min–max slider (check-in and Adjust picks) */
+.climb-slider { display: flex; flex-direction: column; gap: 4px; width: 100%; min-width: 0; }
+.climb-slider.disabled { opacity: .5; }
+.climb-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 22px; }
+.climb-value { font-size: 0.85rem; font-weight: 700; color: var(--accent); }
+.climb-value.any { color: var(--ink); opacity: .6; font-weight: 600; }
+.climb-clear { border: 0; background: none; padding: 2px 6px; border-radius: 999px; color: var(--accent);
+  font: 600 0.78rem Inter, sans-serif; cursor: pointer; }
+.climb-clear:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.climb-track-wrap { position: relative; height: 28px; }
+.climb-track, .climb-fill { position: absolute; top: 50%; height: 6px; margin-top: -3px; border-radius: 999px; }
+.climb-track { left: 0; right: 0; background: var(--border); }
+.climb-fill { background: var(--accent); }
+.climb-track-wrap input[type="range"] { position: absolute; inset: 0; width: 100%; height: 28px; margin: 0; padding: 0;
+  background: none; pointer-events: none; -webkit-appearance: none; appearance: none; }
+.climb-track-wrap input[type="range"].on-top { z-index: 2; }
+.climb-track-wrap input[type="range"]::-webkit-slider-runnable-track { background: none; height: 28px; }
+.climb-track-wrap input[type="range"]::-moz-range-track { background: none; }
+.climb-track-wrap input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; pointer-events: auto;
+  width: 22px; height: 22px; margin-top: 3px; border-radius: 50%; background: var(--card-bg); border: 3px solid var(--accent);
+  box-shadow: 0 1px 4px rgba(11, 18, 32, .2); cursor: grab; }
+.climb-track-wrap input[type="range"]::-moz-range-thumb { pointer-events: auto; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--card-bg); border: 3px solid var(--accent); box-shadow: 0 1px 4px rgba(11, 18, 32, .2); cursor: grab; }
+.climb-track-wrap input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent); }
+.climb-track-wrap input[type="range"]:disabled::-webkit-slider-thumb { cursor: default; }
+.climb-scale { display: flex; justify-content: space-between; font-size: 0.68rem; color: var(--ink); opacity: .45; }
+.ci-row-climb .climb-slider { flex: 0 1 300px; }
+@media (max-width: 640px) {
+  .ci-row-climb { flex-direction: column; align-items: stretch; gap: 0.5rem; }
+  .ci-row-climb .climb-slider { flex: 1 1 auto; }
+}

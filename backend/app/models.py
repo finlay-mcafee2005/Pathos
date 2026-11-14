@@ -96,7 +96,7 @@ class Checkin(SQLModel, table=True):
     hills_pref: Optional[str] = None           # "avoid" | "want" | None
     quiet_streets: Optional[bool] = Field(default=False)   # "Quiet side streets only"
     no_laps: Optional[bool] = Field(default=False)         # "1 lap only": never repeat a loop
-    climb_range: Optional[str] = None          # "under300" | "300_700" | "700_1200" | "over1200" (total ft)
+    climb_range: Optional[str] = None          # total ft from the slider: "LO_HI" or "LO_max" (older rows: "under300" etc.)
     # "Start from somewhere else": a place or pin picked at check-in (None = where they are / home)
     start_lat: Optional[float] = None
     start_lon: Optional[float] = None
