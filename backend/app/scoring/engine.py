@@ -41,7 +41,7 @@ class DailyCheckin:
     run_time: Optional[str] = None            # "now" | "morning" | "midday" | "evening"
     available_minutes: Optional[float] = None # time they have; used when no planned distance
     conditions: Optional[object] = None       # app.conditions.Conditions, or None if unavailable
-    mood: Optional[str] = None                # "stressed" | "flat" | "good" | "restless" | "low"
+    mood: Optional[str] = None                # "stressed" | "flat" | "normal" | "good" | "pumped" (older: "restless" = pumped, "low")
     run_intent: Optional[str] = None          # "easy" | "workout" | "long" | "explore"
     hills_pref: Optional[str] = None          # "avoid" | "want" | None (don't mind)
     quiet_streets: bool = False               # "Quiet side streets only": skip busy roads, freeway, downtown
@@ -444,7 +444,7 @@ def perfect_points(checkin) -> float:
         pts += W_HILLS_PREF
     if getattr(checkin, "shape_pref", None):
         pts += W_SHAPE_PREF
-    if getattr(checkin, "mood", None):
+    if getattr(checkin, "mood", None) not in (None, "normal"):  # "normal" asks for nothing extra
         pts += W_MOOD
     if getattr(checkin, "run_intent", None):
         pts += W_INTENT
@@ -948,9 +948,15 @@ def score_route(
         add("mood", W_MOOD * pts, "Something a little different to get you going" if pts >= 0.5 else None)
     elif mood == "good":
         add("mood", W_MOOD * (0.4 if hilly else 0))
-    elif mood == "restless":
-        pts = (0.6 if never_run or (days_since or 0) > 30 else 0) + (0.5 if hilly else 0)
-        add("mood", W_MOOD * pts, "New ground and some climbing for a restless day" if pts >= 0.6 else None)
+    elif mood in ("pumped", "restless"):  # "restless" is the old name for pumped
+        new_ground = never_run or (days_since or 0) > 30
+        pts = (0.6 if new_ground else 0) + (0.5 if hilly else 0)
+        why = None
+        if new_ground and hilly:
+            why = "New ground and some climbing for a day you're itching to go"
+        elif new_ground:
+            why = "New ground for a day you're itching to go"
+        add("mood", W_MOOD * pts, why)
     elif mood == "low":
         # comfort over novelty: familiar and well-liked counts double, new ground counts against
         pts = (1.0 if familiar else 0) + (0.5 if liked else 0) \

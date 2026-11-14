@@ -45,15 +45,20 @@ const ENERGY_WORDS = ["Running on empty", "Running on empty", "Running on empty"
 const SLEEP_WORDS = ["", "Restless", "Light", "Okay", "Solid", "Deep"];
 const DISTANCE_CHIPS = [2, 3, 4, 5, 6, 8, 10];
 const MINUTE_CHIPS = [20, 30, 45, 60, 90];
-type Mood = "stressed" | "flat" | "good" | "restless" | "low";
+type Mood = "stressed" | "flat" | "normal" | "good" | "pumped";
+// older check-ins may still hold "restless" (now "pumped") or "low" (retired)
+function toMood(m: string | null | undefined): Mood | null {
+  if (m === "restless") return "pumped";
+  return m === "stressed" || m === "flat" || m === "normal" || m === "good" || m === "pumped" ? m : null;
+}
 type Intent = "easy" | "workout" | "long" | "explore";
-// low on the left to good on the right, matching the energy scale above
+// a scale, worst on the left to best on the right, matching the energy scale above
 const MOODS: { value: Mood; label: string; hint: string }[] = [
-  { value: "low", label: "Low", hint: "Keep it gentle" },
-  { value: "flat", label: "Flat", hint: "Low motivation" },
-  { value: "restless", label: "Restless", hint: "Itching to go" },
   { value: "stressed", label: "Stressed", hint: "Need to clear my head" },
+  { value: "flat", label: "Flat", hint: "Low motivation" },
+  { value: "normal", label: "Normal", hint: "A regular day" },
   { value: "good", label: "Good", hint: "Feeling like myself" },
+  { value: "pumped", label: "Pumped", hint: "Itching to go" },
 ];
 const INTENTS: { value: Intent; label: string; hint: string }[] = [
   { value: "easy", label: "Easy", hint: "Recovery pace" },
@@ -202,7 +207,7 @@ function CheckinPage() {
     setSleepHours(last.sleep_hours != null ? String(last.sleep_hours) : "");
     if (last.sleep_quality != null) setSleepQuality(last.sleep_quality);
     setSoreParts(last.sore_body_parts);
-    setMood(last.mood);
+    setMood(toMood(last.mood));
     setRunIntent(last.run_intent);
     if (last.planned_distance_miles) {
       setLengthMode("miles");
@@ -312,7 +317,7 @@ function CheckinPage() {
       : soreNames.length <= 2
         ? (soreNames.length === 1 && !/s$/.test(soreNames[0]) ? "a " : "") + `sore ${soreNames.join(" and ")}`
         : `${soreNames.length} sore spots`;
-  const moodPhrase = mood ? { good: ", feeling good", stressed: ", a bit stressed", restless: ", restless", flat: ", feeling flat", low: ", feeling low" }[mood] : "";
+  const moodPhrase = mood ? { stressed: ", a bit stressed", flat: ", feeling flat", normal: "", good: ", feeling good", pumped: ", pumped to go" }[mood] : "";
   const feelSentence = `${energyPhrase}${moodPhrase}, ${sleepPhrase}, ${sorePhrase}.`;
 
   // ---- progress tracker + always-reachable submit bar ----

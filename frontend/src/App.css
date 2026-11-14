@@ -6948,11 +6948,11 @@ body::before {
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--mood) 20%, transparent);
 }
 
-.mood-good     { --mood: #22D3EE; }
-.mood-stressed { --mood: #60A5FA; }
-.mood-restless { --mood: #3B82F6; }
+.mood-stressed { --mood: #1E3A8A; }
 .mood-flat     { --mood: #6366F1; }
-.mood-low      { --mood: #1E3A8A; }
+.mood-normal   { --mood: #3B82F6; }
+.mood-good     { --mood: #60A5FA; }
+.mood-pumped   { --mood: #22D3EE; }
 
 .ci-mood-opt.on {
   border-color: var(--mood);

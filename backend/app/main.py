@@ -794,7 +794,7 @@ class CheckinRequest(BaseModel):
     run_time: Optional[Literal["now", "morning", "midday", "evening",
                                "tomorrow_morning", "tomorrow_midday", "tomorrow_evening"]] = None
     available_minutes: Optional[float] = None
-    mood: Optional[Literal["stressed", "flat", "good", "restless", "low"]] = None
+    mood: Optional[Literal["stressed", "flat", "normal", "good", "pumped", "restless", "low"]] = None  # restless/low: older clients
     run_intent: Optional[Literal["easy", "workout", "long", "explore"]] = None
     hills_pref: Optional[Literal["avoid", "want"]] = None
     quiet_streets: bool = False

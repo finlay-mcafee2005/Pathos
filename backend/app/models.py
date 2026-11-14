@@ -91,7 +91,7 @@ class Checkin(SQLModel, table=True):
     willing_to_drive_km: Optional[float] = None
     run_time: Optional[str] = None             # "now" | "morning" | "midday" | "evening"
     available_minutes: Optional[float] = None
-    mood: Optional[str] = None                 # "stressed" | "flat" | "good" | "restless" | "low"
+    mood: Optional[str] = None                 # "stressed" | "flat" | "normal" | "good" | "pumped" (older rows: "restless" = pumped, "low")
     run_intent: Optional[str] = None           # "easy" | "workout" | "long" | "explore"
     hills_pref: Optional[str] = None           # "avoid" | "want" | None
     quiet_streets: Optional[bool] = Field(default=False)   # "Quiet side streets only"
