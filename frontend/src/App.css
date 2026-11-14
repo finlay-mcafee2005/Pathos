@@ -9437,3 +9437,20 @@ body::before {
   .ci-row-climb { flex-direction: column; align-items: stretch; gap: 0.5rem; }
   .ci-row-climb .climb-slider { flex: 1 1 auto; }
 }
+
+/* check-in: exact start time once a time-of-day slot is picked */
+.ci-run-at { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem 0.6rem; margin-top: 0.6rem;
+  font-size: 0.85rem; font-weight: 700; color: var(--ink); }
+.ci-run-at input[type="time"] { padding: 0.4rem 0.6rem; border-radius: 10px; border: 1.5px solid var(--border);
+  background: var(--card-bg); color: var(--ink); font: 600 0.9rem Inter, sans-serif; }
+.ci-run-at input[type="time"]:focus { outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
+.ci-run-at small { flex-basis: 100%; font-size: 0.75rem; font-weight: 500; opacity: 0.6; }
+.ci-run-at small.warn { opacity: 1; color: #C2410C; }
+[data-theme="dark"] .ci-run-at small.warn { color: #FDBA74; }
+@media (max-width: 640px) {
+  .ci-times { gap: 0.3rem; }
+  .ci-time { padding: 0.5rem 0.15rem; }
+  .ci-time strong { font-size: 0.78rem; letter-spacing: -0.01em; }
+  .ci-time small { font-size: 0.6rem; white-space: nowrap; }
+}

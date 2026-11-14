@@ -88,6 +88,7 @@ def add_new_columns():
                                                  AvoidedRoute.__table__])
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS run_time VARCHAR"))
+        conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS run_at VARCHAR"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS available_minutes FLOAT"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS mood VARCHAR"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS run_intent VARCHAR"))
@@ -305,7 +306,8 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
     user_profile = build_user_profile(session, user)
     user_profile.home_lat, user_profile.home_lon = origin_lat, origin_lon   # closeness = from where they are
     daily_checkin = build_daily_checkin(checkin)
-    daily_checkin.conditions = fetch_conditions(origin_lat, origin_lon, checkin.run_time or "now")
+    daily_checkin.conditions = fetch_conditions(origin_lat, origin_lon, checkin.run_time or "now",
+                                                getattr(checkin, "run_at", None))
     recent_runs = build_recent_runs(session, user_id)
     candidates = build_route_candidates(routes)
 
@@ -794,8 +796,10 @@ class CheckinRequest(BaseModel):
     mood_note: Optional[str] = None
     planned_distance_miles: Optional[float] = None
     willing_to_drive_miles: Optional[float] = None
-    run_time: Optional[Literal["now", "morning", "midday", "evening",
-                               "tomorrow_morning", "tomorrow_midday", "tomorrow_evening"]] = None
+    run_time: Optional[Literal["now", "morning", "midday", "afternoon", "evening",
+                               "tomorrow_morning", "tomorrow_midday", "tomorrow_afternoon",
+                               "tomorrow_evening"]] = None
+    run_at: Optional[str] = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")   # "15:30"
     available_minutes: Optional[float] = None
     mood: Optional[Literal["stressed", "flat", "normal", "good", "pumped", "restless", "low"]] = None  # restless/low: older clients
     run_intent: Optional[Literal["easy", "workout", "long", "explore"]] = None
@@ -835,6 +839,7 @@ def last_checkin(user_id: UUID, session: Session = Depends(get_session),
         "surface_preference": c.surface_preference,
         "wants_scenic": c.wants_scenic,
         "run_time": c.run_time,
+        "run_at": c.run_at,
         "hills_pref": c.hills_pref,
         "quiet_streets": bool(c.quiet_streets),
         "no_laps": bool(c.no_laps),
@@ -935,6 +940,7 @@ def create_checkin(payload: CheckinRequest, session: Session = Depends(get_sessi
         surface_preference=payload.surface_preference,
         mood_note=(payload.mood_note or "").strip() or None,
         run_time=payload.run_time,
+        run_at=payload.run_at if (payload.run_time or "now") != "now" else None,
         available_minutes=payload.available_minutes,
         mood=payload.mood,
         run_intent=payload.run_intent,
@@ -1239,7 +1245,7 @@ def get_conditions(user_id: UUID, lat: Optional[float] = None, lon: Optional[flo
     ).first()
     run_time = (checkin.run_time if checkin else None) or "now"
     lat, lon = weather_spot(user, checkin, lat, lon)
-    cond = fetch_conditions(lat, lon, run_time)
+    cond = fetch_conditions(lat, lon, run_time, checkin.run_at if checkin else None)
     if not cond:
         if lat is None:
             return None
@@ -1287,7 +1293,8 @@ def post_conditions(user_id: UUID, payload: BrowserWeather, lat: Optional[float]
             or abs((f.get("longitude") or 999) - lon) > 0.1:
         raise HTTPException(status_code=422, detail="That weather isn't for your area.")
     remember_weather(lat, lon, f, payload.air)
-    cond = parse_conditions(f, payload.air, (checkin.run_time if checkin else None) or "now")
+    cond = parse_conditions(f, payload.air, (checkin.run_time if checkin else None) or "now",
+                            run_at=checkin.run_at if checkin else None)
     if not cond:
         return None
     cut, _ = heat_distance_factor(cond)
@@ -1375,6 +1382,7 @@ def get_group_matches(user_id: UUID, session: Session = Depends(get_session),
         readiness=ctx.readiness,
         planned_mi=(checkin.planned_distance_km / KM_PER_MI) if checkin and checkin.planned_distance_km else None,
         run_time=checkin.run_time if checkin else None,
+        run_at=checkin.run_at if checkin else None,
         sore_legs=sore_legs,
         checked_in_today=checkin is not None,
         home_lat=user.latitude,

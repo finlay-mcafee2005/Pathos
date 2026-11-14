@@ -24,8 +24,8 @@ CACHE_TTL_S = 30 * 60
 STALE_OK_S = 6 * 3600
 
 # when the runner says they're heading out
-RUN_TIME_HOURS = {"morning": 7, "midday": 12, "evening": 18}
-RUN_TIME_ENDS = {"morning": 11, "midday": 15, "evening": 22}   # same cutoffs the check-in uses
+RUN_TIME_HOURS = {"morning": 7, "midday": 12, "afternoon": 15, "evening": 18}
+RUN_TIME_ENDS = {"morning": 11, "midday": 14, "afternoon": 17, "evening": 22}   # same cutoffs the check-in uses
 
 _cache: dict = {}
 
@@ -33,7 +33,8 @@ _cache: dict = {}
 @dataclass
 class Conditions:
     target_time: str                         # local ISO time we looked up, e.g. "2026-10-07T18:00"
-    run_time: str                            # "now" | "morning" | "midday" | "evening"
+    run_time: str                            # "now" | "morning" | "midday" | "afternoon" | "evening"
+    run_at: Optional[str] = None             # the exact time they picked, "HH:MM" local
     temp_f: Optional[float] = None
     feels_like_f: Optional[float] = None
     uv_index: Optional[float] = None
@@ -79,16 +80,35 @@ def _local_now(utc_offset_seconds: int) -> datetime:
     return (datetime.now(timezone.utc) + timedelta(seconds=utc_offset_seconds)).replace(tzinfo=None)
 
 
-def target_hour(run_time: str, local_now: datetime) -> datetime:
-    """The local hour the run will happen. 'now' = this hour; 'morning' etc.
+def parse_run_at(run_at: Optional[str]) -> Optional[tuple]:
+    """'15:30' -> (15, 30); anything else -> None."""
+    try:
+        h, m = (int(x) for x in (run_at or "").split(":"))
+        return (h, m) if 0 <= h < 24 and 0 <= m < 60 else None
+    except ValueError:
+        return None
+
+
+def target_hour(run_time: str, local_now: datetime, run_at: Optional[str] = None) -> datetime:
+    """The local time the run will start. 'now' = this hour; 'morning' etc.
     = later today (or tomorrow if that time has already passed);
-    'tomorrow_morning' etc. = tomorrow."""
+    'tomorrow_morning' etc. = tomorrow. run_at ("15:30") is the exact time they
+    picked within the slot; without it, the slot's usual hour."""
     run_time = run_time or "now"
     tomorrow = run_time.startswith("tomorrow_")
     base = run_time.removeprefix("tomorrow_")
     if base not in RUN_TIME_HOURS:
         return local_now.replace(minute=0, second=0, microsecond=0)
     this_hour = local_now.replace(minute=0, second=0, microsecond=0)
+    exact = parse_run_at(run_at)
+    if exact:
+        t = this_hour.replace(hour=exact[0], minute=exact[1])
+        if tomorrow:
+            return t + timedelta(days=1)
+        if t >= local_now:
+            return t
+        # that time has passed today: run now if the slot is still open, else tomorrow
+        return this_hour if local_now.hour < RUN_TIME_ENDS[base] else t + timedelta(days=1)
     t = this_hour.replace(hour=RUN_TIME_HOURS[base])
     if tomorrow or local_now.hour >= RUN_TIME_ENDS[base]:
         return t + timedelta(days=1)          # tomorrow, or today's window is over
@@ -103,16 +123,20 @@ def _value_at(hourly: dict, key: str, iso: str):
 
 
 def parse_conditions(forecast: dict, air: Optional[dict], run_time: str,
-                     local_now: Optional[datetime] = None) -> Optional[Conditions]:
+                     local_now: Optional[datetime] = None, run_at: Optional[str] = None) -> Optional[Conditions]:
     """Pure function (no network) so it can be tested with saved responses."""
     if not forecast or "hourly" not in forecast:
         return None
     now = local_now or _local_now(forecast.get("utc_offset_seconds", 0))
-    t = target_hour(run_time, now)
-    iso = t.strftime("%Y-%m-%dT%H:00")
+    if (run_time or "now") == "now":
+        run_at = None
+    t = target_hour(run_time, now, run_at)
+    # the forecast is hourly: use the hour the run is mostly in (3:40 pm -> 4 pm)
+    t_hour = t.replace(minute=0, second=0, microsecond=0) + (timedelta(hours=1) if t.minute >= 30 else timedelta())
+    iso = t_hour.strftime("%Y-%m-%dT%H:00")
     hourly = forecast["hourly"]
 
-    cond = Conditions(target_time=iso, run_time=run_time or "now")
+    cond = Conditions(target_time=iso, run_time=run_time or "now", run_at=run_at)
     cond.is_tomorrow = t.date() > now.date()
     now_iso = now.strftime("%Y-%m-%dT%H:00")
     cond.now_temp_f = _value_at(hourly, "temperature_2m", now_iso)
@@ -142,30 +166,33 @@ def parse_conditions(forecast: dict, air: Optional[dict], run_time: str,
 
     if air and "hourly" in air:
         cond.us_aqi = _value_at(air["hourly"], "us_aqi", iso)
-    cond.cooler_option = cooler_time(hourly, run_time or "now", now, cond.feels_like_f)
+    cond.cooler_option = cooler_time(hourly, run_time or "now", now, cond.feels_like_f, run_at)
     return cond
 
 
 SLOT_LABELS = {
-    "now": "now", "morning": "this morning", "midday": "at midday", "evening": "this evening",
+    "now": "now", "morning": "this morning", "midday": "at midday", "afternoon": "this afternoon",
+    "evening": "this evening",
     "tomorrow_morning": "tomorrow morning", "tomorrow_midday": "tomorrow at midday",
-    "tomorrow_evening": "tomorrow evening",
+    "tomorrow_afternoon": "tomorrow afternoon", "tomorrow_evening": "tomorrow evening",
 }
-SLOT_CLOCK = {"morning": "7am", "midday": "noon", "evening": "6pm"}
+SLOT_CLOCK = {"morning": "7am", "midday": "noon", "afternoon": "3pm", "evening": "6pm"}
 HOT_FOR_TIP_F = 82            # only suggest another time when it's actually hot
 COOLER_BY_F = 8               # ...and only if the other time is this much cooler
 
 
-def cooler_time(hourly: dict, run_time: str, now: datetime, feels_f: Optional[float]) -> Optional[dict]:
+def cooler_time(hourly: dict, run_time: str, now: datetime, feels_f: Optional[float],
+                run_at: Optional[str] = None) -> Optional[dict]:
     """The coolest other run slot (today's later slots, or tomorrow's) if it's
     meaningfully cooler than the planned time. None when it isn't hot."""
     if feels_f is None or feels_f < HOT_FOR_TIP_F:
         return None
-    planned = target_hour(run_time, now)
+    planned = target_hour(run_time, now, run_at)
     options = []
-    for slot in ("morning", "midday", "evening", "tomorrow_morning", "tomorrow_midday", "tomorrow_evening"):
+    for slot in ("morning", "midday", "afternoon", "evening",
+                 "tomorrow_morning", "tomorrow_midday", "tomorrow_afternoon", "tomorrow_evening"):
         t = target_hour(slot, now)
-        if t == planned or (t - now).total_seconds() > 36 * 3600:
+        if abs((t - planned).total_seconds()) < 3600 or (t - now).total_seconds() > 36 * 3600:
             continue
         feels = _value_at(hourly, "apparent_temperature", t.strftime("%Y-%m-%dT%H:00"))
         if feels is None:
@@ -228,7 +255,8 @@ def remember_weather(lat: float, lon: float, forecast: dict, air: Optional[dict]
         _cache[a_url] = (now, air)
 
 
-def fetch_conditions(lat: Optional[float], lon: Optional[float], run_time: str = "now") -> Optional[Conditions]:
+def fetch_conditions(lat: Optional[float], lon: Optional[float], run_time: str = "now",
+                     run_at: Optional[str] = None) -> Optional[Conditions]:
     if lat is None or lon is None:
         return None
     f_url, a_url = weather_urls(lat, lon)
@@ -236,4 +264,4 @@ def fetch_conditions(lat: Optional[float], lon: Optional[float], run_time: str =
     if not forecast:
         return None
     air = _get_json(a_url, {})
-    return parse_conditions(forecast, air, run_time)
+    return parse_conditions(forecast, air, run_time, run_at=run_at)

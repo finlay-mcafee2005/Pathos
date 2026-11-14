@@ -89,7 +89,8 @@ class Checkin(SQLModel, table=True):
     mood_note: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     willing_to_drive_km: Optional[float] = None
-    run_time: Optional[str] = None             # "now" | "morning" | "midday" | "evening"
+    run_time: Optional[str] = None             # "now" | "morning" | "midday" | "afternoon" | "evening" (or "tomorrow_...")
+    run_at: Optional[str] = None               # exact planned start within that slot, "HH:MM" local
     available_minutes: Optional[float] = None
     mood: Optional[str] = None                 # "stressed" | "flat" | "normal" | "good" | "pumped" (older rows: "restless" = pumped, "low")
     run_intent: Optional[str] = None           # "easy" | "workout" | "long" | "explore"

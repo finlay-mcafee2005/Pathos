@@ -25,7 +25,7 @@ LEVEL_RANK = {"beginner": 0, "intermediate": 1, "advanced": 2}
 KM_PER_MI = 1.60934
 
 # which meetup hours count as "when I'm running"
-RUN_TIME_WINDOWS = {"morning": (5, 11), "midday": (11, 15), "evening": (15, 22)}
+RUN_TIME_WINDOWS = {"morning": (5, 11), "midday": (11, 14), "afternoon": (14, 17), "evening": (17, 22)}
 
 TODAY_MIN_FIT = 60          # below this, don't suggest it on the recommendations page
 
@@ -68,7 +68,8 @@ class RunnerToday:
     typical_mi: float                  # their usual run length
     readiness: float = 0.6             # 0 run-down .. 1 fresh
     planned_mi: Optional[float] = None
-    run_time: Optional[str] = None     # now | morning | midday | evening, if checked in today
+    run_time: Optional[str] = None     # now | morning | midday | afternoon | evening, if checked in today
+    run_at: Optional[str] = None       # the exact time they picked, "HH:MM"
     sore_legs: bool = False
     checked_in_today: bool = False
     home_lat: Optional[float] = None
@@ -186,6 +187,9 @@ def score_session(s: GroupSession, runner: RunnerToday, starts_at: datetime, now
         hour = starts_at.hour + starts_at.minute / 60
         if rt == "now":
             in_window = 0 <= (starts_at - now).total_seconds() / 3600 <= 2
+        elif runner.run_at and ":" in runner.run_at:
+            h, m = (int(x) for x in runner.run_at.split(":")[:2])
+            in_window = abs(hour - (h + m / 60)) <= 1.0     # within an hour of their time
         else:
             a, b = RUN_TIME_WINDOWS.get(rt, (0, 0))
             in_window = a <= hour < b

@@ -68,12 +68,29 @@ const INTENTS: { value: Intent; label: string; hint: string }[] = [
   { value: "long", label: "Long run", hint: "Go the distance" },
   { value: "explore", label: "Explore", hint: "Somewhere new" },
 ];
-const RUN_TIMES: { value: "now" | "morning" | "midday" | "evening"; label: string; phrase: string; when: string }[] = [
-  { value: "now", label: "Now", phrase: "", when: "Next hour" },
-  { value: "morning", label: "Morning", phrase: " this morning", when: "Around 7 am" },
-  { value: "midday", label: "Midday", phrase: " around midday", when: "Around noon" },
-  { value: "evening", label: "Evening", phrase: " this evening", when: "Around 6 pm" },
+type Slot = "now" | "morning" | "midday" | "afternoon" | "evening";
+// each slot is a window [from, to) in hours; picking one asks for the exact start time
+const RUN_TIMES: { value: Slot; label: string; phrase: string; when: string; from: number; to: number; dflt: string }[] = [
+  { value: "now", label: "Now", phrase: "", when: "Next hour", from: 0, to: 24, dflt: "" },
+  { value: "morning", label: "Morning", phrase: " this morning", when: "5–11 am", from: 5, to: 11, dflt: "07:00" },
+  { value: "midday", label: "Midday", phrase: " around midday", when: "11 am–2 pm", from: 11, to: 14, dflt: "12:00" },
+  { value: "afternoon", label: "Afternoon", phrase: " this afternoon", when: "2–5 pm", from: 14, to: 17, dflt: "15:00" },
+  { value: "evening", label: "Evening", phrase: " this evening", when: "5–10 pm", from: 17, to: 22, dflt: "18:00" },
 ];
+const pad2 = (n: number) => String(n).padStart(2, "0");
+/** "15:30" -> "3:30 pm" */
+function clockWords(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return "";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}${m ? `:${pad2(m)}` : ""} ${h < 12 ? "am" : "pm"}`;
+}
+/** the slot a typed time falls in (null outside 5 am–10 pm) */
+function slotForTime(hhmm: string): Exclude<Slot, "now"> | null {
+  const h = Number(hhmm.split(":")[0]);
+  const t = RUN_TIMES.find((s) => s.value !== "now" && h >= s.from && h < s.to);
+  return (t?.value as Exclude<Slot, "now">) ?? null;
+}
 type ClimbRange = string;   // "" (any), "LO_HI" or "LO_max" feet, from the slider (see climb.ts)
 
 const DRIVE_CHIPS: { label: string; value: string }[] = [
@@ -96,18 +113,45 @@ function CheckinPage() {
   const [wantsAdventure, setWantsAdventure] = useState(false);
   const [wantsScenic, setWantsScenic] = useState(false);
   const [surfacePreference, setSurfacePreference] = useState<"" | "trail" | "road">("");
-  type Slot = "now" | "morning" | "midday" | "evening";
   const [runDay, setRunDay] = useState<"today" | "tomorrow">("today");
   const [runSlot, setRunSlot] = useState<Slot>("now");
+  const [runAt, setRunAt] = useState("");          // exact start, "HH:MM", once a slot is picked
   const runTime = runDay === "tomorrow" ? `tomorrow_${runSlot}` : runSlot;
   function timePassed(slot: Slot): boolean {
-    const h = new Date().getHours();
-    return (slot === "morning" && h >= 11) || (slot === "midday" && h >= 15) || (slot === "evening" && h >= 22);
+    const t = RUN_TIMES.find((s) => s.value === slot);
+    return slot !== "now" && !!t && new Date().getHours() >= t.to;
   }
+  // a sensible start for the slot: its usual time, or the next quarter hour if today's window has begun
+  function defaultTime(slot: Slot, day: "today" | "tomorrow"): string {
+    const t = RUN_TIMES.find((s) => s.value === slot);
+    if (!t || slot === "now") return "";
+    const now = new Date();
+    const mins = now.getHours() * 60 + now.getMinutes();
+    const [dh, dm] = t.dflt.split(":").map(Number);
+    if (day === "today" && mins > dh * 60 + dm) {
+      const next = Math.min(Math.ceil((mins + 1) / 15) * 15, t.to * 60 - 15);
+      return `${pad2(Math.floor(next / 60))}:${pad2(next % 60)}`;
+    }
+    return t.dflt;
+  }
+  function pickSlot(slot: Slot, day: "today" | "tomorrow" = runDay) {
+    setRunSlot(slot);
+    setRunAt(defaultTime(slot, day));
+  }
+  function typeTime(v: string) {
+    setRunAt(v);
+    const s = v ? slotForTime(v) : null;
+    if (s && s !== runSlot) setRunSlot(s);       // a time outside the slot moves to the slot it's in
+  }
+  const runAtPassed = runDay === "today" && runSlot !== "now" && !!runAt && (() => {
+    const [h, m] = runAt.split(":").map(Number);
+    const now = new Date();
+    return h * 60 + m < now.getHours() * 60 + now.getMinutes();
+  })();
   function pickDay(d: "today" | "tomorrow") {
     setRunDay(d);
-    if (d === "tomorrow" && runSlot === "now") setRunSlot("morning");
-    if (d === "today" && timePassed(runSlot)) setRunSlot("now");
+    if (d === "tomorrow" && runSlot === "now") pickSlot("morning", d);
+    else if (d === "today" && timePassed(runSlot)) pickSlot("now", d);
   }
   const [availableMinutes, setAvailableMinutes] = useState("");
   const [moodNote, setMoodNote] = useState("");
@@ -266,6 +310,7 @@ function CheckinPage() {
           wants_scenic: wantsScenic,
           surface_preference: surfacePreference || null,
           run_time: runTime,
+          run_at: runSlot !== "now" && runAt ? runAt : null,
           available_minutes: !plannedDistance && availableMinutes ? parseFloat(availableMinutes) : null,
           mood_note: moodNote.trim() || null,
           mood,
@@ -371,9 +416,11 @@ function CheckinPage() {
     : availableMinutes
       ? `a ${availableMinutes}-minute ${surfacePreference || ""} run`.replace("  ", " ")
       : `a ${surfacePreference || ""} run`.replace("  ", " ");
-  const whenPhrase = runDay === "tomorrow"
-    ? ` tomorrow ${runSlot === "midday" ? "around midday" : runSlot}`
-    : RUN_TIMES.find((t) => t.value === runSlot)?.phrase ?? "";
+  const whenPhrase = runSlot !== "now" && runAt
+    ? `${runDay === "tomorrow" ? " tomorrow" : " today"} at ${clockWords(runAt)}`
+    : runDay === "tomorrow"
+      ? ` tomorrow ${runSlot === "midday" ? "around midday" : runSlot}`
+      : RUN_TIMES.find((t) => t.value === runSlot)?.phrase ?? "";
   const where = willingToDrive ? ` within a ${willingToDrive}-minute drive` : " close to home";
   const planSentence =
     `We'll look for ${what}${where}${whenPhrase}` +
@@ -740,7 +787,7 @@ function CheckinPage() {
                             type="button"
                             disabled={passed}
                             className={`ci-time ${runSlot === t.value ? "on" : ""}`}
-                            onClick={() => setRunSlot(t.value)}
+                            onClick={() => pickSlot(t.value)}
                             title={passed ? "Already passed today" : undefined}
                           >
                             <strong>{t.label}</strong>
@@ -749,6 +796,22 @@ function CheckinPage() {
                         );
                       })}
                     </div>
+                    {runSlot !== "now" && (() => {
+                      const slot = RUN_TIMES.find((t) => t.value === runSlot)!;
+                      return (
+                        <label className="ci-run-at">
+                          <span>Start at</span>
+                          <input type="time" step={300} value={runAt} required
+                                 min={`${pad2(slot.from)}:00`} max={`${pad2(slot.to - 1)}:59`}
+                                 onChange={(e) => typeTime(e.target.value)} />
+                          <small className={runAtPassed ? "warn" : ""}>
+                            {runAtPassed ? "That time has already passed today"
+                              : runAt ? `${runDay === "tomorrow" ? "Tomorrow" : "Today"} at ${clockWords(runAt)}: weather is for then`
+                              : "Pick roughly when you'll head out"}
+                          </small>
+                        </label>
+                      );
+                    })()}
                   </div>
                   <div className={`ci-row ${startElsewhere ? "ci-row-stack" : ""}`}>
                     <div className="ci-row-head">

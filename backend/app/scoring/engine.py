@@ -39,7 +39,7 @@ class DailyCheckin:
     surface_preference: Optional[str] = None  # "trail" | "road" | None (no preference)
     willing_to_drive_km: Optional[float] = None
     today: Optional[date] = None              # defaults to date.today(); set in tests
-    run_time: Optional[str] = None            # "now" | "morning" | "midday" | "evening"
+    run_time: Optional[str] = None            # "now" | "morning" | "midday" | "afternoon" | "evening"
     available_minutes: Optional[float] = None # time they have; used when no planned distance
     conditions: Optional[object] = None       # app.conditions.Conditions, or None if unavailable
     mood: Optional[str] = None                # "stressed" | "flat" | "normal" | "good" | "pumped" (older: "restless" = pumped, "low")

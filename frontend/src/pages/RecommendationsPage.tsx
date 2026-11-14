@@ -143,6 +143,7 @@ function matchLabel(score: number, perfect?: number): { text: string; tone: "gre
 
 type Conditions = {
   run_time: string;
+  run_at?: string | null;     // exact start they picked, "HH:MM"
   temp_f: number | null;
   feels_like_f: number | null;
   uv_index: number | null;
@@ -702,12 +703,18 @@ function RecommendationsPage() {
       <div className={`recs-today ${conditions && count > 0 ? "with-weather" : ""}`}>
       {conditions && count > 0 && (() => {
         const rt = conditions.run_time.replace("tomorrow_", "");
-        const base = { now: "Right now", morning: "morning", midday: "midday", evening: "evening" }[rt] ?? "today";
+        const base = ({ now: "Right now", morning: "morning", midday: "midday", afternoon: "afternoon", evening: "evening" } as Record<string, string>)[rt] ?? "today";
+        const at = conditions.run_at ? (() => {
+          const [h, m] = conditions.run_at.split(":").map(Number);
+          return `${h % 12 === 0 ? 12 : h % 12}${m ? `:${String(m).padStart(2, "0")}` : ""} ${h < 12 ? "am" : "pm"}`;
+        })() : "";
         const when = conditions.run_time === "now"
           ? "Right now"
-          : conditions.is_tomorrow
-            ? `Tomorrow ${base}`
-            : `This ${base}`;
+          : at
+            ? `${conditions.is_tomorrow ? "Tomorrow" : "Today"} at ${at}`
+            : conditions.is_tomorrow
+              ? `Tomorrow ${base}`
+              : `This ${base}`;
         const nowFeels = conditions.now_feels_like_f ?? conditions.now_temp_f;
         return (
           <section className="conditions">
