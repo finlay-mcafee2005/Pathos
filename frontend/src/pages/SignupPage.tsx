@@ -285,7 +285,7 @@ function SignupPage() {
                       const ok = r.test(password);
                       return (
                         <li key={r.label} className={ok ? "ok" : ""}>
-                          <span className="su-pw-tick" aria-hidden="true">{ok ? "✓" : ""}</span>
+                          <span className="su-pw-tick" aria-hidden="true">{ok ? "✓" : "✕"}</span>
                           {r.label}
                           <span className="sr-only">{ok ? " (done)" : " (not yet)"}</span>
                         </li>

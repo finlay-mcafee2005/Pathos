@@ -9498,3 +9498,15 @@ body::before {
 .su-pw-rules li.ok .su-pw-tick { background: #16A34A; border-color: #16A34A; color: #fff; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0);
   white-space: nowrap; border: 0; }
+
+
+/* password checklist: every rule in a grey box, one per line; red ✕ until it's met, then a green ✓ */
+.su-pw-rules { display: flex; flex-direction: column; flex-wrap: nowrap; gap: 0.45rem; margin: 0.1rem 0 0;
+  padding: 0.8rem 0.95rem; border-radius: 12px; background: color-mix(in srgb, var(--ink) 5%, var(--card-bg));
+  border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent); }
+.su-pw-rules li { opacity: 1; color: color-mix(in srgb, var(--ink) 55%, transparent); font-size: 0.85rem; }
+.su-pw-rules li.cap { color: var(--ink); opacity: 0.55; margin-bottom: 0.1rem; }
+.su-pw-tick { width: 18px; height: 18px; border: 0; background: #E5484D; color: #fff; font-size: 0.68rem; }
+.su-pw-rules li.ok { color: #15803D; }
+.su-pw-rules li.ok .su-pw-tick { background: #16A34A; color: #fff; }
+[data-theme="dark"] .su-pw-rules li.ok { color: #4ADE80; }
