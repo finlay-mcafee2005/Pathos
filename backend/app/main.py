@@ -743,7 +743,7 @@ PASSWORD_RULES = [
     (lambda pw: any(c.isdigit() for c in pw), "Add a number to your password."),
     (lambda pw: any(c.isupper() for c in pw) and any(c.islower() for c in pw),
      "Use both upper and lower case letters in your password."),
-    (lambda pw: any(not c.isalnum() for c in pw), "Add a symbol (like ! ? or #) to your password."),
+    (lambda pw: any(not c.isalnum() for c in pw), "Add a special character (like ! @ # $ or ?) to your password."),
 ]
 
 
