@@ -56,7 +56,7 @@ type Intent = "easy" | "workout" | "long" | "explore";
 const MOODS: { value: Mood; label: string; hint: string }[] = [
   { value: "stressed", label: "Stressed", hint: "Need to clear my head" },
   { value: "flat", label: "Flat", hint: "Low motivation" },
-  { value: "normal", label: "Normal", hint: "Same as usual" },
+  { value: "normal", label: "Normal", hint: "A regular day" },
   { value: "good", label: "Good", hint: "Better than usual" },
   { value: "pumped", label: "Pumped", hint: "Itching to go" },
 ];
