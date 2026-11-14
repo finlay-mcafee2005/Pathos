@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { API_URL } from "../utils/format";
 import { saveSession } from "../utils/session";
+import { PASSWORD_RULES, passwordProblem } from "../utils/passwordRules";
 
 function ResetPasswordPage() {
   const [params] = useSearchParams();
@@ -15,7 +16,8 @@ function ResetPasswordPage() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (password.length < 6) return setError("Use at least 6 characters for your password.");
+    const problem = passwordProblem(password);
+    if (problem) return setError(problem);
     if (password !== confirm) return setError("Those two passwords don't match.");
     setLoading(true);
     setError(null);
@@ -42,12 +44,25 @@ function ResetPasswordPage() {
       <div className="vf-card">
         <img src="/favicon.png" alt="" width={56} height={56} className="vf-logo" />
         <h1>Choose a new password</h1>
-        <p>At least 6 characters. You'll be logged in right after.</p>
+        <p>You'll be logged in right after.</p>
         <form className="vf-form" onSubmit={submit}>
           <label>
             New password
             <input key={show ? "pw-shown" : "pw-hidden"} type={show ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required autoFocus={!show} />
           </label>
+          <ul className="su-pw-rules" aria-live="polite">
+            <li className="cap">Your password needs</li>
+            {PASSWORD_RULES.map((r) => {
+              const ok = r.test(password);
+              return (
+                <li key={r.label} className={ok ? "ok" : ""}>
+                  <span className="su-pw-tick" aria-hidden="true">{ok ? "✓" : ""}</span>
+                  {r.label}
+                  <span className="sr-only">{ok ? " (done)" : " (not yet)"}</span>
+                </li>
+              );
+            })}
+          </ul>
           <label>
             Confirm new password
             <input key={show ? "cf-shown" : "cf-hidden"} type={show ? "text" : "password"} value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" required />

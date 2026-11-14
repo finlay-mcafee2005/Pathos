@@ -735,9 +735,32 @@ def check_area(payload: AreaCheck, session: Session = Depends(get_session)):
     return {"label": label, "lat": lat, "lon": lon, "routes_nearby": count}
 
 
+# password rules for new passwords (sign-up and reset); the sign-up page shows the same list
+# (frontend/src/utils/passwordRules.ts). Existing passwords still log in as before.
+MIN_PASSWORD_LEN = 8
+PASSWORD_RULES = [
+    (lambda pw: len(pw) >= MIN_PASSWORD_LEN, f"Use at least {MIN_PASSWORD_LEN} characters for your password."),
+    (lambda pw: any(c.isdigit() for c in pw), "Add a number to your password."),
+    (lambda pw: any(c.isupper() for c in pw) and any(c.islower() for c in pw),
+     "Use both upper and lower case letters in your password."),
+    (lambda pw: any(not c.isalnum() for c in pw), "Add a symbol (like ! ? or #) to your password."),
+]
+
+
+def password_problem(pw: str) -> Optional[str]:
+    """The first rule a new password misses, or None if it passes them all."""
+    for ok, message in PASSWORD_RULES:
+        if not ok(pw or ""):
+            return message
+    return None
+
+
 @app.post("/signup")
 def signup(payload: SignupRequest, background: BackgroundTasks, session: Session = Depends(get_session)):
     payload.email = payload.email.strip().lower()
+    problem = password_problem(payload.password)
+    if problem:
+        raise HTTPException(status_code=400, detail=problem)
     if session.exec(select(User).where(func.lower(User.email) == payload.email)).first():
         raise HTTPException(status_code=400, detail="An account with that email already exists. Log in instead.")
     lat, lon, _label, _count = check_coverage(session, payload.address)
@@ -2025,7 +2048,6 @@ def resend_verify_email(background: BackgroundTasks, session: Session = Depends(
 # ---------------------------------------------------------------------------
 
 RESET_PURPOSE = "reset_password"
-MIN_PASSWORD_LEN = 6
 _last_reset_sent: dict = {}
 
 
@@ -2070,8 +2092,9 @@ def reset_password(payload: ResetPasswordRequest, session: Session = Depends(get
     user = session.get(User, user_id)
     if not user or stamp != f"{(user.email or '').lower()}|{_pw_fingerprint(user)}":
         raise bad
-    if len(payload.password) < MIN_PASSWORD_LEN:
-        raise HTTPException(status_code=400, detail=f"Use at least {MIN_PASSWORD_LEN} characters for your password.")
+    problem = password_problem(payload.password)
+    if problem:
+        raise HTTPException(status_code=400, detail=problem)
     user.hashed_password = hash_password(payload.password)
     if not user.email_verified:
         user.email_verified = True

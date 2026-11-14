@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PASSWORD_RULES, passwordProblem } from "../utils/passwordRules";
 import { useNavigate, Link } from "react-router-dom";
 import BackgroundSlideshow from "../components/BackgroundSlideshow";
 import ThemeToggle from "../components/ThemeToggle";
@@ -40,15 +41,6 @@ const MILEAGE_CHIPS = [
   { label: "50–60", value: "55" },
 ];
 
-// shown under the password box and ticked off as you type; only the first is required
-const MIN_PASSWORD_LEN = 6;
-const PASSWORD_RULES: { label: string; test: (pw: string) => boolean; required?: boolean }[] = [
-  { label: `At least ${MIN_PASSWORD_LEN} characters`, test: (pw) => pw.length >= MIN_PASSWORD_LEN, required: true },
-  { label: "8+ characters", test: (pw) => pw.length >= 8 },
-  { label: "A number", test: (pw) => /[0-9]/.test(pw) },
-  { label: "Upper + lower case", test: (pw) => /[A-Z]/.test(pw) && /[a-z]/.test(pw) },
-  { label: "A symbol (! ? #)", test: (pw) => /[^A-Za-z0-9]/.test(pw) },
-];
 
 function passwordStrength(pw: string): { score: number; label: string } {
   let score = 0;
@@ -115,7 +107,8 @@ function SignupPage() {
     if (s === 0) {
       if (!fullName.trim()) return "What should we call you?";
       if (!/^\S+@\S+\.\S+$/.test(email)) return "That email doesn't look quite right.";
-      if (password.length < MIN_PASSWORD_LEN) return `Use at least ${MIN_PASSWORD_LEN} characters for your password.`;
+      const pwProblem = passwordProblem(password);
+      if (pwProblem) return pwProblem;
     }
     if (s === 1 && !address.trim()) return "Add an address or neighborhood so we can find routes near you.";
     return null;
@@ -287,17 +280,16 @@ function SignupPage() {
                     </span>
                   </label>
                   <ul className="su-pw-rules" id="su-pw-rules" aria-live="polite">
-                    {PASSWORD_RULES.map((r, i) => {
+                    <li className="cap">Your password needs</li>
+                    {PASSWORD_RULES.map((r) => {
                       const ok = r.test(password);
-                      return [
-                        i === 1 && <li key="cap" className="cap">Stronger with</li>,
-                        <li key={r.label} className={`${ok ? "ok" : ""} ${r.required ? "req" : ""}`}>
+                      return (
+                        <li key={r.label} className={ok ? "ok" : ""}>
                           <span className="su-pw-tick" aria-hidden="true">{ok ? "✓" : ""}</span>
                           {r.label}
-                          {r.required && <em>required</em>}
                           <span className="sr-only">{ok ? " (done)" : " (not yet)"}</span>
-                        </li>,
-                      ];
+                        </li>
+                      );
                     })}
                   </ul>
                   {password && (
