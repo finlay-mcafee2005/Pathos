@@ -78,12 +78,12 @@ const RUN_TIMES: { value: Slot; label: string; phrase: string; when: string; fro
   { value: "evening", label: "Evening", phrase: " this evening", when: "5–10 pm", from: 17, to: 22, dflt: "18:00" },
 ];
 const pad2 = (n: number) => String(n).padStart(2, "0");
-/** "15:30" -> "3:30 pm" */
+/** "15:30" -> "3:30pm" */
 function clockWords(hhmm: string): string {
   const [h, m] = hhmm.split(":").map(Number);
   if (Number.isNaN(h) || Number.isNaN(m)) return "";
   const h12 = h % 12 === 0 ? 12 : h % 12;
-  return `${h12}${m ? `:${pad2(m)}` : ""} ${h < 12 ? "am" : "pm"}`;
+  return `${h12}${m ? `:${pad2(m)}` : ""}${h < 12 ? "am" : "pm"}`;
 }
 /** the slot a typed time falls in (null outside 5 am–10 pm) */
 function slotForTime(hhmm: string): Exclude<Slot, "now"> | null {
@@ -806,7 +806,7 @@ function CheckinPage() {
                                  onChange={(e) => typeTime(e.target.value)} />
                           <small className={runAtPassed ? "warn" : ""}>
                             {runAtPassed ? "That time has already passed today"
-                              : runAt ? `${runDay === "tomorrow" ? "Tomorrow" : "Today"} at ${clockWords(runAt)}: weather is for then`
+                              : runAt ? `${runDay === "tomorrow" ? "Tomorrow" : "Today"} at ${clockWords(runAt)}, analyzing weather conditions at that time`
                               : "Pick roughly when you'll head out"}
                           </small>
                         </label>
