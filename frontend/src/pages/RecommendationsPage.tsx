@@ -924,32 +924,50 @@ function RecommendationsPage() {
                   </div>
                 </div>
 
-                {rec.elevation_profile && <ElevationProfile profile={rec.elevation_profile} />}
-
-                {/* the practical bits, one tidy list: how to run it, where to start, heads-ups */}
-                <div className="rec-info">
-                {rec.start_label && (
-                    <p className={`rec-park ${rec.park ? "" : "street"}`}>
-                      <span className="rec-park-badge" aria-hidden="true">P</span>
-                      {rec.park ? `Park at ${rec.start_label.replace(/^Parking: /, "")}. The route starts there.` : "Street parking near the start."}
-                    </p>
+                {/* the practical bits, one tidy panel of rows: where to start, heads-ups, the climbs */}
+                {(rec.start_label || rec.join_at || rec.elevation_profile
+                  || (rec.score_breakdown?.mud ?? 0) <= -1 || (rec.score_breakdown?.wet ?? 0) <= -1) && (
+                <div className="rec-panel">
+                  {rec.start_label && (
+                    <div className={`rec-row ${rec.park ? "" : "muted"}`}>
+                      <span className="rec-row-icon park" aria-hidden="true">P</span>
+                      <span className="rec-row-text">
+                        {rec.park
+                          ? <><b>Park at {rec.start_label.replace(/^Parking: /, "")}</b><small>The route starts there</small></>
+                          : <><b>Street parking</b><small>Near the start of the route</small></>}
+                      </span>
+                    </div>
                   )}
                   {!rec.start_label && rec.join_at && (
-                    <p className="rec-park join">
-                      <span className="rec-park-badge" aria-hidden="true">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"
+                    <div className="rec-row">
+                      <span className="rec-row-icon" aria-hidden="true">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6"
                              strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
                       </span>
-                      Joins the route at {rec.join_at}.
-                    </p>
+                      <span className="rec-row-text">
+                        <b>Join at {rec.join_at}</b><small>Run there from where you are</small>
+                      </span>
+                    </div>
                   )}
                   {/* how to run it (out → loop ×2 → back) lives on the Start route page, not the card */}
-                {(rec.score_breakdown?.mud ?? 0) <= -1 ? (
-                    <p className="rec-alert">Recent rain: {rec.surface_type === "trail" ? "the trail" : "the dirt sections"} may be wet or muddy. Watch your footing on the downhills.</p>
-                  ) : (rec.score_breakdown?.wet ?? 0) <= -1 && (
-                    <p className="rec-alert">Recent rain: the steep downhill may be slick. Shorten your stride and take it easy going down.</p>
+                  {((rec.score_breakdown?.mud ?? 0) <= -1 || (rec.score_breakdown?.wet ?? 0) <= -1) && (
+                    <div className="rec-row warn">
+                      <span className="rec-row-icon" aria-hidden="true">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
+                             strokeLinecap="round" strokeLinejoin="round"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z" /></svg>
+                      </span>
+                      <span className="rec-row-text">
+                        {(rec.score_breakdown?.mud ?? 0) <= -1 ? (
+                          <><b>Recent rain</b><small>{rec.surface_type === "trail" ? "The trail" : "The dirt sections"} may be wet or muddy. Watch your footing on the downhills.</small></>
+                        ) : (
+                          <><b>Recent rain</b><small>The steep downhill may be slick. Shorten your stride going down.</small></>
+                        )}
+                      </span>
+                    </div>
                   )}
+                  {rec.elevation_profile && <ElevationProfile profile={rec.elevation_profile} />}
                 </div>
+                )}
 
                 <RecActions
                   rec={rec}

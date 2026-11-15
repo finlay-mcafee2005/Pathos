@@ -43,11 +43,13 @@ function ElevationProfile({ profile }: { profile: Profile }) {
     + (steep && best >= 0.04 ? ` · steepest ${(best * 100).toFixed(0)}%` : "");
   if (!open) {
     return (
-      <button type="button" className="rpe-toggle" aria-expanded="false" onClick={() => setOpen(true)}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-             strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 18l6-9 4 5 3-4 5 8" /></svg>
-        <span>Show elevation chart</span>
-        <span className="rpe-toggle-sum">{summary}</span>
+      <button type="button" className="rec-row rpe-toggle" aria-expanded="false" onClick={() => setOpen(true)}>
+        <span className="rec-row-icon" aria-hidden="true">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
+               strokeLinecap="round" strokeLinejoin="round"><path d="M3 18l6-9 4 5 3-4 5 8" /></svg>
+        </span>
+        <span className="rec-row-text"><b>Show elevation chart</b><small>{summary}</small></span>
+        <span className="rpe-chev" aria-hidden="true">▾</span>
       </button>
     );
   }

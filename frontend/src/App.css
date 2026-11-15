@@ -9553,3 +9553,29 @@ body::before {
 .rpe-hide { order: 3; border: 0; background: none; padding: 0 0 0 10px; color: var(--accent);
   font: 600 0.78rem Inter, sans-serif; cursor: pointer; }
 @media (max-width: 420px) { .rpe-toggle-sum { display: none; } }
+
+/* ---- pick card: start / heads-ups / elevation as one tidy panel of rows ---- */
+.rec-panel { margin: 18px 0 20px; border: 1px solid var(--border); border-radius: 16px; overflow: hidden;
+  background: var(--card-bg); }
+.rec-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; margin: 0;
+  border: 0; background: none; text-align: left; font: inherit; color: var(--ink); }
+.rec-panel > * + * { border-top: 1px solid var(--border); }
+.rec-row-icon { flex: 0 0 auto; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px;
+  color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
+  font: 800 0.8rem Inter, sans-serif; }
+.rec-row-icon.park { color: #fff; background: var(--accent); }
+.rec-row.muted .rec-row-icon.park { background: #94a3b8; }
+.rec-row-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; line-height: 1.35; }
+.rec-row-text b { font-size: 0.9rem; font-weight: 700; }
+.rec-row-text small { font-size: 0.8rem; font-weight: 500; opacity: .65; }
+.rec-row.warn { background: color-mix(in srgb, #EA580C 6%, var(--card-bg)); }
+.rec-row.warn .rec-row-icon { color: #C2410C; background: color-mix(in srgb, #EA580C 14%, transparent); }
+.rec-row.warn .rec-row-text b { color: #C2410C; }
+[data-theme="dark"] .rec-row.warn .rec-row-icon, [data-theme="dark"] .rec-row.warn .rec-row-text b { color: #FDBA74; }
+/* elevation: the toggle is a row; the open chart sits flush in the panel */
+.rec-panel .rpe-toggle { cursor: pointer; border-radius: 0; margin: 0; }
+.rec-panel .rpe-toggle:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.rec-panel .rpe-toggle .rec-row-text b { color: var(--accent); }
+.rpe-chev { margin-left: auto; color: var(--accent); font-size: 0.8rem; }
+.rec-panel .rpe { margin: 0; border: 0; border-radius: 0; padding: 12px 14px 8px; }
+.rec-panel > .rpe:not(:first-child) { border-top: 1px solid var(--border); }
