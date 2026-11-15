@@ -445,10 +445,13 @@ function whyGroups(breakdown: Record<string, number> | undefined) {
     const dots = sum <= -8 ? 1 : sum < 0 ? 2 : ratio < 0.25 ? 3 : ratio < 0.6 ? 4 : 5;
     // what mattered most, bad news first when the group came out negative
     const ordered = [...items].sort((x, y) => Math.abs(y[1]) - Math.abs(x[1]));
-    const line = ordered.slice(0, 2)
+    let line = ordered.slice(0, 2)
       .filter(([, v], n) => n === 0 || Math.abs(v) >= 3)      // a second reason only if it mattered
       .map(([k, v]) => (WHY_PHRASES[k] ?? [k, k])[v >= 0 ? 0 : 1])
       .join(". ");
+    // never run, but already shown this week: one sentence, not two that read as a contradiction
+    if (g.title === "Something new" && (b.seen ?? 0) < 0 && ((b.novelty ?? 0) > 0 || (b.adventure ?? 0) > 0))
+      line = "You haven't run it, but it was already suggested to you this week";
     return { title: g.title, dots, line: line + "." };
   }).filter((g): g is { title: string; dots: number; line: string } => g !== null);
 }
