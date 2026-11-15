@@ -85,7 +85,9 @@ function ElevationProfile({ profile }: { profile: Profile }) {
   let steep: [number, number] | null = null, best = 0;
   for (let i = 0, j = 0; i < mi.length; i++) {
     while (j < mi.length - 1 && mi[j] - mi[i] < 0.25) j++;
-    const grade = mi[j] > mi[i] ? (ft[j] - ft[i]) / ((mi[j] - mi[i]) * 5280) : 0;
+    // only over a real stretch: near the end of the run the window gets cut short, and
+    // a 20 ft step over a few metres would read as a 25% grade
+    const grade = mi[j] - mi[i] >= 0.2 ? (ft[j] - ft[i]) / ((mi[j] - mi[i]) * 5280) : 0;
     if (grade > best) { best = grade; steep = [i, j]; }
   }
   const ticks = [0, total / 2, total];
