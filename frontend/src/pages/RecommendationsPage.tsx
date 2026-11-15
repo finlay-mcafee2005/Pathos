@@ -1047,7 +1047,9 @@ function RecommendationsPage() {
                                    // keep any other point ("Takes laps or doubling back..."), drop the generic one
                                    ...g.line.replace(/\.$/, "").split(". ").filter((x) => x && !/^(Right around|Off from) the distance/.test(x))]
                               .filter(Boolean).join(". ") + "." }
-                        : g);
+                        : g)
+                    // run from where they are: no "Location" row (getting there is just part of the run)
+                    .filter((g) => !(g.title === "Location" && (rec.approach_km ?? 0) > 0));
                   const good = groups.filter((g) => g.dots >= 3).sort((x, y) => y.dots - x.dots);
                   const watch = groups.filter((g) => g.dots <= 2).sort((x, y) => x.dots - y.dots);
                   const item = (g: { title: string; dots: number; line: string }) => (

@@ -6,7 +6,7 @@ but steep fire roads (e.g. "close to home" in Altadena). When every pick is
 too steep for how the runner feels, look a little farther out for gentler
 routes and mix the best of them into the picks with a clear note.
 """
-from typing import List
+from typing import List, Optional
 
 from app.scoring.engine import (UserProfile, DailyCheckin, RecentRuns, RouteCandidate,
                                 ScoredRoute, recommend, diversify, readiness, looks_alike)
@@ -139,20 +139,19 @@ WEAK_REASON = {
 }
 
 
-def weak_match_note(s: ScoredRoute) -> str:
+def weak_match_note(s: ScoredRoute) -> Optional[str]:
     """One plain sentence on why a pick is a weak match (under 50%)."""
     mi = s.effective_distance_km * 0.621371
     target_mi = (s.target_km or 0) * 0.621371
     if target_mi and not s.distance_matched:
         return f"There aren't many {target_mi:.0f} mi routes near you. This one is {mi:.1f} mi"
-    known = [(k, v) for k, v in s.breakdown.items() if k in WEAK_REASON and v < 0]
+    # a run that starts from where they are: getting to the route is just part of the run,
+    # not something to explain (the map shows it), so leave it out
+    from_home = (s.approach_km or 0) > 0
+    known = [(k, v) for k, v in s.breakdown.items()
+             if k in WEAK_REASON and v < 0 and not (from_home and k == "approach")]
     if known:
-        key = min(known, key=lambda kv: kv[1])[0]
-        if key == "approach" and (s.approach_km or 0) > 0:
-            # the run starts from where they are: say how it splits, not "few routes start near you"
-            streets = 2 * s.approach_km * 0.621371
-            on_route = max(0.0, mi - streets)
-            return (f"Starts from where you are: {streets:.1f} of the {mi:.1f} mi is the run there and back, "
-                    f"{on_route:.1f} mi is on the {'trail' if s.route.surface_type == 'trail' else 'route'} itself")
-        return WEAK_REASON[key]
+        return WEAK_REASON[min(known, key=lambda kv: kv[1])[0]]
+    if from_home and s.breakdown.get("approach", 0) < 0:
+        return None
     return "Not a perfect fit for today, but one of the closer matches near you"
