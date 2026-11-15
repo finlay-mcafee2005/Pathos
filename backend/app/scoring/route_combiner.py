@@ -11,7 +11,12 @@ from typing import List
 
 from app.scoring.difficulty import classify_difficulty
 
-CONNECT_THRESHOLD_KM = 1.2
+# Legs have to actually meet (at most a street crossing apart): the gap between them is
+# drawn as a straight line, and at 1.2 km that line cut across hills and backyards.
+CONNECT_THRESHOLD_KM = 0.15
+# ...and the whole chain has to come back to where it started, so the runner ends at
+# their car / door instead of a couple of km away.
+CLOSE_LOOP_KM = 0.25
 MAX_COMBO_SEARCH_RANGE_KM = 3.0
 MAX_CHAIN_LENGTH = 3
 
@@ -95,6 +100,27 @@ class CombinedRoute:
         surface_types = {leg.surface_type for leg in legs}
         self.surface_type = next(iter(surface_types)) if len(surface_types) == 1 else "mixed"
         self.scenic = any(leg.scenic for leg in legs)
+        # the legs' measured facts carry over (busy roads, turns, lights, crossings...), so a
+        # combined route is judged like any other instead of looking spotless for lack of data
+        lengths = [leg.distance_km or 0 for leg in legs]
+
+        def weighted(attr):
+            vals = [getattr(leg, attr, None) for leg in legs]
+            if any(v is None for v in vals) or not sum(lengths):
+                return None
+            return sum(v * w for v, w in zip(vals, lengths)) / sum(lengths)
+
+        def total(attr):
+            vals = [getattr(leg, attr, None) for leg in legs]
+            return None if all(v is None for v in vals) else sum(v or 0 for v in vals)
+
+        for attr in ("shade_pct", "scenic_pct", "busy_pct", "downtown_pct", "turns_per_km",
+                     "stops_per_km", "intersections_per_km"):
+            setattr(self, attr, weighted(attr))
+        for attr in ("freeway_crossings", "busy_crossings", "unsafe_crossings"):
+            setattr(self, attr, total(attr))
+        grades = [g for g in (getattr(leg, "steepest_grade", None) for leg in legs) if g is not None]
+        self.steepest_grade = max(grades) if grades else None
 
 
 MAX_COMBOS = 150          # plenty to choose 3 good ones from; keeps scoring fast
@@ -151,10 +177,14 @@ def generate_combined_routes(routes: List, target_km: float) -> List[CombinedRou
             return
         budget[0] -= 1
         if len(chain_legs) >= 2 and abs(total_dist - target_km) <= MAX_COMBO_SEARCH_RANGE_KM:
+            start, finish = chain_coords[0][0], chain_coords[-1][-1]
+            back_km = haversine_km(*finish, *start)
             key = tuple(sorted(used_route_ids))
-            if key not in seen_combos:
+            if back_km <= CLOSE_LOOP_KM and key not in seen_combos:
                 seen_combos.add(key)
-                combined.append(CombinedRoute(chain_legs, chain_coords, total_dist + gap_km))
+                closing = [[start]] if back_km > 0.01 else []      # step back to the start
+                combined.append(CombinedRoute(chain_legs, chain_coords + closing,
+                                              total_dist + gap_km + back_km))
         if len(chain_legs) >= MAX_CHAIN_LENGTH:
             return
         end = oriented[chain_idx][3]
