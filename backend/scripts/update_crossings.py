@@ -1,7 +1,8 @@
 """
 Stoplights, intersections and busy-road crossings along each route, from OpenStreetMap:
 
-  stops_per_km          traffic lights and stop signs the route passes, per km
+  stops_per_km          traffic lights the route passes, per km (stop signs aren't counted:
+                        OSM puts them on the side street, so most are for the other traffic)
   intersections_per_km  road junctions the route passes through, per km (side streets
                         it crosses or that join it; each is a place you may have to stop)
   busy_crossings        times it crosses a busy road (primary / secondary / trunk, e.g. York)
@@ -40,7 +41,9 @@ BUSY = {"primary", "primary_link", "secondary", "secondary_link", "trunk", "trun
 # roads cars use: a junction of two of these is an intersection
 DRIVE = BUSY | {"tertiary", "tertiary_link", "residential", "unclassified", "living_street"}
 UNSAFE_CROSSING = {"no", "unmarked", "informal"}
-STOP_NEAR_M = 12          # a light / stop sign this close to the line is on the route
+STOP_NEAR_M = 12          # a light this close to the line is on the route
+CROSS_CHECK_M = 25        # a crossing goes from >= SIDE_M on one side of the road to the other
+SIDE_M = 6                #   (running along the road, or on top of its line, isn't crossing it)
 JUNCTION_NEAR_M = 8       # a junction this close to the line is one the route passes through
 SAFE_NEAR_M = 30          # a crosswalk / light / stop sign this close makes a crossing safe
 GROUP_M = 30              # points closer than this count once (both sides of a junction)
@@ -62,7 +65,7 @@ def extract():
     pbf = (glob.glob(os.path.join(HERE, "..", "..", "osrm-data", "*.osm.pbf")) or [None])[0]
     if not pbf:
         sys.exit("No .osm.pbf map file in osrm-data/.")
-    stops, safe = [], []          # lights + stop signs; marked crossings
+    signals, stop_signs, safe = [], [], []      # lights; stop signs; marked crossings
     busy = []
     node_count, node_loc = {}, {}
 
@@ -72,8 +75,10 @@ def extract():
                 return
             hw, cr = n.tags.get("highway"), n.tags.get("crossing")
             p = (n.location.lon, n.location.lat)
-            if hw in ("traffic_signals", "stop") or cr == "traffic_signals":
-                stops.append(p)
+            if hw == "traffic_signals" or cr == "traffic_signals":
+                signals.append(p)
+            elif hw == "stop":
+                stop_signs.append(p)
             elif hw == "crossing" and cr not in UNSAFE_CROSSING:
                 safe.append(p)
 
@@ -109,21 +114,24 @@ def extract():
     junctions = [node_loc[r] for r, c in node_count.items() if c >= 2]
     os.makedirs(os.path.dirname(DATA), exist_ok=True)
     with open(DATA, "w") as f:
-        json.dump({"stops": stops, "safe": safe, "busy": busy, "junctions": junctions}, f)
-    print(f"  {len(stops)} lights/stop signs, {len(safe)} crosswalks, {len(junctions)} junctions, "
+        json.dump({"signals": signals, "stop_signs": stop_signs, "safe": safe, "busy": busy,
+                   "junctions": junctions}, f)
+    print(f"  {len(signals)} lights, {len(stop_signs)} stop signs, {len(safe)} crosswalks, {len(junctions)} junctions, "
           f"{len(busy)} busy-road pieces")
 
 
 def load_index():
     from shapely.geometry import LineString, Point
     from shapely.strtree import STRtree
-    if not os.path.exists(DATA):
+    d = json.load(open(DATA)) if os.path.exists(DATA) else {}
+    if "signals" not in d:            # older cache that lumped lights and stop signs together
         extract()
-    d = json.load(open(DATA))
+        d = json.load(open(DATA))
     pts = lambda key: [Point(m(*p)) for p in d[key]]
-    stops, safe, junctions = pts("stops"), pts("safe"), pts("junctions")
+    signals, junctions = pts("signals"), pts("junctions")
+    safe = pts("safe") + signals + pts("stop_signs")      # anything that helps you cross
     busy = [LineString([m(*p) for p in w]) for w in d["busy"] if len(w) >= 2]
-    return {"stops": (stops, STRtree(stops)), "safe": (safe, STRtree(safe)),
+    return {"stops": (signals, STRtree(signals)), "safe": (safe, STRtree(safe)),
             "junctions": (junctions, STRtree(junctions)), "busy": (busy, STRtree(busy))}
 
 
@@ -151,23 +159,35 @@ def measure(coords, index):
     stops = _group(_near(line, index["stops"], STOP_NEAR_M), GROUP_M)
     junctions = _group(_near(line, index["junctions"], JUNCTION_NEAR_M), GROUP_M)
 
-    # where the line crosses a busy road (points only: running along it isn't crossing it)
+    # where the route crosses a busy road: it has to be clearly on one side of the road
+    # 25 m before and clearly on the other side 25 m after. Routes are drawn on road
+    # centrelines, so a route running ALONG York touches York's line over and over;
+    # none of those are crossings.
     busy, tree = index["busy"]
     hits = []
+    L = line.length
     for i in tree.query(line):
-        inter = line.intersection(busy[int(i)])
+        road = busy[int(i)]
+        inter = line.intersection(road)
         for g in getattr(inter, "geoms", [inter]):
-            if g.geom_type == "Point":
+            if g.is_empty or g.geom_type != "Point":
+                continue
+            t = line.project(g)
+            if t < CROSS_CHECK_M or t > L - CROSS_CHECK_M:
+                continue
+            a, b = line.interpolate(t - CROSS_CHECK_M), line.interpolate(t + CROSS_CHECK_M)
+            near = [busy[int(j)] for j in tree.query(LineString([a, b]).buffer(SIDE_M))]
+            if min((r.distance(a) for r in near), default=1e9) < SIDE_M \
+                    or min((r.distance(b) for r in near), default=1e9) < SIDE_M:
+                continue          # on or right beside the road: running along it / turning off it
+            if LineString([a, b]).intersects(road):
                 hits.append(g)
     crossings = _group(hits, CROSS_GROUP_M)
     safe_pts = index["safe"]
-    stop_pts = index["stops"]
     unsafe = 0
     for c in crossings:
         zone = c.buffer(SAFE_NEAR_M)
-        has_help = any(safe_pts[0][int(i)].distance(c) <= SAFE_NEAR_M for i in safe_pts[1].query(zone)) \
-            or any(stop_pts[0][int(i)].distance(c) <= SAFE_NEAR_M for i in stop_pts[1].query(zone))
-        if not has_help:
+        if not any(safe_pts[0][int(i)].distance(c) <= SAFE_NEAR_M for i in safe_pts[1].query(zone)):
             unsafe += 1
     return dict(stops_per_km=round(len(stops) / km, 2), intersections_per_km=round(len(junctions) / km, 2),
                 busy_crossings=len(crossings), unsafe_crossings=unsafe)
@@ -180,7 +200,7 @@ def summary(results):
     def q(key, p):
         s = sorted(v[key] for v in vals); return s[int(p * (len(s) - 1))]
     print(f"\n{len(vals)} routes measured.")
-    print(f"  lights + stop signs per mile: median {q('stops_per_km', .5) * 1.609:.1f}, "
+    print(f"  traffic lights per mile: median {q('stops_per_km', .5) * 1.609:.1f}, "
           f"90th pct {q('stops_per_km', .9) * 1.609:.1f}")
     print(f"  intersections per mile: median {q('intersections_per_km', .5) * 1.609:.1f}, "
           f"90th pct {q('intersections_per_km', .9) * 1.609:.1f}")

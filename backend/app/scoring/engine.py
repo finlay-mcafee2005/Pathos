@@ -87,7 +87,7 @@ class RouteCandidate:
     reach_km: Optional[float] = None           # loops: how far along it you can go while still heading away from the start (either direction)
     steepest_grade: Optional[float] = None     # steepest 200 m, as a fraction (scripts/update_steepness.py)
     cells: Optional[frozenset] = None          # ~150 m grid squares the path runs through (path_overlap)
-    stops_per_km: Optional[float] = None       # traffic lights + stop signs passed, per km (scripts/update_crossings.py)
+    stops_per_km: Optional[float] = None       # traffic lights passed, per km (scripts/update_crossings.py)
     intersections_per_km: Optional[float] = None   # road junctions passed through, per km
     unsafe_crossings: Optional[int] = None     # busy-road crossings with no crosswalk, light or stop sign
 
@@ -270,7 +270,7 @@ W_FEW_TURNS = 2
 QUIET_MAX_BUSY = 0.15         # "Quiet side streets only" limit
 QUIET_MAX_DOWNTOWN = 0.20
 # stopping: lights, stop signs and street crossings break up a run (testers: "fewer stops at lights")
-W_STOPS = 6                   # up to -6 for a route full of lights / stop signs
+W_STOPS = 6                   # up to -6 for a route full of traffic lights
 STOPS_OK_PER_KM = 0.6         # about 1 a mile costs nothing
 STOPS_FULL_PER_KM = 3.0       # about 5 a mile: full penalty
 W_INTERSECTIONS = 3           # up to -3 for crossing a side street every block
@@ -868,7 +868,7 @@ def score_route(
     spk, ipk = route.stops_per_km, route.intersections_per_km
     if spk is not None:
         add("stops", -W_STOPS * route_share * clamp((spk - STOPS_OK_PER_KM) / (STOPS_FULL_PER_KM - STOPS_OK_PER_KM)),
-            "Lots of traffic lights and stop signs" if spk >= 2.0 else None)
+            "Lots of traffic lights" if spk >= 2.0 else None)
     if ipk is not None:
         add("stops", -W_INTERSECTIONS * route_share
             * clamp((ipk - INTERSECTIONS_OK_PER_KM) / (INTERSECTIONS_FULL_PER_KM - INTERSECTIONS_OK_PER_KM)))

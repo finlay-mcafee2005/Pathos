@@ -102,7 +102,7 @@ type Recommendation = {
   scenic_pct?: number | null;
   busy_pct?: number | null;
   freeway_crossings?: number | null;
-  stops_per_km?: number | null;           // traffic lights + stop signs per km
+  stops_per_km?: number | null;           // traffic lights per km
   unsafe_crossings?: number | null;       // busy-road crossings with no crosswalk or light
   downtown_pct?: number | null;
   turns_per_km?: number | null;
@@ -316,7 +316,7 @@ const WHY_PHRASES: Record<string, [string, string]> = {
   freeway: ["No freeway crossings", "Crosses a freeway"],
   downtown: ["Stays out of downtown", "Goes through downtown"],
   turns: ["Few turns, easy to follow", "Lots of turns to keep track of"],
-  stops: ["Hardly any lights or street crossings", "Lots of lights, stop signs or street crossings"],
+  stops: ["Hardly any lights or street crossings", "Lots of traffic lights or street crossings"],
   crossing: ["Busy roads are crossed at a crosswalk or light", "Crosses a busy road with no crosswalk or light"],
   novelty: ["Somewhere you haven't run lately", "You ran it recently"],
   rating: ["You've rated it well before", "You've rated it low before"],
@@ -384,7 +384,7 @@ function whyFact(title: string, rec: Recommendation): string | null {
     case "Roads & turns": {
       const bits = [pct(rec.busy_pct) != null ? `${pct(rec.busy_pct)}% busy roads` : null,
                     rec.turns_per_km != null ? `${(rec.turns_per_km * 1.609).toFixed(1)} turns/mi` : null,
-                    rec.stops_per_km != null ? `${(rec.stops_per_km * 1.609).toFixed(1)} lights/stop signs per mi` : null,
+                    rec.stops_per_km != null ? `${(rec.stops_per_km * 1.609).toFixed(1)} traffic lights per mi` : null,
                     rec.freeway_crossings ? `${rec.freeway_crossings} freeway crossing${rec.freeway_crossings === 1 ? "" : "s"}` : null,
                     rec.unsafe_crossings ? `${rec.unsafe_crossings} busy crossing${rec.unsafe_crossings === 1 ? "" : "s"} without a crosswalk` : null]
         .filter(Boolean);
