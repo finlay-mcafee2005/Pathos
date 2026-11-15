@@ -90,6 +90,8 @@ class RouteCandidate:
     stops_per_km: Optional[float] = None       # traffic lights passed, per km (scripts/update_crossings.py)
     intersections_per_km: Optional[float] = None   # road junctions passed through, per km
     unsafe_crossings: Optional[int] = None     # busy-road crossings with no crosswalk, light or stop sign
+    jogs: Optional[int] = None                 # short dead-end dashes / detours mid-route (scripts/update_shape_quality.py)
+    near_self: Optional[float] = None          # loops: share running next to another part of itself (stems, parallel streets)
 
 
 def climb_per_km(distance_km: float, gain_m: float, loss_m: Optional[float] = None) -> float:
@@ -262,9 +264,21 @@ W_FREEWAY = 3                 # per freeway crossing ...
 W_FREEWAY_MAX = 9             # ... up to this much
 W_DOWNTOWN = 6                # full penalty at half the route downtown
 W_QUIET_BONUS = 2             # all side streets and paths
-W_TURNS = 10                  # up to -10 for a route full of turns
-TURNS_OK_PER_KM = 2.0       # about 3 turns a mile is normal for a street route
-TURNS_FULL_PER_KM = 5.5
+W_TURNS = 14                  # up to -14 for a route full of turns (testers: "shape and turns over exact mileage")
+TURNS_OK_PER_KM = 1.5         # about 2-3 turns a mile is fine
+TURNS_FULL_PER_KM = 4.5
+LONG_RUN_KM = 16.0            # 10 mi+: a run you remember, so turns and shape count for more ...
+LONG_RUN_SHAPE_SCALE = 1.4    # ... by this much
+W_BIG_LOOP = 4                # 10 mi+: a big open loop on a few long roads
+# route shape (scripts/update_shape_quality.py)
+W_JOG = 4                     # per dead-end dash / little detour mid-route ...
+W_JOG_MAX = 12                # ... up to this much
+W_DOUBLE_BACK = 10            # loop that runs back alongside itself (long stem, parallel streets) ...
+NEAR_SELF_OK = 0.30           # ... nothing at this share or less ...
+NEAR_SELF_FULL = 0.80         # ... full penalty here
+W_OPEN_LOOP = 3               # bonus: a big, open loop with no side trips
+SHORT_LAP_KM = 3.0            # laps of a loop shorter than this feel like circling the block ...
+W_SHORT_LAP = -4              # ... extra per extra lap
 FEW_TURNS_PER_KM = 1.5        # simple to follow: small bonus
 W_FEW_TURNS = 2
 QUIET_MAX_BUSY = 0.15         # "Quiet side streets only" limit
@@ -296,8 +310,8 @@ SHORT_RUN_KM = 3.0            # targets this short (or a time limit) may use par
 PARTIAL_OVER = 1.2            # short time limit: a route this much longer than the target is run partway out and back
 W_PARTIAL = -3                # ...a small nudge toward runs that use the whole route
 TIME_SLACK = 1.15             # a run may take up to 15% (+3 min) over the time they have
-W_OUT_AND_BACK = -2          # small nudge toward true loops
-W_REPEAT_PER_LAP = -8        # each extra lap of a repeated loop (testers disliked laps: use them only when nothing else fits)
+W_OUT_AND_BACK = -4          # nudge toward true loops (half that on an easy day: some like a simple out-and-back then)
+W_REPEAT_PER_LAP = -10       # each extra lap of a repeated loop (testers disliked laps: use them only when nothing else fits)
 W_OVERLOAD = 15              # long route while mileage is well above average
 
 W_PROXIMITY = 14              # starts at home -> fades to 0 at the search radius (travel is a priority)
@@ -715,9 +729,11 @@ def score_route(
         add("distance", pts, reason)
 
     if run_format == "out_and_back":
-        add("format", W_OUT_AND_BACK)
+        if shape_pref != "out_and_back":
+            add("format", W_OUT_AND_BACK * (0.5 if checkin.run_intent == "easy" else 1.0))
     elif run_format == "repeat":
-        add("format", W_REPEAT_PER_LAP * (repeat_count - 1))
+        lap_km = route.distance_km - 2 * (route.stem_km or 0.0)
+        add("format", (W_REPEAT_PER_LAP + (W_SHORT_LAP if lap_km < SHORT_LAP_KM else 0)) * (repeat_count - 1))
 
     # Run from home: the streets to the start and back are part of the run, so what
     # the runner actually feels is the climb (and the parks) spread over the whole run,
@@ -879,13 +895,34 @@ def score_route(
         add("crossing", -min(W_UNSAFE_CROSSING_MAX, W_UNSAFE_CROSSING * n),
             "Crosses a busy road with no crosswalk or light" if n == 1
             else f"Crosses busy roads {n} times with no crosswalk or light")
+    long_run = effective_distance >= LONG_RUN_KM
+    shape_scale = LONG_RUN_SHAPE_SCALE if long_run else 1.0
     tpk = route.turns_per_km
     if tpk is not None:
         if tpk <= FEW_TURNS_PER_KM:
             add("turns", W_FEW_TURNS * route_share, "Few turns, so it's easy to follow")
         else:
-            add("turns", -W_TURNS * route_share * clamp((tpk - TURNS_OK_PER_KM) / (TURNS_FULL_PER_KM - TURNS_OK_PER_KM)),
-                "Lots of turns to keep track of" if tpk >= 5.0 else None)
+            add("turns", -W_TURNS * shape_scale * route_share
+                * clamp((tpk - TURNS_OK_PER_KM) / (TURNS_FULL_PER_KM - TURNS_OK_PER_KM)),
+                "Lots of turns to keep track of" if tpk >= 4.0 else None)
+
+    # shape: side trips, and loops that run back alongside themselves (when run as the loop:
+    # an out-and-back runs back over itself by design)
+    if route.jogs:
+        add("layout", -min(W_JOG_MAX, W_JOG * route.jogs) * shape_scale * route_share,
+            "Has a short dead-end dash or detour partway round" if route.jogs == 1
+            else f"Has {route.jogs} short dead-end dashes or detours partway round")
+    ns = route.near_self
+    if ns is not None and run_format != "out_and_back":
+        if ns > NEAR_SELF_OK:
+            add("layout", -W_DOUBLE_BACK * shape_scale * route_share
+                * clamp((ns - NEAR_SELF_OK) / (NEAR_SELF_FULL - NEAR_SELF_OK)),
+                "Runs back alongside itself: a long out-and-back stretch or a parallel street"
+                if ns >= 0.6 else None)
+        elif ns <= 0.10 and not route.jogs:
+            add("layout", W_OPEN_LOOP * route_share, "A big, open loop: no doubling back")
+            if long_run and (tpk is None or tpk <= TURNS_OK_PER_KM) and run_format == "single":
+                add("layout", W_BIG_LOOP, "One big loop on a few long roads")
 
     # --- 7. proximity to home ---------------------------------------------
     if None not in (user.home_lat, user.home_lon, route.start_lat, route.start_lon):

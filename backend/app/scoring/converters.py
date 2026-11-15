@@ -284,6 +284,8 @@ def build_route_candidates(routes: List[Route]) -> List[RouteCandidate]:
             stops_per_km=getattr(r, "stops_per_km", None),
             intersections_per_km=getattr(r, "intersections_per_km", None),
             unsafe_crossings=getattr(r, "unsafe_crossings", None),
+            jogs=getattr(r, "jogs", None),
+            near_self=getattr(r, "near_self", None),
         )
         for r in routes
     ]

@@ -556,6 +556,43 @@ def check_crossings():
     print("  all crossing checks passed")
 
 
+def check_shape():
+    """Route shape (Kyle, Theo, RJ, Katie, Owen, Aiden, Alireza): fewer laps, no side dashes,
+    no loops back along a parallel street, fewer turns, big loops for long runs."""
+    print("\n=== Shape checks ===")
+    user = UserProfile(fitness_level="advanced", weekly_km_avg=50)
+    recent = RecentRuns(last_7_days_km=40)
+    def loop(i, km, **kw):
+        return RouteCandidate(id=i, name=f"{i} loop", distance_km=km, elevation_gain_m=km * 8, difficulty="moderate",
+                              surface_type="pavement", is_loop=True, start_lat=34.1 + 0.03 * len(i),
+                              start_lon=-118.2, **kw)
+    # 1. 8 mi: one 7.6 mi loop beats 2 laps of a 4 mi loop (Alireza got three 2x loops)
+    ck = DailyCheckin(energy_score=7, planned_distance_km=12.9)
+    one = loop("one", 12.3, turns_per_km=2.0, near_self=0.2, jogs=0)
+    laps = loop("laps", 6.4, turns_per_km=2.0, near_self=0.2, jogs=0)
+    res = recommend(user, ck, recent, [laps, one])
+    assert res[0].route.id == "one", [(r.route.id, r.score) for r in res]
+    print(f"  8 mi: one 7.6 mi loop ({res[0].score}) beats 2 laps of 4 mi ({res[1].score})")
+    # 2. side dashes and parallel-street loops lose to a clean open loop
+    ck = DailyCheckin(energy_score=6, planned_distance_km=6.4)
+    clean = loop("clean", 6.4, turns_per_km=2.0, near_self=0.05, jogs=0)
+    jog = loop("jog", 6.4, turns_per_km=2.0, near_self=0.05, jogs=2)
+    narrow = loop("narrow", 6.4, turns_per_km=2.0, near_self=0.85, jogs=0)
+    res = recommend(user, ck, recent, [jog, narrow, clean])
+    assert res[0].route.id == "clean", [(r.route.id, r.score) for r in res]
+    print(f"  clean loop {res[0].score} beats side dashes / back along a parallel street "
+          f"({', '.join(f'{r.route.id} {r.score}' for r in res[1:])})")
+    # 3. turns: 72 turns in 15 mi loses to a few long roads, and counts for more on a long run
+    ck = DailyCheckin(energy_score=8, planned_distance_km=24.0)
+    windy = loop("windy", 24.0, turns_per_km=3.0, near_self=0.05, jogs=0)
+    big = loop("big", 24.0, turns_per_km=0.8, near_self=0.05, jogs=0)
+    res = recommend(user, ck, recent, [windy, big])
+    assert res[0].route.id == "big" and res[0].score - res[1].score >= 15, [(r.route.id, r.score) for r in res]
+    assert any("big loop" in x.lower() for x in res[0].reasons)
+    print(f"  15 mi: big loop on long roads ({res[0].score}) well ahead of 72 turns ({res[1].score})")
+    print("  all shape checks passed")
+
+
 if __name__ == "__main__":
     for title, user, checkin in SCENARIOS:
         print_results(title, run(user, checkin))
@@ -565,3 +602,4 @@ if __name__ == "__main__":
     check_audit_regressions()
     check_variety()
     check_crossings()
+    check_shape()

@@ -119,7 +119,8 @@ def add_new_columns():
                          ("steepest_grade", "FLOAT"), ("start_label", "VARCHAR"), ("park_lat", "FLOAT"),
                          ("park_lon", "FLOAT"), ("start_street", "VARCHAR"),
                          ("stops_per_km", "FLOAT"), ("intersections_per_km", "FLOAT"),
-                         ("busy_crossings", "INTEGER"), ("unsafe_crossings", "INTEGER")]:
+                         ("busy_crossings", "INTEGER"), ("unsafe_crossings", "INTEGER"),
+                         ("jogs", "INTEGER"), ("near_self", "FLOAT")]:
             conn.execute(text(f"ALTER TABLE route ADD COLUMN IF NOT EXISTS {col} {typ}"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS quiet_streets BOOLEAN DEFAULT FALSE"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS no_laps BOOLEAN DEFAULT FALSE"))
