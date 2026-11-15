@@ -281,6 +281,9 @@ def build_route_candidates(routes: List[Route]) -> List[RouteCandidate]:
             steepest_grade=getattr(r, "steepest_grade", None),
             elevation_loss_m=getattr(r, "elevation_loss_m", None),
             cells=path_cells(r),
+            stops_per_km=getattr(r, "stops_per_km", None),
+            intersections_per_km=getattr(r, "intersections_per_km", None),
+            unsafe_crossings=getattr(r, "unsafe_crossings", None),
         )
         for r in routes
     ]

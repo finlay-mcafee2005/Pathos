@@ -87,6 +87,9 @@ class RouteCandidate:
     reach_km: Optional[float] = None           # loops: how far along it you can go while still heading away from the start (either direction)
     steepest_grade: Optional[float] = None     # steepest 200 m, as a fraction (scripts/update_steepness.py)
     cells: Optional[frozenset] = None          # ~150 m grid squares the path runs through (path_overlap)
+    stops_per_km: Optional[float] = None       # traffic lights + stop signs passed, per km (scripts/update_crossings.py)
+    intersections_per_km: Optional[float] = None   # road junctions passed through, per km
+    unsafe_crossings: Optional[int] = None     # busy-road crossings with no crosswalk, light or stop sign
 
 
 def climb_per_km(distance_km: float, gain_m: float, loss_m: Optional[float] = None) -> float:
@@ -266,6 +269,17 @@ FEW_TURNS_PER_KM = 1.5        # simple to follow: small bonus
 W_FEW_TURNS = 2
 QUIET_MAX_BUSY = 0.15         # "Quiet side streets only" limit
 QUIET_MAX_DOWNTOWN = 0.20
+# stopping: lights, stop signs and street crossings break up a run (testers: "fewer stops at lights")
+W_STOPS = 6                   # up to -6 for a route full of lights / stop signs
+STOPS_OK_PER_KM = 0.6         # about 1 a mile costs nothing
+STOPS_FULL_PER_KM = 3.0       # about 5 a mile: full penalty
+W_INTERSECTIONS = 3           # up to -3 for crossing a side street every block
+INTERSECTIONS_OK_PER_KM = 3.0
+INTERSECTIONS_FULL_PER_KM = 10.0
+W_FEW_STOPS = 2               # bonus: hardly any lights or crossings, you can keep moving
+# crossing a busy road (e.g. York) with no crosswalk, light or stop sign: jaywalking across traffic
+W_UNSAFE_CROSSING = 6         # per crossing ...
+W_UNSAFE_CROSSING_MAX = 12    # ... up to this much
 W_APPEAL = 8                  # always-on: parks, water and trees beat plain street grids
 MIN_ROUTE_SHARE = 0.5         # run from home: under half the run on the route itself starts to cost
 W_MOSTLY_APPROACH = 12        # ...up to this much when the route is a tiny bit at the end of the streets
@@ -851,6 +865,20 @@ def score_route(
     if route.downtown_pct:
         add("downtown", -W_DOWNTOWN * clamp(route.downtown_pct / 0.5),
             "Goes through downtown" if route.downtown_pct >= 0.2 else None)
+    spk, ipk = route.stops_per_km, route.intersections_per_km
+    if spk is not None:
+        add("stops", -W_STOPS * route_share * clamp((spk - STOPS_OK_PER_KM) / (STOPS_FULL_PER_KM - STOPS_OK_PER_KM)),
+            "Lots of traffic lights and stop signs" if spk >= 2.0 else None)
+    if ipk is not None:
+        add("stops", -W_INTERSECTIONS * route_share
+            * clamp((ipk - INTERSECTIONS_OK_PER_KM) / (INTERSECTIONS_FULL_PER_KM - INTERSECTIONS_OK_PER_KM)))
+    if spk is not None and ipk is not None and spk <= 0.3 and ipk <= 2.0:
+        add("stops", W_FEW_STOPS * route_share, "Hardly any lights or street crossings, so you can keep moving")
+    if route.unsafe_crossings:
+        n = route.unsafe_crossings
+        add("crossing", -min(W_UNSAFE_CROSSING_MAX, W_UNSAFE_CROSSING * n),
+            "Crosses a busy road with no crosswalk or light" if n == 1
+            else f"Crosses busy roads {n} times with no crosswalk or light")
     tpk = route.turns_per_km
     if tpk is not None:
         if tpk <= FEW_TURNS_PER_KM:
@@ -1183,6 +1211,7 @@ def recommend(
         allowed += rest[:top_n - len(allowed)]
     scored = allowed
     scored = limit_hills(scored, checkin.hills_pref, top_n)
+    scored = limit_safe_crossings(scored, top_n)
     scored = limit_quiet(scored, getattr(checkin, "quiet_streets", False), top_n)
     scored = limit_shape(scored, getattr(checkin, "shape_pref", None), top_n)
     scored = limit_climb(scored, getattr(checkin, "climb_range", None), top_n)
@@ -1278,11 +1307,28 @@ def is_quiet(r: RouteCandidate) -> bool:
     """Side streets and paths: little busy road, no freeway crossing, not downtown.
     A route we haven't measured yet counts as quiet (can't tell)."""
     return ((r.busy_pct or 0.0) <= QUIET_MAX_BUSY and not (r.freeway_crossings or 0)
-            and (r.downtown_pct or 0.0) < QUIET_MAX_DOWNTOWN)
+            and (r.downtown_pct or 0.0) < QUIET_MAX_DOWNTOWN and not (r.unsafe_crossings or 0))
 
 
 def busyness(r: RouteCandidate) -> float:
     return (r.busy_pct or 0.0) + 0.15 * (r.freeway_crossings or 0) + (r.downtown_pct or 0.0)
+
+
+UNSAFE_FILL_NOTE = "Few routes nearby avoid it: one busy-road crossing here has no crosswalk or light, so cross carefully"
+
+
+def limit_safe_crossings(scored: List[ScoredRoute], top_n: int) -> List[ScoredRoute]:
+    """Crossing a busy road needs a crosswalk, light or stop sign: always a limit, not a
+    nudge. Drop routes that cross one without; if too few are left, fill with the ones
+    that have the fewest such crossings (and say so on the card)."""
+    ok = [s for s in scored if not (s.route.unsafe_crossings or 0)]
+    if len(ok) >= top_n:
+        return ok
+    rest = sorted((s for s in scored if s not in ok), key=lambda s: (s.route.unsafe_crossings, -s.score))
+    extra = rest[:top_n - len(ok)]
+    for s in extra:
+        s.reasons.insert(0, UNSAFE_FILL_NOTE)
+    return ok + extra
 
 
 def limit_quiet(scored: List[ScoredRoute], quiet: bool, top_n: int) -> List[ScoredRoute]:

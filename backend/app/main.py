@@ -117,7 +117,9 @@ def add_new_columns():
         for col, typ in [("busy_pct", "FLOAT"), ("freeway_crossings", "INTEGER"),
                          ("downtown_pct", "FLOAT"), ("turns_per_km", "FLOAT"), ("stem_km", "FLOAT"),
                          ("steepest_grade", "FLOAT"), ("start_label", "VARCHAR"), ("park_lat", "FLOAT"),
-                         ("park_lon", "FLOAT"), ("start_street", "VARCHAR")]:
+                         ("park_lon", "FLOAT"), ("start_street", "VARCHAR"),
+                         ("stops_per_km", "FLOAT"), ("intersections_per_km", "FLOAT"),
+                         ("busy_crossings", "INTEGER"), ("unsafe_crossings", "INTEGER")]:
             conn.execute(text(f"ALTER TABLE route ADD COLUMN IF NOT EXISTS {col} {typ}"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS quiet_streets BOOLEAN DEFAULT FALSE"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS no_laps BOOLEAN DEFAULT FALSE"))
@@ -481,6 +483,8 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             "freeway_crossings": getattr(r.route, "freeway_crossings", None),
             "downtown_pct": getattr(r.route, "downtown_pct", None),
             "turns_per_km": getattr(r.route, "turns_per_km", None),
+            "stops_per_km": getattr(r.route, "stops_per_km", None),
+            "unsafe_crossings": getattr(r.route, "unsafe_crossings", None),
             "stem_km": getattr(r.route, "stem_km", None) or 0.0,   # for "out 0.5 mi -> loop x2 -> back"
             "steepest_grade": getattr(r.route, "steepest_grade", None),
             "days_since_run": recent_runs.days_since_last_run_by_route_id.get(r.route.id),

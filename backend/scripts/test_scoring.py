@@ -525,6 +525,37 @@ def check_variety():
     print("  all variety checks passed")
 
 
+def check_crossings():
+    """Busy-road crossings need a crosswalk or light; fewer lights and stop signs is better
+    (Eduardo: 'just jaywalking' across York; Theo and Jonathan: too many stops)."""
+    print("\n=== Crossing checks ===")
+    user = UserProfile(fitness_level="intermediate", weekly_km_avg=30)
+    ck = DailyCheckin(energy_score=6)
+    recent = RecentRuns(last_7_days_km=24)
+    def loop(i, **kw):
+        return RouteCandidate(id=i, name=f"Loop {i}", distance_km=5.0, elevation_gain_m=40, difficulty="easy",
+                              surface_type="pavement", is_loop=True, start_lat=34.1 + 0.02 * len(i),
+                              start_lon=-118.2 + 0.01 * ord(i[0]), **kw)
+    jay = loop("jay", unsafe_crossings=1, stops_per_km=0.2, intersections_per_km=2)
+    ok = [loop("a", unsafe_crossings=0, stops_per_km=0.5, intersections_per_km=4),
+          loop("bb", unsafe_crossings=0, stops_per_km=0.8, intersections_per_km=5),
+          loop("ccc", unsafe_crossings=0, stops_per_km=1.0, intersections_per_km=6)]
+    ids = [r.route.id for r in recommend(user, ck, recent, [jay] + ok)]
+    assert "jay" not in ids, ids
+    print(f"  crossing York with no crosswalk: left out while 3 others fit ({ids})")
+    ids = [r.route.id for r in recommend(user, ck, recent, [jay] + ok[:2])]
+    assert "jay" in ids
+    jay_pick = [r for r in recommend(user, ck, recent, [jay] + ok[:2]) if r.route.id == "jay"][0]
+    assert any("no crosswalk or light" in x for x in jay_pick.reasons)
+    print("  only 2 others: shown as the 3rd, with a warning on the card")
+    calm = loop("calm", stops_per_km=0.2, intersections_per_km=1.5)
+    lights = loop("lights", stops_per_km=3.5, intersections_per_km=11)
+    res = recommend(user, ck, recent, [lights, calm])
+    assert res[0].route.id == "calm" and res[0].score > res[1].score
+    print(f"  few lights and crossings ({res[0].score}) beats a light every few blocks ({res[1].score})")
+    print("  all crossing checks passed")
+
+
 if __name__ == "__main__":
     for title, user, checkin in SCENARIOS:
         print_results(title, run(user, checkin))
@@ -533,3 +564,4 @@ if __name__ == "__main__":
     check_difficulty()
     check_audit_regressions()
     check_variety()
+    check_crossings()
