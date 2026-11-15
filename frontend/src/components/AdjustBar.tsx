@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ClimbSlider from "./ClimbSlider";
 import { climbShort } from "../climb";
 // "Adjust and regenerate": tweak today's check-in right from the results
-// ("no hills", "a mile shorter", "out & back") or ask for 3 different routes,
-// without redoing the whole check-in.
+// ("no hills", "a mile longer", "out & back") or ask for 3 different routes,
+// without redoing the whole check-in. Changes collect as a draft (several at once,
+// distance in 0.5 mi steps) and apply together with "Update picks".
 
 export type TodayPrefs = {
   checkin_id: string;
@@ -42,8 +43,8 @@ function Icon({ d }: { d: string }) {
   );
 }
 
-function Group({ label, opts, busy, onAdjust, wide }: {
-  label: string; opts: Opt[]; busy: boolean; onAdjust: (c: Adjust, label: string) => void; wide?: boolean;
+function Group({ label, opts, busy, onPick, wide }: {
+  label: string; opts: Opt[]; busy: boolean; onPick: (c: Adjust) => void; wide?: boolean;
 }) {
   return (
     <div className={`adj-group ${wide ? "wide" : ""}`}>
@@ -51,7 +52,7 @@ function Group({ label, opts, busy, onAdjust, wide }: {
       <div className="adj-seg" role="group" aria-label={label}>
         {opts.map((o) => (
           <button key={o.label} type="button" className={o.on ? "on" : ""} aria-pressed={o.on} disabled={busy}
-                  onClick={() => onAdjust(o.change, o.label)}>
+                  onClick={() => onPick(o.change)}>
             {o.icon && <Icon d={ICONS[o.icon]} />}
             {o.label}
           </button>
@@ -61,16 +62,40 @@ function Group({ label, opts, busy, onAdjust, wide }: {
   );
 }
 
+const LABELS: Record<string, (v: unknown) => string> = {
+  hills_pref: (v) => (v === "avoid" ? "flatter" : v === "want" ? "hillier" : "any hills"),
+  surface_preference: (v) => (v ? String(v) : "any surface"),
+  shape_pref: (v) => (v === "loop" ? "loop" : v === "out_and_back" ? "out & back" : "any shape"),
+  climb_range: (v) => climbShort(v as string) || "any climb",
+  quiet_streets: (v) => (v ? "quiet streets" : "no quiet-streets limit"),
+  wants_scenic: (v) => (v ? "scenic" : "not scenic"),
+  no_laps: (v) => (v ? "1 lap only" : "laps ok"),
+  planned_distance_miles: (v) => `${Number(v).toFixed(1)} mi`,
+};
+
 function AdjustBar({ prefs, currentMiles, busy, onAdjust, onDifferent }: {
   prefs: TodayPrefs | null;
-  currentMiles: number | null;          // the plan, or what today's picks average, for -1 / +1 mi
+  currentMiles: number | null;          // the plan, or what today's picks average, for the distance stepper
   busy: boolean;
   onAdjust: (change: Adjust, label: string) => void;
   onDifferent: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<Adjust>({});      // changes not applied yet
+  // a new check-in came back (changes applied): start a fresh draft
+  useEffect(() => { setDraft({}); }, [prefs?.checkin_id]);
   if (!prefs) return null;
-  const miles = prefs.planned_distance_miles ?? currentMiles;
+
+  const view = { ...prefs, ...draft } as TodayPrefs;   // what the controls show
+  const planMiles = prefs.planned_distance_miles ?? currentMiles;
+  const miles = draft.planned_distance_miles ?? planMiles;
+  // only what really differs from today's check-in
+  const changes = Object.fromEntries(Object.entries(draft).filter(([k, v]) => {
+    if (k === "planned_distance_miles") return v != null && planMiles != null && Math.abs((v as number) - planMiles) > 0.01;
+    return (v ?? null) !== ((prefs as Record<string, unknown>)[k] ?? null);
+  })) as Adjust;
+  const nChanges = Object.keys(changes).length;
+
   const active = [
     prefs.hills_pref === "avoid" ? "Flatter" : prefs.hills_pref === "want" ? "Hillier" : null,
     prefs.surface_preference === "road" ? "Road" : prefs.surface_preference === "trail" ? "Trail" : null,
@@ -81,8 +106,16 @@ function AdjustBar({ prefs, currentMiles, busy, onAdjust, onDifferent }: {
     prefs.no_laps ? "1 lap only" : null,
   ].filter(Boolean) as string[];
   const flip = <K extends keyof Adjust>(key: K, value: Adjust[K], off: Adjust[K]): Adjust =>
-    ({ [key]: prefs[key as keyof TodayPrefs] === value ? off : value } as Adjust);
+    ({ [key]: view[key as keyof TodayPrefs] === value ? off : value } as Adjust);
+  const pick = (c: Adjust) => setDraft((d) => ({ ...d, ...c }));
   const half = (x: number) => Math.round(x * 2) / 2;
+  const stepMiles = (delta: number) => miles != null && pick({ planned_distance_miles: Math.max(0.5, half(miles + delta)) });
+
+  function apply() {
+    if (!nChanges) return;
+    const label = Object.entries(changes).map(([k, v]) => (LABELS[k] ?? String)(v)).join(", ");
+    onAdjust(changes, label);
+  }
 
   return (
     <section className={`adj-card ${open ? "open" : "closed"}`} aria-label="Fine-tune today's picks">
@@ -104,8 +137,8 @@ function AdjustBar({ prefs, currentMiles, busy, onAdjust, onDifferent }: {
             </span>
             {/* what today's picks are set to, as small chips */}
             <span className="adj-set">
-              {[miles != null ? `${miles.toFixed(1)} mi` : null, ...active].filter(Boolean).length
-                ? [miles != null ? `${miles.toFixed(1)} mi` : null, ...active].filter(Boolean).map((t) => (
+              {[planMiles != null ? `${planMiles.toFixed(1)} mi` : null, ...active].filter(Boolean).length
+                ? [planMiles != null ? `${planMiles.toFixed(1)} mi` : null, ...active].filter(Boolean).map((t) => (
                     <span key={t as string} className="adj-set-chip">{t}</span>))
                 : <span className="adj-set-empty">Hills, distance, surface, shape</span>}
             </span>
@@ -122,42 +155,55 @@ function AdjustBar({ prefs, currentMiles, busy, onAdjust, onDifferent }: {
 
       {open && <>
       <div className="adj-grid">
-        <Group label="Hills" busy={busy} onAdjust={onAdjust} opts={[
-          { label: "Flatter", icon: "flat", on: prefs.hills_pref === "avoid", change: flip("hills_pref", "avoid", null) },
-          { label: "Hillier", icon: "hill", on: prefs.hills_pref === "want", change: flip("hills_pref", "want", null) },
+        <Group label="Hills" busy={busy} onPick={pick} opts={[
+          { label: "Flatter", icon: "flat", on: view.hills_pref === "avoid", change: flip("hills_pref", "avoid", null) },
+          { label: "Hillier", icon: "hill", on: view.hills_pref === "want", change: flip("hills_pref", "want", null) },
         ]} />
         {miles != null && (
           <div className="adj-group">
             <span className="adj-group-label">Distance</span>
             <div className="adj-stepper">
-              <button type="button" disabled={busy || miles <= 1} aria-label="1 mile shorter"
-                      onClick={() => onAdjust({ planned_distance_miles: Math.max(1, half(miles - 1)) }, "1 mi shorter")}>−</button>
+              <button type="button" disabled={busy || miles <= 0.5} aria-label="Half a mile shorter"
+                      onClick={() => stepMiles(-0.5)}>−</button>
               <span className="adj-miles"><b>{miles.toFixed(1)}</b> mi</span>
-              <button type="button" disabled={busy} aria-label="1 mile longer"
-                      onClick={() => onAdjust({ planned_distance_miles: half(miles + 1) }, "1 mi longer")}>+</button>
+              <button type="button" disabled={busy} aria-label="Half a mile longer"
+                      onClick={() => stepMiles(0.5)}>+</button>
             </div>
           </div>
         )}
-        <Group label="Surface" busy={busy} onAdjust={onAdjust} opts={[
-          { label: "Road", icon: "road", on: prefs.surface_preference === "road", change: flip("surface_preference", "road", null) },
-          { label: "Trail", icon: "trail", on: prefs.surface_preference === "trail", change: flip("surface_preference", "trail", null) },
+        <Group label="Surface" busy={busy} onPick={pick} opts={[
+          { label: "Road", icon: "road", on: view.surface_preference === "road", change: flip("surface_preference", "road", null) },
+          { label: "Trail", icon: "trail", on: view.surface_preference === "trail", change: flip("surface_preference", "trail", null) },
         ]} />
-        <Group label="Shape" busy={busy} onAdjust={onAdjust} opts={[
-          { label: "Loop", icon: "loop", on: prefs.shape_pref === "loop", change: flip("shape_pref", "loop", null) },
-          { label: "Out & back", icon: "oab", on: prefs.shape_pref === "out_and_back", change: flip("shape_pref", "out_and_back", null) },
+        <Group label="Shape" busy={busy} onPick={pick} opts={[
+          { label: "Loop", icon: "loop", on: view.shape_pref === "loop", change: flip("shape_pref", "loop", null) },
+          { label: "Out & back", icon: "oab", on: view.shape_pref === "out_and_back", change: flip("shape_pref", "out_and_back", null) },
         ]} />
         <div className="adj-group wide">
           <span className="adj-group-label">Total climb (ft)</span>
-          <ClimbSlider value={prefs.climb_range ?? ""} commitOnRelease disabled={busy}
-                       onChange={(v) => onAdjust({ climb_range: v || null }, v ? `Climb ${climbShort(v)}` : "Any climb")} />
+          <ClimbSlider value={view.climb_range ?? ""} disabled={busy}
+                       onChange={(v) => pick({ climb_range: v || null })} />
         </div>
-        <Group label="Extras" wide busy={busy} onAdjust={onAdjust} opts={[
-          { label: "Quiet streets", icon: "quiet", on: prefs.quiet_streets, change: { quiet_streets: !prefs.quiet_streets } },
-          { label: "Scenic", icon: "scenic", on: prefs.wants_scenic, change: { wants_scenic: !prefs.wants_scenic } },
-          { label: "1 lap only", icon: "once", on: !!prefs.no_laps, change: { no_laps: !prefs.no_laps } },
+        <Group label="Extras" wide busy={busy} onPick={pick} opts={[
+          { label: "Quiet streets", icon: "quiet", on: view.quiet_streets, change: { quiet_streets: !view.quiet_streets } },
+          { label: "Scenic", icon: "scenic", on: view.wants_scenic, change: { wants_scenic: !view.wants_scenic } },
+          { label: "1 lap only", icon: "once", on: !!view.no_laps, change: { no_laps: !view.no_laps } },
         ]} />
       </div>
-      <p className="adj-foot">Each change gets you new picks right away. Tap again to turn an option off.</p>
+      <div className="adj-apply">
+        <p className="adj-foot">
+          {nChanges ? `${nChanges} change${nChanges === 1 ? "" : "s"} ready. Make as many as you like, then update.`
+            : "Make as many changes as you like, then tap Update picks."}
+        </p>
+        <div className="adj-apply-buttons">
+          {nChanges > 0 && (
+            <button type="button" className="adj-reset" disabled={busy} onClick={() => setDraft({})}>Reset</button>
+          )}
+          <button type="button" className="adj-update" disabled={busy || !nChanges} onClick={apply}>
+            Update picks
+          </button>
+        </div>
+      </div>
       </>}
     </section>
   );
