@@ -1,13 +1,16 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 
 // "Where are the climbs": the run's elevation along the way (feet over miles), as drawn on
 // the card (laps and out-and-backs included). Hover or drag a finger to read a point.
+// Folded away behind "Show elevation" so the picks stay uncluttered.
 export type Profile = { mi: number[]; ft: number[] };
 
 const W = 600, H = 120, PAD_L = 38, PAD_R = 8, PAD_T = 10, PAD_B = 20;
 
 function ElevationProfile({ profile }: { profile: Profile }) {
   const [hover, setHover] = useState<number | null>(null);
+  const [open, setOpen] = useState(false);
+  const fillId = `rpe-fill-${useId().replace(/:/g, "")}`;   // one per card
   const { mi, ft } = profile;
   if (mi.length < 2) return null;
   const total = mi[mi.length - 1] || 1;
@@ -36,47 +39,61 @@ function ElevationProfile({ profile }: { profile: Profile }) {
     setHover(Math.max(0, Math.min(mi.length - 1, k)));
   }
 
+  const summary = `${Math.round(lo).toLocaleString("en-US")}–${Math.round(hi).toLocaleString("en-US")} ft`
+    + (steep && best >= 0.04 ? ` · steepest ${(best * 100).toFixed(0)}%` : "");
+  if (!open) {
+    return (
+      <button type="button" className="rpe-toggle" aria-expanded="false" onClick={() => setOpen(true)}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+             strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 18l6-9 4 5 3-4 5 8" /></svg>
+        <span>Show elevation chart</span>
+        <span className="rpe-toggle-sum">{summary}</span>
+      </button>
+    );
+  }
+
   return (
-    <figure className="elev">
-      <figcaption className="elev-head">
-        <span className="elev-title">Elevation</span>
-        <span className="elev-read">
+    <figure className="rpe">
+      <figcaption className="rpe-head">
+        <span className="rpe-title">Elevation</span>
+        <button type="button" className="rpe-hide" aria-expanded="true" onClick={() => setOpen(false)}>Hide</button>
+        <span className="rpe-read">
           {hover != null
             ? `${mi[hover].toFixed(1)} mi · ${ft[hover].toLocaleString("en-US")} ft`
             : `${Math.round(lo).toLocaleString("en-US")}–${Math.round(hi).toLocaleString("en-US")} ft`
               + (steep && best >= 0.04 ? ` · steepest ${(best * 100).toFixed(0)}% at mile ${mi[steep[0]].toFixed(1)}` : "")}
         </span>
       </figcaption>
-      <svg viewBox={`0 0 ${W} ${H}`} className="elev-svg" role="img"
+      <svg viewBox={`0 0 ${W} ${H}`} className="rpe-svg" role="img"
            aria-label={`Elevation from ${Math.round(lo)} to ${Math.round(hi)} feet over ${total.toFixed(1)} miles`}
            onPointerMove={move} onPointerDown={move} onPointerLeave={() => setHover(null)}>
         <defs>
-          <linearGradient id="elev-fill" x1="0" x2="0" y1="0" y2="1">
+          <linearGradient id={fillId} x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.32" />
             <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.04" />
           </linearGradient>
         </defs>
         {[base, base + span].map((f, i) => (
           <g key={i}>
-            <line x1={PAD_L} x2={W - PAD_R} y1={y(f)} y2={y(f)} className="elev-grid" />
-            <text x={PAD_L - 6} y={y(f) + 4} textAnchor="end" className="elev-axis">{Math.round(f).toLocaleString("en-US")}</text>
+            <line x1={PAD_L} x2={W - PAD_R} y1={y(f)} y2={y(f)} className="rpe-grid" />
+            <text x={PAD_L - 6} y={y(f) + 4} textAnchor="end" className="rpe-axis">{Math.round(f).toLocaleString("en-US")}</text>
           </g>
         ))}
-        <path d={area} fill="url(#elev-fill)" />
-        <path d={line} className="elev-line" />
+        <path d={area} fill={`url(#${fillId})`} />
+        <path d={line} className="rpe-line" />
         {steep && best >= 0.04 && (
           <path d={mi.slice(steep[0], steep[1] + 1).map((m, i) => `${i ? "L" : "M"}${x(m)},${y(ft[steep![0] + i])}`).join(" ")}
-                className="elev-steep" />
+                className="rpe-steep" />
         )}
         {ticks.map((t, i) => (
-          <text key={i} x={x(t)} y={H - 5} textAnchor={i === 0 ? "start" : i === 2 ? "end" : "middle"} className="elev-axis">
+          <text key={i} x={x(t)} y={H - 5} textAnchor={i === 0 ? "start" : i === 2 ? "end" : "middle"} className="rpe-axis">
             {t.toFixed(1)} mi
           </text>
         ))}
         {hover != null && (
           <g>
-            <line x1={x(mi[hover])} x2={x(mi[hover])} y1={PAD_T} y2={H - PAD_B} className="elev-cursor" />
-            <circle cx={x(mi[hover])} cy={y(ft[hover])} r={4} className="elev-dot" />
+            <line x1={x(mi[hover])} x2={x(mi[hover])} y1={PAD_T} y2={H - PAD_B} className="rpe-cursor" />
+            <circle cx={x(mi[hover])} cy={y(ft[hover])} r={4} className="rpe-dot" />
           </g>
         )}
       </svg>

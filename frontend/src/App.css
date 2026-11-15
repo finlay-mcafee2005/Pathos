@@ -9528,15 +9528,28 @@ body::before {
 .adj-reset:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 
 /* elevation profile on each pick */
-.elev { margin: 14px 0 4px; padding: 10px 12px 6px; border-radius: 14px; border: 1px solid var(--border);
+.rpe { margin: 14px 0 4px; padding: 10px 12px 6px; border-radius: 14px; border: 1px solid var(--border);
   background: color-mix(in srgb, var(--accent) 4%, var(--card-bg)); }
-.elev-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-.elev-title { font-size: 0.7rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--ink); opacity: .55; }
-.elev-read { font-size: 0.8rem; font-weight: 600; color: var(--ink); opacity: .8; font-variant-numeric: tabular-nums; }
-.elev-svg { display: block; width: 100%; height: auto; touch-action: pan-y; cursor: crosshair; }
-.elev-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
-.elev-steep { fill: none; stroke: #EA580C; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-.elev-grid { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3 4; }
-.elev-axis { font-size: 11px; fill: var(--ink); opacity: .5; font-family: Inter, sans-serif; }
-.elev-cursor { stroke: var(--ink); stroke-opacity: .35; stroke-width: 1; }
-.elev-dot { fill: var(--card-bg); stroke: var(--accent); stroke-width: 2.5; }
+.rpe-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.rpe-title { font-size: 0.7rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--ink); opacity: .55; }
+.rpe-read { font-size: 0.8rem; font-weight: 600; color: var(--ink); opacity: .8; font-variant-numeric: tabular-nums; }
+.rpe-svg { display: block; width: 100%; height: auto; touch-action: pan-y; cursor: crosshair; }
+.rpe-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+.rpe-steep { fill: none; stroke: #EA580C; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.rpe-grid { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3 4; }
+.rpe-axis { font-size: 11px; fill: var(--ink); opacity: .5; font-family: Inter, sans-serif; }
+.rpe-cursor { stroke: var(--ink); stroke-opacity: .35; stroke-width: 1; }
+.rpe-dot { fill: var(--card-bg); stroke: var(--accent); stroke-width: 2.5; }
+
+/* elevation chart folded behind a button */
+.rpe-toggle { display: flex; align-items: center; gap: 8px; width: 100%; margin: 12px 0 2px; padding: 9px 12px;
+  border-radius: 12px; border: 1px dashed var(--border); background: none; color: var(--accent);
+  font: 600 0.85rem Inter, sans-serif; cursor: pointer; text-align: left; }
+.rpe-toggle:hover { border-style: solid; background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.rpe-toggle-sum { margin-left: auto; color: var(--ink); opacity: .55; font-weight: 500; font-size: 0.78rem;
+  font-variant-numeric: tabular-nums; }
+.rpe-head { position: relative; }
+.rpe-head .rpe-title { margin-right: auto; }
+.rpe-hide { order: 3; border: 0; background: none; padding: 0 0 0 10px; color: var(--accent);
+  font: 600 0.78rem Inter, sans-serif; cursor: pointer; }
+@media (max-width: 420px) { .rpe-toggle-sum { display: none; } }
