@@ -163,6 +163,11 @@ function CheckinPage() {
   const [quietStreets, setQuietStreets] = useState(false);
   const [noLaps, setNoLaps] = useState(false);
   const [climbRange, setClimbRange] = useState<ClimbRange>("");
+  // hills choice sets a starting climb range (and shows the slider); "Don't mind" clears it
+  function pickHills(v: "" | "avoid" | "want") {
+    setHillsPref(v);
+    setClimbRange(v === "avoid" ? "0_300" : v === "want" ? "800_max" : "");
+  }
   const [startElsewhere, setStartElsewhere] = useState(false);
   const [startPoint, setStartPoint] = useState<StartPoint | null>(null);
   const [showPrefs, setShowPrefs] = useState(false);
@@ -886,20 +891,24 @@ function CheckinPage() {
                           key={label}
                           type="button"
                           className={hillsPref === v ? "on" : ""}
-                          onClick={() => setHillsPref(v)}
+                          onClick={() => pickHills(v)}
                         >
                           {label}
                         </button>
                       ))}
                     </div>
                   </div>
-                  <div className="ci-row ci-row-climb">
-                    <span className="ci-row-label">
-                      Total climb
-                      <small>Feet for the whole run: drag both ends</small>
-                    </span>
-                    <ClimbSlider value={climbRange} onChange={setClimbRange} />
-                  </div>
+                  {/* the climb slider only shows once they've said something about hills,
+                      starting from a sensible range: avoid = under 300 ft, want = 800 ft and up */}
+                  {(hillsPref !== "" || climbRange !== "") && (
+                    <div className="ci-row ci-row-climb">
+                      <span className="ci-row-label">
+                        Total climb
+                        <small>Feet for the whole run: drag either end to fine-tune</small>
+                      </span>
+                      <ClimbSlider value={climbRange} onChange={setClimbRange} />
+                    </div>
+                  )}
                   <div className="ci-row">
                     <span className="ci-row-label">Route shape</span>
                     <div className="ci-segmented compact">
