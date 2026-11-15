@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 // "Where are the climbs": the run's elevation along the way (feet over miles), as drawn on
 // the card (laps and out-and-backs included). Hover or drag a finger to read a point.
@@ -8,9 +8,70 @@ export type Profile = { mi: number[]; ft: number[]; route?: [number, number] };
 
 const W = 600, H = 120, PAD_L = 38, PAD_R = 8, PAD_T = 10, PAD_B = 20;
 
-function ElevationProfile({ profile }: { profile: Profile }) {
+// Heights for the streets from home to the start, fetched in the browser from Open-Meteo's
+// free elevation API when the server couldn't add them (it shares one address with many apps
+// and gets rate-limited). Up to 100 points, spread evenly along the way.
+async function wayHeights(way: [number, number][]): Promise<{ mi: number[]; ft: number[] } | null> {
+  const cum = [0];
+  for (let i = 1; i < way.length; i++) {
+    const [a, b] = [way[i - 1], way[i]];
+    const kx = 111.32 * Math.cos((a[0] * Math.PI) / 180);
+    cum.push(cum[i - 1] + Math.hypot((b[1] - a[1]) * kx, (b[0] - a[0]) * 110.54));
+  }
+  const total = cum[cum.length - 1];
+  if (total < 0.05) return null;
+  const n = Math.min(100, Math.max(2, Math.round(total / 0.04) + 1));
+  const pts: [number, number][] = [], km: number[] = [];
+  for (let k = 0, j = 1; k < n; k++) {
+    const at = (total * k) / (n - 1);
+    while (j < way.length - 1 && cum[j] < at) j++;
+    const t = cum[j] > cum[j - 1] ? (at - cum[j - 1]) / (cum[j] - cum[j - 1]) : 0;
+    pts.push([way[j - 1][0] + (way[j][0] - way[j - 1][0]) * t, way[j - 1][1] + (way[j][1] - way[j - 1][1]) * t]);
+    km.push(at);
+  }
+  try {
+    const url = "https://api.open-meteo.com/v1/elevation?latitude=" + pts.map((p) => p[0].toFixed(4)).join(",")
+      + "&longitude=" + pts.map((p) => p[1].toFixed(4)).join(",");
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const m: number[] = (await res.json()).elevation;
+    if (!m || m.length !== pts.length) return null;
+    return { mi: km.map((d) => d * 0.621371), ft: m.map((x) => x * 3.28084) };
+  } catch {
+    return null;
+  }
+}
+
+// route profile + the streets there (before) and back (after), lined up where they meet
+function withWay(p: Profile, way: { mi: number[]; ft: number[] }): Profile {
+  const shift = p.ft[0] - way.ft[way.ft.length - 1];
+  const wft = way.ft.map((f) => Math.round(f + shift));
+  const wLen = way.mi[way.mi.length - 1];
+  const rLen = p.mi[p.mi.length - 1];
+  return {
+    mi: [...way.mi, ...p.mi.map((m) => wLen + m), ...[...way.mi].reverse().map((m) => wLen + rLen + (wLen - m))],
+    ft: [...wft, ...p.ft, ...[...wft].reverse()],
+    route: [wLen, wLen + rLen],
+  };
+}
+
+function ElevationProfile({ profile: given, approach }: {
+  profile: Profile;
+  approach?: [number, number][] | null;   // home -> start of the route, when they run there
+}) {
   const [hover, setHover] = useState<number | null>(null);
   const [open, setOpen] = useState(false);
+  const [profile, setProfile] = useState<Profile>(given);
+  useEffect(() => { setProfile(given); }, [given]);
+  // the server didn't include the streets to the start: add them when the chart is opened
+  const needsWay = !!approach && approach.length > 1 && !(given.route && given.route[0] > 0.05);
+  useEffect(() => {
+    if (!open || !needsWay) return;
+    let live = true;
+    wayHeights(approach!).then((w) => { if (live && w) setProfile(withWay(given, w)); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, needsWay, given]);
   const fillId = `rpe-fill-${useId().replace(/:/g, "")}`;   // one per card
   const { mi, ft } = profile;
   if (mi.length < 2) return null;

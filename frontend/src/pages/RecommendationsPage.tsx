@@ -969,7 +969,11 @@ function RecommendationsPage() {
                       </span>
                     </div>
                   )}
-                  {rec.elevation_profile && <ElevationProfile profile={rec.elevation_profile} />}
+                  {rec.elevation_profile && (
+                    <ElevationProfile profile={rec.elevation_profile}
+                      approach={(rec.approach_km ?? 0) > 0 && rec.home && (rec.approach_path?.length ?? 0) > 1
+                        ? [rec.home, ...(rec.approach_path ?? []), rec.path[0]] : null} />
+                  )}
                 </div>
                 )}
 
