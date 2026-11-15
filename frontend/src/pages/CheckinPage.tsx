@@ -1006,7 +1006,7 @@ function CheckinPage() {
                     maxLength={280}
                     value={moodNote}
                     onChange={(e) => setMoodNote(e.target.value)}
-                    placeholder="Stressful day, want to clear my head..."
+                    placeholder="Stressful day, want to clear my head... or 'avoid Glendale' to skip a place"
                     autoFocus={!moodNote}
                   />
                 </label>

@@ -648,6 +648,35 @@ def check_distance_words():
     print("  all distance wording checks passed")
 
 
+def check_note_and_mood():
+    """Alireza: 'I hate Glendale' in his note was ignored, and Pumped still rewarded hills
+    when he'd said avoid hills."""
+    from app.scoring.note_places import avoided_places
+    print("\n=== Note and mood checks ===")
+    user = UserProfile(fitness_level="advanced", weekly_km_avg=50)
+    recent = RecentRuns(last_7_days_km=40)
+    hilly = RouteCandidate(id="h", name="Hilly loop", distance_km=6.0, elevation_gain_m=150, difficulty="moderate",
+                           surface_type="pavement", is_loop=True)
+    res = recommend(user, DailyCheckin(energy_score=8, mood="pumped", hills_pref="avoid"), recent, [hilly], top_n=1)
+    assert res[0].breakdown.get("mood", 0) <= 4.8 + 0.01, res[0].breakdown   # new ground only, no hill part
+    assert not any("climbing" in r for r in res[0].reasons)
+    print("  pumped + avoid hills: no hill bonus, no 'some climbing' reason")
+    assert avoided_places("I hate Glendale") == ["glendale"]
+    assert avoided_places("want to run in Glendale") == []
+    glen = RouteCandidate(id="g", name="North Glendale Loop", distance_km=6.0, elevation_gain_m=40, difficulty="easy",
+                          surface_type="pavement", is_loop=True, start_lat=34.16, start_lon=-118.25)
+    verdugo = RouteCandidate(id="v", name="Verdugo Loop", distance_km=6.0, elevation_gain_m=40, difficulty="easy",
+                             surface_type="pavement", is_loop=True, start_lat=34.15, start_lon=-118.26)   # in Glendale by location
+    others = [RouteCandidate(id=f"o{k}", name=f"Eagle Rock Loop {k}", distance_km=6.0, elevation_gain_m=60,
+                             difficulty="easy", surface_type="pavement", is_loop=True,
+                             start_lat=34.135 - 0.004 * k, start_lon=-118.21) for k in range(3)]
+    ids = [r.route.id for r in recommend(user, DailyCheckin(energy_score=6, avoid_places=["glendale"]),
+                                         recent, [glen, verdugo] + others)]
+    assert "g" not in ids and "v" not in ids, ids
+    print(f"  'I hate Glendale': Glendale routes left out, by name and by location ({ids})")
+    print("  all note and mood checks passed")
+
+
 if __name__ == "__main__":
     for title, user, checkin in SCENARIOS:
         print_results(title, run(user, checkin))
@@ -660,3 +689,4 @@ if __name__ == "__main__":
     check_shape()
     check_rough_vs_great()
     check_distance_words()
+    check_note_and_mood()

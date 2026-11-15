@@ -30,6 +30,7 @@ class UserProfile:
 @dataclass
 class DailyCheckin:
     energy_score: int              # 0-10
+    avoid_places: List[str] = field(default_factory=list)   # from their note: "I hate Glendale" -> ["glendale"]
     sore_body_parts: List[str] = field(default_factory=list)
     wants_scenic: bool = False
     wants_adventure: bool = False
@@ -1052,7 +1053,10 @@ def score_route(
     never_run = days_since is None
     familiar = days_since is not None and days_since <= 60
     liked = avg_rating is not None and avg_rating >= 4
-    hilly = hill >= 20
+    # hills they've ruled out (avoid, or a low climb range) never earn a mood bonus
+    rng = parse_climb_range(getattr(checkin, "climb_range", None))
+    hills_ok = checkin.hills_pref != "avoid" and not (rng and rng[1] < 1e9 and rng[1] / max(effective_distance * 0.621371, 0.5) < 100)
+    hilly = hill >= 20 and hills_ok
     soft = surface in ("trail", "mixed")
     home_km = None
     if None not in (user.home_lat, user.home_lon, route.start_lat, route.start_lon):
@@ -1293,6 +1297,7 @@ def recommend(
         rest = sorted((s for s in scored if s not in allowed), key=lambda s: DIFFICULTY_RANK[s.difficulty])
         allowed += rest[:top_n - len(allowed)]
     scored = allowed
+    scored = limit_places(scored, checkin.avoid_places, top_n)
     scored = limit_hills(scored, checkin.hills_pref, top_n)
     scored = limit_rough_day(scored, ctx.readiness, checkin.hills_pref, top_n)
     scored = limit_safe_crossings(scored, top_n)
@@ -1322,6 +1327,32 @@ def limit_rough_day(scored: List[ScoredRoute], ready: float, hills_pref: Optiona
         return gentle
     rest = sorted((s for s in scored if s not in gentle), key=run_climb_rate)
     return gentle + rest[:top_n - len(gentle)]
+
+
+def in_place(r: RouteCandidate, place: str) -> bool:
+    """Is this route in a place they named (by its name, or its start inside the place)?"""
+    from app.scoring.note_places import place_circle
+    if place in (r.name or "").lower():
+        return True
+    lat, lon, radius = place_circle(place)
+    return r.start_lat is not None and haversine_km(lat, lon, r.start_lat, r.start_lon) <= radius
+
+
+def limit_places(scored: List[ScoredRoute], avoid: List[str], top_n: int) -> List[ScoredRoute]:
+    """Their note said to stay away from somewhere ("I hate Glendale"): a limit, like the other
+    check-in choices. Drop routes there; if too few are left, keep the best of them (and say so)."""
+    if not avoid:
+        return scored
+    out = [s for s in scored if not any(in_place(s.route, p) for p in avoid)]
+    names = " or ".join(p.title() for p in avoid)
+    for s in out:
+        s.reasons.append(f"Stays out of {names}, like your note said")
+    if len(out) >= top_n:
+        return out
+    rest = sorted((s for s in scored if s not in out), key=lambda s: -s.score)[:top_n - len(out)]
+    for s in rest:
+        s.reasons.insert(0, f"In {names}, which your note said to avoid: not enough other routes nearby")
+    return out + rest
 
 
 def limit_hills(scored: List[ScoredRoute], hills_pref: Optional[str], top_n: int) -> List[ScoredRoute]:

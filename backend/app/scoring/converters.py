@@ -39,8 +39,10 @@ def build_user_profile(session: Session, user: User) -> UserProfile:
 
 def build_daily_checkin(checkin: Checkin) -> DailyCheckin:
     sore_parts = json.loads(checkin.sore_body_parts) if checkin.sore_body_parts else []
+    from app.scoring.note_places import avoided_places
     return DailyCheckin(
         energy_score=checkin.energy_score,
+        avoid_places=avoided_places(getattr(checkin, "mood_note", None) or ""),
         sore_body_parts=sore_parts,
         wants_scenic=checkin.wants_scenic,
         wants_adventure=checkin.wants_adventure,
