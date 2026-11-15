@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import ClimbSlider from "../components/ClimbSlider";
-import { climbShort, climbWords, normalizeClimb } from "../climb";
+import { CLIMB_MAX, climbShort, climbWords, encodeClimb, normalizeClimb } from "../climb";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import BodyMap from "../components/BodyMap";
 import StartPicker, { type StartPoint } from "../components/StartPicker";
@@ -163,11 +163,36 @@ function CheckinPage() {
   const [quietStreets, setQuietStreets] = useState(false);
   const [noLaps, setNoLaps] = useState(false);
   const [climbRange, setClimbRange] = useState<ClimbRange>("");
-  // hills choice sets a starting climb range (and shows the slider); "Don't mind" clears it
+  // Hills buttons are presets for the climb slider, scaled to the run's length:
+  // Avoid = about 50 ft a mile or less, Want them = about 150 ft a mile or more.
+  // Dragging the slider off the preset makes it "Custom": then only the slider counts.
+  function runMiles(): number {
+    const mi = parseFloat(plannedDistance);
+    if (lengthMode === "miles" && mi > 0) return mi;
+    const min = parseFloat(availableMinutes);
+    if (lengthMode === "minutes" && min > 0) return min / 10;     // ~10 min a mile
+    return 5;
+  }
+  function hillsPreset(v: "" | "avoid" | "want", miles = runMiles()): string {
+    const r50 = (x: number) => Math.round(x / 50) * 50;
+    if (v === "avoid") return encodeClimb(0, Math.min(CLIMB_MAX, Math.max(100, r50(50 * miles))));
+    if (v === "want") return encodeClimb(Math.min(CLIMB_MAX, Math.max(150, r50(150 * miles))), CLIMB_MAX);
+    return "";
+  }
   function pickHills(v: "" | "avoid" | "want") {
     setHillsPref(v);
-    setClimbRange(v === "avoid" ? "0_300" : v === "want" ? "800_max" : "");
+    setClimbRange(hillsPreset(v));
   }
+  function dragClimb(v: string) {
+    setClimbRange(v);
+    if (v !== hillsPreset(hillsPref)) setHillsPref("");            // off the preset: Custom
+  }
+  const climbCustom = hillsPref === "" && climbRange !== "";
+  // a preset follows the distance (a longer run is allowed more total climb)
+  useEffect(() => {
+    if (hillsPref) setClimbRange(hillsPreset(hillsPref));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plannedDistance, availableMinutes, lengthMode]);
   const [startElsewhere, setStartElsewhere] = useState(false);
   const [startPoint, setStartPoint] = useState<StartPoint | null>(null);
   const [showPrefs, setShowPrefs] = useState(false);
@@ -686,7 +711,7 @@ function CheckinPage() {
                       ))}
                     </ul>
                     <button type="button" className="ci-workout-alt"
-                      onClick={() => setHillsPref(hillsPref === "want" ? "" : "want")}>
+                      onClick={() => pickHills(hillsPref === "want" ? "" : "want")}>
                       {hillsPref === "want" ? "Flat pace work instead" : "Doing hill repeats? Find hills"}
                       <span aria-hidden="true"> →</span>
                     </button>
@@ -890,12 +915,13 @@ function CheckinPage() {
                         <button
                           key={label}
                           type="button"
-                          className={hillsPref === v ? "on" : ""}
+                          className={hillsPref === v && !(v === "" && climbCustom) ? "on" : ""}
                           onClick={() => pickHills(v)}
                         >
                           {label}
                         </button>
                       ))}
+                      {climbCustom && <button type="button" className="on" aria-pressed="true">Custom</button>}
                     </div>
                   </div>
                   {/* the climb slider only shows once they've said something about hills,
@@ -904,9 +930,10 @@ function CheckinPage() {
                     <div className="ci-row ci-row-climb">
                       <span className="ci-row-label">
                         Total climb
-                        <small>Feet for the whole run: drag either end to fine-tune</small>
+                        <small>{climbCustom ? "Your own range for the whole run"
+                          : `For ${runMiles().toFixed(runMiles() % 1 ? 1 : 0)} mi. Drag either end to fine-tune`}</small>
                       </span>
-                      <ClimbSlider value={climbRange} onChange={setClimbRange} />
+                      <ClimbSlider value={climbRange} onChange={dragClimb} />
                     </div>
                   )}
                   <div className="ci-row">
