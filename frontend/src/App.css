@@ -9526,3 +9526,17 @@ body::before {
 .adj-reset { padding: 10px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--card-bg);
   color: var(--ink); font: 600 0.88rem Inter, sans-serif; cursor: pointer; }
 .adj-reset:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+
+/* elevation profile on each pick */
+.elev { margin: 14px 0 4px; padding: 10px 12px 6px; border-radius: 14px; border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 4%, var(--card-bg)); }
+.elev-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.elev-title { font-size: 0.7rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--ink); opacity: .55; }
+.elev-read { font-size: 0.8rem; font-weight: 600; color: var(--ink); opacity: .8; font-variant-numeric: tabular-nums; }
+.elev-svg { display: block; width: 100%; height: auto; touch-action: pan-y; cursor: crosshair; }
+.elev-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+.elev-steep { fill: none; stroke: #EA580C; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.elev-grid { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3 4; }
+.elev-axis { font-size: 11px; fill: var(--ink); opacity: .5; font-family: Inter, sans-serif; }
+.elev-cursor { stroke: var(--ink); stroke-opacity: .35; stroke-width: 1; }
+.elev-dot { fill: var(--card-bg); stroke: var(--accent); stroke-width: 2.5; }

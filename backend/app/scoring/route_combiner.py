@@ -92,6 +92,7 @@ class CombinedRoute:
 
     def __init__(self, legs, coords_list, distance_km=None):
         self.id = str(uuid4())
+        self.leg_ids = [str(leg.id) for leg in legs]     # for the elevation profile
         self.name = " + ".join(getattr(leg, "nickname", None) or leg.name for leg in legs)
         self.coords = [pt for coords in coords_list for pt in coords]
         self.distance_km = round(distance_km if distance_km is not None else path_length_km(self.coords), 2)

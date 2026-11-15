@@ -31,6 +31,7 @@ from app.scoring.group_picks import Member, group_recommend
 from app.scoring.engine import haversine_km as _hav
 from app.scoring.converters import route_start
 from app.drive_time import drive_minutes
+from app.elevation_profile import load_samples, profile_for_line
 from app.auth import hash_password, verify_password, make_token, read_token, make_link_token, read_link_token
 import hashlib
 from app.emails import send_welcome_email, send_verify_email, send_reset_email, APP_URL
@@ -422,6 +423,20 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
                                             / max(0.1, r.effective_distance_km)))
         paths.append(line)
 
+    # elevation profile of each pick as drawn (laps repeat the loop)
+    prof_ids = set()
+    for r in results:
+        rt = route_by_id.get(r.route.id)
+        prof_ids |= set(getattr(rt, "leg_ids", None) or [r.route.id])
+    samples = load_samples(session, [i for i in prof_ids if i in real_route_ids or len(i) == 36])
+    profiles = []
+    for r, line in zip(results, paths):
+        rt = route_by_id.get(r.route.id)
+        pts = [p for i in (getattr(rt, "leg_ids", None) or [r.route.id]) for p in samples.get(str(i), [])]
+        run_line = line + line[::-1][1:] if r.run_format == "out_and_back" else line   # the card draws the way out
+        profiles.append(profile_for_line(run_line, pts, r.repeat_count if r.run_format == "repeat" else 1)
+                        if pts else None)
+
     # drive time to each pick (drive-to picks only), and a note on any that ended up past the limit
     pick_drive_min = [None] * len(results)
     to_drive = [i for i, r in enumerate(results)
@@ -500,6 +515,7 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             # a short-on-time run goes partway along the route and back: draw only that part
             # driving there: start at the trailhead / parking lot, not wherever the line happens to begin
             "path": paths[i],
+            "elevation_profile": profiles[i],
             **park_fields(r, route_by_id[r.route.id]),
         }
         for i, r in enumerate(results)

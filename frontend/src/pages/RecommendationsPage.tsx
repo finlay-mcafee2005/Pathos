@@ -7,6 +7,7 @@ import L from "leaflet";
 import { useRouteActions } from "../components/RouteExportButtons";
 import { type PlanInput } from "../utils/routeExport";
 import AdjustBar, { type Adjust, type TodayPrefs } from "../components/AdjustBar";
+import ElevationProfile, { type Profile } from "../components/ElevationProfile";
 import { type GroupMatch, formatMeetTime, sessionTitle } from "./GroupsPage";
 import { API_URL } from "../utils/format";
 
@@ -98,6 +99,7 @@ type Recommendation = {
   run_format?: string;
   repeat_count?: number;
   path: [number, number][];
+  elevation_profile?: Profile | null;    // the run's elevation along the way (feet over miles)
   perfect_points?: number;            // match % = (score - 100) / this
   // facts shown in "Why this route"
   target_km?: number | null;
@@ -921,6 +923,8 @@ function RecommendationsPage() {
                     <span className="rec-split-label">{surface ?? "Effort"}</span>
                   </div>
                 </div>
+
+                {rec.elevation_profile && <ElevationProfile profile={rec.elevation_profile} />}
 
                 {/* the practical bits, one tidy list: how to run it, where to start, heads-ups */}
                 <div className="rec-info">
