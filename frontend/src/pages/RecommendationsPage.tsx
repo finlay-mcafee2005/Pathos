@@ -384,9 +384,9 @@ function whyFact(title: string, rec: Recommendation): string | null {
     case "Roads & turns": {
       const bits = [pct(rec.busy_pct) != null ? `${pct(rec.busy_pct)}% busy roads` : null,
                     rec.turns_per_km != null ? `${(rec.turns_per_km * 1.609).toFixed(1)} turns/mi` : null,
-                    rec.stops_per_km != null ? `${(rec.stops_per_km * 1.609).toFixed(1)} traffic lights per mi` : null,
+                    rec.stops_per_km != null ? `${(rec.stops_per_km * 1.609).toFixed(1)} lights/mi` : null,
                     rec.freeway_crossings ? `${rec.freeway_crossings} freeway crossing${rec.freeway_crossings === 1 ? "" : "s"}` : null,
-                    rec.unsafe_crossings ? `${rec.unsafe_crossings} busy crossing${rec.unsafe_crossings === 1 ? "" : "s"} without a crosswalk` : null]
+                    rec.unsafe_crossings ? `${rec.unsafe_crossings} crossing${rec.unsafe_crossings === 1 ? "" : "s"} with no crosswalk` : null]
         .filter(Boolean);
       return bits.length ? bits.join(" · ") : null;
     }
@@ -941,7 +941,10 @@ function RecommendationsPage() {
                         <span className="why-head">
                           <span className="why-title">
                             {g.title}
-                            {whyFact(g.title, rec) && <span className="why-fact">{whyFact(g.title, rec)}</span>}
+                            {/* several facts ("37% busy roads · 4.7 turns/mi") = one small pill each */}
+                            {(whyFact(g.title, rec) ?? "").split(" · ").filter(Boolean).map((f) => (
+                              <span className="why-fact" key={f}>{f}</span>
+                            ))}
                           </span>
                           <span className="why-dots" role="img" aria-label={`${WHY_WORDS[g.dots]} (${g.dots} of 5)`}>
                             {[1, 2, 3, 4, 5].map((n) => <span key={n} className={n <= g.dots ? "on" : ""} />)}

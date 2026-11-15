@@ -9510,3 +9510,7 @@ body::before {
 .su-pw-rules li.ok { color: #15803D; }
 .su-pw-rules li.ok .su-pw-tick { background: #16A34A; color: #fff; }
 [data-theme="dark"] .su-pw-rules li.ok { color: #4ADE80; }
+
+/* "Why this route" facts: one pill per fact, wrapping as whole pills (not one big blob) */
+.why-title { gap: 0.3rem 0.35rem; }
+.why-fact { white-space: nowrap; line-height: 1.5; }
