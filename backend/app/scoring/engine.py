@@ -365,6 +365,12 @@ WANT_HILLS_MAX = 50.0         # "want hills": steeper than this stops helping an
 W_STEEP = 10                  # up to -10 for a route with a near-unrunnable stretch
 STEEP_OK = 0.12               # steepest 200 m under 12%: no penalty
 STEEP_FULL = 0.20             # full penalty at 20%
+# rough vs great days (round 2: rough-day fit fell to 4.2, "even easy picks were moderately
+# hilly"; DJ: "harder routes when feeling great, easier ones when not, but they overlapped")
+ROUGH_READINESS = 0.45        # readiness under this = a rough day
+ROUGH_MAX_M_PER_KM = 18       # rough day: picks climb at most this (~95 ft/mi) when enough routes do
+GREAT_READINESS = 0.80        # readiness at or over this = a great day
+GREAT_NOVELTY_BOOST = 0.75    # great day: somewhere new counts up to this much more
 W_SHAPE_PREF = 12             # the runner picked loop or out-and-back
 W_HILLS_PREF = 18             # the runner said outright: avoid hills / want hills
 
@@ -789,9 +795,13 @@ def score_route(
         elif ctx.rhythm.recovery_day:
             reason = None
         elif pts >= 8 and ready >= 0.7 and checkin.energy_score >= 7 and hill >= 20:
-            reason = "You're feeling fresh, so it's a good day for some climbing"
-        elif pts >= 8 and ready < 0.45 and hill < FLAT_HILL_M_PER_KM:
-            reason = "Gentle, flat route for an easy day"
+            reason = ("Longer and hillier than your usual run, since you're feeling fresh"
+                      if effective_distance >= 1.1 * typical and not checkin.planned_distance_km
+                      else "You're feeling fresh, so it's a good day for some climbing")
+        elif pts >= 8 and ready < ROUGH_READINESS and hill < FLAT_HILL_M_PER_KM:
+            reason = ("Shorter and flatter than your usual run, since today's a rough day"
+                      if effective_distance <= 0.9 * typical and not checkin.planned_distance_km
+                      else "Gentle, flat route for a rough day")
         elif pts <= -5 and hill > ideal:
             reason = "Hillier than you'd want today"
         add("terrain", pts, reason)
@@ -935,7 +945,9 @@ def score_route(
 
     # --- 8. history: novelty and past ratings -----------------------------
     novelty = W_NOVELTY if days_since is None else W_NOVELTY * clamp(days_since / 30)
-    add("novelty", novelty * goal["novelty_weight"])
+    # a great day is the day for somewhere new
+    great = clamp((ctx.readiness - GREAT_READINESS + 0.1) / 0.2)
+    add("novelty", novelty * goal["novelty_weight"] * (1 + GREAT_NOVELTY_BOOST * great))
     # already shown for another check-in this week (and not run): give other routes a turn
     shown_ago = recent.shown_days_ago_by_route_id.get(route.id)
     if shown_ago is not None:
@@ -1248,6 +1260,7 @@ def recommend(
         allowed += rest[:top_n - len(allowed)]
     scored = allowed
     scored = limit_hills(scored, checkin.hills_pref, top_n)
+    scored = limit_rough_day(scored, ctx.readiness, checkin.hills_pref, top_n)
     scored = limit_safe_crossings(scored, top_n)
     scored = limit_quiet(scored, getattr(checkin, "quiet_streets", False), top_n)
     scored = limit_shape(scored, getattr(checkin, "shape_pref", None), top_n)
@@ -1261,6 +1274,20 @@ def recommend(
 def run_climb_rate(s: ScoredRoute) -> float:
     """m of climbing per km of the run as it's run (laps and the run to the start included)."""
     return (s.run_gain_m or 0.0) / s.effective_distance_km if s.effective_distance_km else 0.0
+
+
+def limit_rough_day(scored: List[ScoredRoute], ready: float, hills_pref: Optional[str],
+                    top_n: int) -> List[ScoredRoute]:
+    """A rough day: gentle routes only, like an automatic "avoid hills" (unless they asked for
+    hills). Drop runs climbing more than ROUGH_MAX_M_PER_KM when enough gentle ones are left;
+    otherwise keep the gentlest of the rest to make up the picks."""
+    if ready >= ROUGH_READINESS or hills_pref == "want":
+        return scored
+    gentle = [s for s in scored if run_climb_rate(s) <= ROUGH_MAX_M_PER_KM]
+    if len(gentle) >= top_n:
+        return gentle
+    rest = sorted((s for s in scored if s not in gentle), key=run_climb_rate)
+    return gentle + rest[:top_n - len(gentle)]
 
 
 def limit_hills(scored: List[ScoredRoute], hills_pref: Optional[str], top_n: int) -> List[ScoredRoute]:
@@ -1443,4 +1470,5 @@ def target_km(ctx: PersonalContext, checkin: DailyCheckin) -> float:
     """The distance this runner should aim for today (their own or inferred)."""
     if checkin.planned_distance_km:
         return checkin.planned_distance_km
-    return ctx.typical_km * (0.7 + 0.5 * ctx.readiness) * ctx.long_run_factor
+    # rough day ~0.8x their usual run, ordinary ~1x, great day ~1.2x
+    return ctx.typical_km * (0.62 + 0.62 * ctx.readiness) * ctx.long_run_factor

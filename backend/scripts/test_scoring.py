@@ -593,6 +593,40 @@ def check_shape():
     print("  all shape checks passed")
 
 
+def check_rough_vs_great():
+    """Rough days gentle, great days clearly harder (round 2: rough-day fit fell to 4.2;
+    DJ: the routes for a rough day and a great day overlapped)."""
+    print("\n=== Rough vs great day checks ===")
+    from app.scoring.engine import run_climb_rate
+    user = UserProfile(fitness_level="intermediate", weekly_km_avg=30)
+    recent = RecentRuns(last_7_days_km=24)
+    pool = []
+    for k, (km, climb) in enumerate([(5, 30), (5.5, 60), (6, 90), (6.5, 120), (7, 160), (7.5, 200),
+                                     (8, 60), (8.5, 120), (9, 220), (5, 110), (6, 150), (4.5, 40)]):
+        pool.append(RouteCandidate(id=f"r{k}", name=f"Route {k}", distance_km=km, elevation_gain_m=climb,
+                                   difficulty="moderate", surface_type="pavement", is_loop=True,
+                                   start_lat=34.10 + 0.01 * k, start_lon=-118.2 - 0.01 * k,
+                                   turns_per_km=2.0, near_self=0.1, jogs=0))
+    rough = DailyCheckin(energy_score=2, sleep_hours=5, sleep_quality=2,
+                         sore_body_parts=["left_quad", "right_quad", "left_calf", "right_calf"])
+    great = DailyCheckin(energy_score=9, sleep_hours=8.5, sleep_quality=5)
+    r = recommend(user, rough, recent, pool)
+    g = recommend(user, great, recent, pool)
+    assert all(run_climb_rate(x) <= 18 for x in r), [(x.route.id, round(run_climb_rate(x), 1)) for x in r]
+    assert not {x.route.id for x in r} & {x.route.id for x in g}, ([x.route.id for x in r], [x.route.id for x in g])
+    avg = lambda xs, f: sum(f(x) for x in xs) / len(xs)
+    assert avg(g, run_climb_rate) > avg(r, run_climb_rate) + 5
+    assert avg(g, lambda x: x.effective_distance_km) > avg(r, lambda x: x.effective_distance_km)
+    print(f"  rough day: all gentle, avg {avg(r, run_climb_rate):.0f} m/km over {avg(r, lambda x: x.effective_distance_km):.1f} km")
+    print(f"  great day: no overlap, avg {avg(g, run_climb_rate):.0f} m/km over {avg(g, lambda x: x.effective_distance_km):.1f} km")
+    # asked for hills on a rough day: their call wins
+    from app.scoring.engine import limit_rough_day
+    assert limit_rough_day(g, 0.2, "want", 3) == g and len(limit_rough_day(g, 0.2, None, 3)) == 3
+    print("  rough day but 'want hills': the gentle-only limit is off")
+    print("  all rough vs great day checks passed")
+
+
+
 if __name__ == "__main__":
     for title, user, checkin in SCENARIOS:
         print_results(title, run(user, checkin))
@@ -603,3 +637,4 @@ if __name__ == "__main__":
     check_variety()
     check_crossings()
     check_shape()
+    check_rough_vs_great()
