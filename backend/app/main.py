@@ -708,7 +708,7 @@ def drive_notice(origin, r, radius_km, match: int, drive_min: Optional[int] = No
     if drive_limit and drive_min is not None:
         if drive_min <= drive_limit:
             return None
-        mins = max(5, int(round(drive_min / 5.0)) * 5)
+        mins = drive_min
     else:
         if km <= radius_km + 0.3:
             return None
@@ -716,7 +716,15 @@ def drive_notice(origin, r, radius_km, match: int, drive_min: Optional[int] = No
     why = ("it's flatter, which suits today, and still a good match" if GENTLE_NOTE in r.reasons
            else "it's still a good match for today" if match >= 50
            else "it's one of the closest good options")
-    return f"Needs a drive: about {mins} min, farther than you wanted to go, but {why}"
+    return f"{drive_words(mins)} away and farther than you wanted to go, but {why}"
+
+
+def drive_words(mins) -> str:
+    """55 -> '55 minutes', 60 -> '1 hour', 143 -> '2 hours and 23 minutes'."""
+    mins = max(1, int(round(mins)))
+    h, m = divmod(mins, 60)
+    parts = ([f"{h} hour{'s' if h != 1 else ''}"] if h else []) + ([f"{m} minute{'s' if m != 1 else ''}"] if m else [])
+    return " and ".join(parts)
 
 
 def approach_fields(origin, r) -> dict:
