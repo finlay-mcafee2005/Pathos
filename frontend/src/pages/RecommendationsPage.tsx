@@ -90,6 +90,7 @@ type Recommendation = {
   difficulty: string;
   surface_type?: string;
   estimated_minutes?: number;
+  run_type?: { labels: string[]; note: string };   // "Run type & mood" in plain words (backend)
   score_breakdown?: Record<string, number>;
   effective_distance_km?: number;
   run_format?: string;
@@ -403,7 +404,9 @@ function whyFact(title: string, rec: Recommendation): string | null {
     case "Your ratings":
       return rec.your_rating != null ? `You rated it ${rec.your_rating.toFixed(1)}★` : null;
     case "Run type & mood":
-      return rec.estimated_minutes ? `About ${rec.estimated_minutes} min` : null;
+      // what they picked ("Workout · Feeling pumped"), then how long it'll take
+      return [...(rec.run_type?.labels ?? []), rec.estimated_minutes ? `About ${rec.estimated_minutes} min` : null]
+        .filter(Boolean).join(" · ") || null;
     case "Weather": {
       const bits = [rec.feels_like_f != null ? `Feels ${Math.round(rec.feels_like_f)}°F` : null,
                     pct(rec.shade_pct) != null ? `${pct(rec.shade_pct)}% shade` : null].filter(Boolean);
@@ -951,7 +954,9 @@ function RecommendationsPage() {
                             {[1, 2, 3, 4, 5].map((n) => <span key={n} className={n <= g.dots ? "on" : ""} />)}
                           </span>
                         </span>
-                        <span className="why-line">{g.line}</span>
+                        <span className="why-line">
+                          {g.title === "Run type & mood" && rec.run_type?.note ? rec.run_type.note : g.line}
+                        </span>
                       </span>
                     </li>
                   );

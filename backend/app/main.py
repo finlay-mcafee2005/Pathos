@@ -35,7 +35,7 @@ from app.auth import hash_password, verify_password, make_token, read_token, mak
 import hashlib
 from app.emails import send_welcome_email, send_verify_email, send_reset_email, APP_URL
 
-from app.scoring.engine import recommend, diversify, heat_distance_factor, readiness, long_but_gentle, looks_alike
+from app.scoring.engine import recommend, diversify, heat_distance_factor, readiness, long_but_gentle, looks_alike, run_climb_rate
 LONG_ROUGH_NOTE = "This is long for how you feel today. Run it easy, and cut it short if you need to"
 from app.scoring.converters import (
     build_user_profile, build_daily_checkin,
@@ -446,6 +446,7 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             "score": r.score,
             "score_breakdown": r.breakdown,
             "estimated_minutes": r.estimated_minutes,
+            "run_type": run_type_note(checkin, r, recent_runs.days_since_last_run_by_route_id.get(r.route.id)),
             "run_format": r.run_format,
             "repeat_count": r.repeat_count,
             "effective_distance_km": round(r.effective_distance_km, 2),
@@ -605,6 +606,60 @@ def first_part(path: list, km) -> list:
 DRIVE_KMH = 32          # ~20 mph, same as the check-in's 15 / 30 / 45 min travel chips
 DRIVE_SEARCH_KMH = 50   # first search circle for a drive limit (freeways), then real drive times decide
 NEAR_HOME_MI = 2.5      # "close to home" is sent as 2 mi: run there, no drive
+
+
+INTENT_LABEL = {"easy": "Easy run", "workout": "Workout", "long": "Long run", "explore": "Explore"}
+MOOD_LABEL = {"stressed": "Feeling stressed", "flat": "Feeling flat", "normal": "Normal day",
+              "good": "Feeling good", "pumped": "Feeling pumped", "restless": "Feeling pumped",
+              "low": "Feeling low"}
+
+
+def run_type_note(checkin, r, days_since) -> dict:
+    """'Run type & mood' on the card, in plain words: what they asked for and how this
+    route fits it (or doesn't), instead of a generic 'Fits the kind of run you wanted'."""
+    ft_mi = run_climb_rate(r) * 5.28                     # m/km -> ft/mi
+    new = days_since is None or days_since > 30
+    surface = r.route.surface_type
+    tpk = r.route.turns_per_km
+    bits = []
+    intent = checkin.run_intent
+    if intent == "easy":
+        bits.append("You asked for an easy run, and this one is flat and steady" if ft_mi < 50
+                    else "You asked for an easy run: mostly gentle, with a little climbing" if ft_mi < 100
+                    else f"You asked for an easy run, but this one climbs about {ft_mi:.0f} ft per mile")
+    elif intent == "workout":
+        issues = []
+        if surface == "trail":
+            issues.append("uneven trail footing")
+        if ft_mi >= 80:
+            issues.append("hills")
+        if tpk is not None and tpk > 2.5:
+            issues.append("a lot of turns")
+        bits.append("Good for a workout: flat, even and few turns, so you can hold a pace" if not issues
+                    else "For a workout it's not ideal: " + " and ".join(issues))
+    elif intent == "long":
+        bits.append(f"A long run of {r.effective_distance_km * 0.621371:.1f} mi"
+                    + (" through parks and greenery" if r.route.scenic else ""))
+    elif intent == "explore":
+        bits.append("Somewhere you've never run, like you wanted" if days_since is None
+                    else "Somewhere you haven't run in a while" if new
+                    else "You've run it recently, so it isn't new ground")
+    mood = checkin.mood
+    if mood == "stressed":
+        bits.append("For a stressed day: parks and quiet paths to clear your head" if r.route.scenic
+                    else "Not especially scenic for clearing your head")
+    elif mood == "flat":
+        bits.append("For a low-motivation day: somewhere new to get you going" if new
+                    else "Familiar ground, which won't do much for low motivation")
+    elif mood in ("pumped", "restless"):
+        bits.append("You're itching to go: " + ("new ground" if new else "familiar ground")
+                    + (" with some climbing" if ft_mi >= 100 else ""))
+    elif mood == "low":
+        bits.append("Familiar and close by for a low day" if not new else "New ground on a low day")
+    if not bits:
+        bits.append("You didn't pick a run type, so it's matched to your usual runs")
+    labels = [x for x in (INTENT_LABEL.get(intent), MOOD_LABEL.get(mood)) if x and x != "Normal day"]
+    return {"labels": labels, "note": ". ".join(bits) + "."}
 
 
 def drive_limit_minutes(checkin) -> Optional[float]:
