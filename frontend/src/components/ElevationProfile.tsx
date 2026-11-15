@@ -92,13 +92,6 @@ function ElevationProfile({ profile: given, approach }: {
     if (grade > best) { best = grade; steep = [i, j]; }
   }
   const ticks = [0, total / 2, total];
-  // the streets to the start and back (when they run from home): drawn lighter, so the route stands out
-  const [r0, r1] = profile.route ?? [0, total];
-  const hasWay = r0 > 0.05;
-  const seg = (from: number, to: number) => {
-    const idx = mi.map((m, i) => [m, i] as const).filter(([m]) => m >= from - 1e-6 && m <= to + 1e-6).map(([, i]) => i);
-    return idx.length > 1 ? idx.map((i, k) => `${k ? "L" : "M"}${x(mi[i]).toFixed(1)},${y(ft[i]).toFixed(1)}`).join(" ") : "";
-  };
 
   function move(e: React.PointerEvent<SVGSVGElement>) {
     const r = e.currentTarget.getBoundingClientRect();
@@ -135,9 +128,6 @@ function ElevationProfile({ profile: given, approach }: {
               + (steep && best >= 0.04 ? ` · steepest ${(best * 100).toFixed(0)}% at mile ${mi[steep[0]].toFixed(1)}` : "")}
         </span>
       </figcaption>
-      {hasWay && (
-        <p className="rpe-note"><span className="rpe-key way" /> To the start and back <span className="rpe-key" /> The route</p>
-      )}
       <svg viewBox={`0 0 ${W} ${H}`} className="rpe-svg" role="img"
            aria-label={`Elevation from ${Math.round(lo)} to ${Math.round(hi)} feet over ${total.toFixed(1)} miles`}
            onPointerMove={move} onPointerDown={move} onPointerLeave={() => setHover(null)}>
@@ -154,15 +144,8 @@ function ElevationProfile({ profile: given, approach }: {
           </g>
         ))}
         <path d={area} fill={`url(#${fillId})`} />
-        {hasWay ? (
-          <>
-            <path d={seg(0, r0)} className="rpe-line way" />
-            <path d={seg(r0, r1)} className="rpe-line" />
-            <path d={seg(r1, total)} className="rpe-line way" />
-            <line x1={x(r0)} x2={x(r0)} y1={PAD_T} y2={H - PAD_B} className="rpe-mark" />
-            <line x1={x(r1)} x2={x(r1)} y1={PAD_T} y2={H - PAD_B} className="rpe-mark" />
-          </>
-        ) : <path d={line} className="rpe-line" />}
+        {/* one solid line for the whole run: the streets to the start, the route, and back */}
+        <path d={line} className="rpe-line" />
         {steep && best >= 0.04 && (
           <path d={mi.slice(steep[0], steep[1] + 1).map((m, i) => `${i ? "L" : "M"}${x(m)},${y(ft[steep![0] + i])}`).join(" ")}
                 className="rpe-steep" />
