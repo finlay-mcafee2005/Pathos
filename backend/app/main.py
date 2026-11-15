@@ -423,7 +423,8 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
                                             / max(0.1, r.effective_distance_km)))
         paths.append(line)
 
-    # elevation profile of each pick as drawn (laps repeat the loop)
+    approaches = [approach_fields((origin_lat, origin_lon), r) for r in results]
+    # elevation profile of each pick as drawn (laps repeat the loop), streets to the start included
     prof_ids = set()
     for r in results:
         rt = route_by_id.get(r.route.id)
@@ -434,7 +435,10 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
         rt = route_by_id.get(r.route.id)
         pts = [p for i in (getattr(rt, "leg_ids", None) or [r.route.id]) for p in samples.get(str(i), [])]
         run_line = line + line[::-1][1:] if r.run_format == "out_and_back" else line   # the card draws the way out
-        profiles.append(profile_for_line(run_line, pts, r.repeat_count if r.run_format == "repeat" else 1)
+        # run from where they are: the streets there and back are part of the run, so part of the chart
+        appr = approaches[len(profiles)]
+        way = ([list(appr["home"])] + appr["approach_path"] + [line[0]]) if appr.get("approach_km") and appr.get("home") else None
+        profiles.append(profile_for_line(run_line, pts, r.repeat_count if r.run_format == "repeat" else 1, way)
                         if pts else None)
 
     # drive time to each pick (drive-to picks only), and a note on any that ended up past the limit
@@ -484,7 +488,7 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             "elevation_gain_m": r.run_gain_m if r.run_gain_m is not None
                                 else run_climb_m(route_by_id[r.route.id], r.run_format, r.repeat_count),
             # run from home: the streets from home to the start, drawn on the card
-            **approach_fields((origin_lat, origin_lon), r),
+            **approaches[i],
             "origin_source": origin_source,
             "origin_label": checkin.start_label if origin_source == "chosen" else None,
             "difficulty": r.difficulty,

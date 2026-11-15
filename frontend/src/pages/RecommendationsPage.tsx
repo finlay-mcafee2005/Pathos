@@ -8,6 +8,7 @@ import { useRouteActions } from "../components/RouteExportButtons";
 import { type PlanInput } from "../utils/routeExport";
 import AdjustBar, { type Adjust, type TodayPrefs } from "../components/AdjustBar";
 import ElevationProfile, { type Profile } from "../components/ElevationProfile";
+import RouteArrows from "../components/RouteArrows";
 import { type GroupMatch, formatMeetTime, sessionTitle } from "./GroupsPage";
 import { API_URL } from "../utils/format";
 
@@ -866,6 +867,9 @@ function RecommendationsPage() {
                     {/* one continuous line: from you (or home) along the streets to the start, then the route */}
                     <Polyline positions={fullLine(rec)} pathOptions={{ color: "#FFFFFF", weight: 9, opacity: 0.9 }} />
                     <Polyline positions={fullLine(rec)} pathOptions={{ color: "#2563EB", weight: 4.5, opacity: 1 }} />
+                    {/* which way to go, from you (or home) along the streets and round the route */}
+                    <RouteArrows path={fullLine(rec)} color="#1D4ED8"
+                                 count={Math.min(7, Math.max(3, Math.round(kmToMiles(rec.effective_distance_km ?? rec.distance_km) / 0.8)))} />
                     <CircleMarker
                       center={fullLine(rec)[0]}
                       radius={7}

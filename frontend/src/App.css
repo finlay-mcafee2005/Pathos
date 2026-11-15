@@ -9579,3 +9579,11 @@ body::before {
 .rpe-chev { margin-left: auto; color: var(--accent); font-size: 0.8rem; }
 .rec-panel .rpe { margin: 0; border: 0; border-radius: 0; padding: 12px 14px 8px; }
 .rec-panel > .rpe:not(:first-child) { border-top: 1px solid var(--border); }
+
+.rpe-line.way { stroke-dasharray: 5 4; stroke-opacity: .55; }
+.rpe-mark { stroke: var(--accent); stroke-opacity: .25; stroke-width: 1; }
+.rpe-note { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 4px 0 0; font-size: 0.72rem;
+  color: var(--ink); opacity: .6; }
+.rpe-key { display: inline-block; width: 16px; height: 0; border-top: 2px solid var(--accent); margin-left: 6px; }
+.rpe-key:first-child { margin-left: 0; }
+.rpe-key.way { border-top-style: dashed; opacity: .6; }

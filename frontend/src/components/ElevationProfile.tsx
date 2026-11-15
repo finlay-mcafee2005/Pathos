@@ -3,7 +3,8 @@ import { useId, useState } from "react";
 // "Where are the climbs": the run's elevation along the way (feet over miles), as drawn on
 // the card (laps and out-and-backs included). Hover or drag a finger to read a point.
 // Folded away behind "Show elevation" so the picks stay uncluttered.
-export type Profile = { mi: number[]; ft: number[] };
+// route = [from, to] miles of the route itself; before / after it are the streets to the start and back
+export type Profile = { mi: number[]; ft: number[]; route?: [number, number] };
 
 const W = 600, H = 120, PAD_L = 38, PAD_R = 8, PAD_T = 10, PAD_B = 20;
 
@@ -30,6 +31,13 @@ function ElevationProfile({ profile }: { profile: Profile }) {
     if (grade > best) { best = grade; steep = [i, j]; }
   }
   const ticks = [0, total / 2, total];
+  // the streets to the start and back (when they run from home): drawn lighter, so the route stands out
+  const [r0, r1] = profile.route ?? [0, total];
+  const hasWay = r0 > 0.05;
+  const seg = (from: number, to: number) => {
+    const idx = mi.map((m, i) => [m, i] as const).filter(([m]) => m >= from - 1e-6 && m <= to + 1e-6).map(([, i]) => i);
+    return idx.length > 1 ? idx.map((i, k) => `${k ? "L" : "M"}${x(mi[i]).toFixed(1)},${y(ft[i]).toFixed(1)}`).join(" ") : "";
+  };
 
   function move(e: React.PointerEvent<SVGSVGElement>) {
     const r = e.currentTarget.getBoundingClientRect();
@@ -66,6 +74,9 @@ function ElevationProfile({ profile }: { profile: Profile }) {
               + (steep && best >= 0.04 ? ` · steepest ${(best * 100).toFixed(0)}% at mile ${mi[steep[0]].toFixed(1)}` : "")}
         </span>
       </figcaption>
+      {hasWay && (
+        <p className="rpe-note"><span className="rpe-key way" /> To the start and back <span className="rpe-key" /> The route</p>
+      )}
       <svg viewBox={`0 0 ${W} ${H}`} className="rpe-svg" role="img"
            aria-label={`Elevation from ${Math.round(lo)} to ${Math.round(hi)} feet over ${total.toFixed(1)} miles`}
            onPointerMove={move} onPointerDown={move} onPointerLeave={() => setHover(null)}>
@@ -82,7 +93,15 @@ function ElevationProfile({ profile }: { profile: Profile }) {
           </g>
         ))}
         <path d={area} fill={`url(#${fillId})`} />
-        <path d={line} className="rpe-line" />
+        {hasWay ? (
+          <>
+            <path d={seg(0, r0)} className="rpe-line way" />
+            <path d={seg(r0, r1)} className="rpe-line" />
+            <path d={seg(r1, total)} className="rpe-line way" />
+            <line x1={x(r0)} x2={x(r0)} y1={PAD_T} y2={H - PAD_B} className="rpe-mark" />
+            <line x1={x(r1)} x2={x(r1)} y1={PAD_T} y2={H - PAD_B} className="rpe-mark" />
+          </>
+        ) : <path d={line} className="rpe-line" />}
         {steep && best >= 0.04 && (
           <path d={mi.slice(steep[0], steep[1] + 1).map((m, i) => `${i ? "L" : "M"}${x(m)},${y(ft[steep![0] + i])}`).join(" ")}
                 className="rpe-steep" />
