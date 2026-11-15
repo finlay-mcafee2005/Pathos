@@ -90,7 +90,7 @@ type Recommendation = {
   difficulty: string;
   surface_type?: string;
   estimated_minutes?: number;
-  run_type?: { labels: string[]; note: string };   // "Run type & mood" in plain words (backend)
+  run_type?: { labels: string[]; note: string; fits?: boolean | null };   // "Run type & mood" in plain words (backend)
   score_breakdown?: Record<string, number>;
   effective_distance_km?: number;
   run_format?: string;
@@ -935,7 +935,11 @@ function RecommendationsPage() {
                 </button>
 
                 {openReasoning[i] && (() => {
-                  const groups = whyGroups(rec.score_breakdown);
+                  // "Run type & mood" goes on the side its own sentence is on: a route that's
+                  // "not ideal for a workout" belongs under Worth knowing, not Working for it
+                  const groups = whyGroups(rec.score_breakdown).map((g) =>
+                    g.title !== "Run type & mood" || rec.run_type?.fits == null ? g
+                      : { ...g, dots: rec.run_type.fits ? Math.max(g.dots, 3) : Math.min(g.dots, 2) });
                   const good = groups.filter((g) => g.dots >= 3).sort((x, y) => y.dots - x.dots);
                   const watch = groups.filter((g) => g.dots <= 2).sort((x, y) => x.dots - y.dots);
                   const item = (g: { title: string; dots: number; line: string }) => (
