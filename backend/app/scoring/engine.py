@@ -132,6 +132,8 @@ class ScoredRoute:
     turnaround_km: Optional[float] = None # run only this far along the route, then back (short time limit)
     perfect_points: float = 70.0          # points that make a 100% match for this check-in (see perfect_points())
     difficulty: str = "moderate"   # of the run as actually run (out-and-back / laps included)
+    distance_fit: Optional[str] = None    # "match" | "near" | "off": how close to the distance they wanted
+    distance_note: Optional[str] = None   # the card's honest line about it ("1.4 mi shorter than you planned")
 
 
 DIFFICULTY_RANK = {"easy": 0, "moderate": 1, "hard": 2}
@@ -562,6 +564,30 @@ def choose_format(route: RouteCandidate, target: float, max_repeats: int, allow_
     return best
 
 
+def describe_distance(effective: float, target: float, tol: float, approach: float,
+                      timed: bool, inferred: bool = False) -> Tuple[str, str]:
+    """How close the run is to the distance they wanted, in words the card can show as is.
+    'match' within tolerance; 'near' up to twice that; 'off' beyond (only shown when few
+    routes nearby fit, so say that)."""
+    diff_mi = (effective - target) * 0.621371
+    err = abs(effective - target)
+    way = "shorter" if diff_mi < 0 else "longer"
+    there = " (counting the run to the start and back)" if approach > 0.05 else ""
+    if err <= tol:
+        if inferred:
+            return "match", "A good length for how you're feeling today" + there
+        return "match", ("Fits the time you have" if timed else "Right around the distance you wanted") + there
+    want = "your usual run for today" if inferred else ("the time you have" if timed else "you planned")
+    if timed:
+        mins_word = "Shorter" if diff_mi < 0 else "Longer"
+        if err <= 2 * tol:
+            return "near", f"{mins_word} than the time you have, by about {abs(diff_mi):.1f} mi" + there
+        return "off", f"Well {way} than the time you have: one of the closest fits nearby" + there
+    if err <= 2 * tol:
+        return "near", f"{abs(diff_mi):.1f} mi {way} than {want}" + there
+    return "off", f"{abs(diff_mi):.1f} mi {way} than {want}: few routes nearby fit, so this is one of the closest" + there
+
+
 def distance_points(err: float, tol: float) -> float:
     """Continuous: 25 at a perfect match, 10 at the edge of tolerance,
     then falling to -15 for routes far off the target."""
@@ -703,6 +729,8 @@ def score_route(
         add("distance", distance_points(err, tol) * goal["distance_weight"])
         if turnaround and shape_pref != "out_and_back":
             add("format", W_PARTIAL)
+        distance_fit, distance_note = describe_distance(effective_distance, target, tol, approach,
+                                                        bool(checkin.available_minutes))
         if distance_matched:
             mi = effective_distance * 0.621371
             if checkin.available_minutes and turnaround:
@@ -710,7 +738,9 @@ def score_route(
             elif checkin.available_minutes:
                 reasons.append(f"Fits your {checkin.available_minutes:.0f} minutes")
             elif run_format == "single":
-                reasons.append("Close match to your planned distance")
+                # running there from home counts: say so, or a 2.9 mi route reads as a "match" for 5 mi
+                reasons.append(f"Close match to your planned distance, counting the run to the start and back"
+                               if approach > 0.05 else "Close match to your planned distance")
             elif run_format == "out_and_back":
                 reasons.append(f"Out-and-Back: {mi:.1f} mi")
             else:
@@ -718,7 +748,7 @@ def score_route(
     else:
         # no plan: aim for THEIR normal run, shorter when run-down, longer when
         # fresh, longer still on a weekend
-        target = typical * (0.7 + 0.5 * ready) * ctx.long_run_factor
+        target = target_km(ctx, checkin)
         err, run_format, repeat_count, effective_distance, turnaround = choose_format(
             route, max(0.4, target - 2 * approach), 1,
             allow_partial=target <= SHORT_RUN_KM and shape_pref != "loop", shape_pref=shape_pref)
@@ -729,6 +759,8 @@ def score_route(
         if turnaround and shape_pref != "out_and_back":
             add("format", W_PARTIAL)
         pts = distance_points(err, tol) * INFERRED_DISTANCE_SCALE
+        distance_fit, distance_note = describe_distance(effective_distance, target, tol, approach, False,
+                                                        inferred=True)
         reason = None
         if pts >= 10:
             reason = ctx.long_run_reason or "Good length for how you're feeling today"
@@ -1095,6 +1127,8 @@ def score_route(
         repeat_count=repeat_count,
         effective_distance_km=effective_distance,
         distance_matched=distance_matched,
+        distance_fit=distance_fit,
+        distance_note=distance_note,
         distance_error_km=err if checkin.planned_distance_km else 0.0,
         target_km=target,
         target_explicit=bool(checkin.planned_distance_km),

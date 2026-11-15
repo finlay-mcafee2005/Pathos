@@ -627,6 +627,27 @@ def check_rough_vs_great():
 
 
 
+def check_distance_words():
+    """The card says honestly how close a run is to the distance they wanted (a 4.6 mi run for
+    6 mi was 'Right around the distance you wanted'; 0.9 mi for 6 mi showed with no warning)."""
+    from app.scoring.engine import describe_distance, distance_tolerance
+    print("\n=== Distance wording checks ===")
+    km = lambda mi: mi / 0.621371
+    def words(run_mi, want_mi, approach=0.0):
+        t, e = km(want_mi), km(run_mi)
+        return describe_distance(e, t, distance_tolerance(t, e), approach, False)
+    fit, note = words(6.1, 6.0)
+    assert fit == "match" and note.startswith("Right around")
+    fit, note = words(4.6, 6.0)
+    assert fit == "near" and note.startswith("1.4 mi shorter"), note
+    fit, note = words(0.9, 6.0)
+    assert fit == "off" and "5.1 mi shorter" in note and "closest" in note, note
+    fit, note = words(5.0, 5.0, approach=1.7)
+    assert fit == "match" and "run to the start and back" in note, note
+    print(f"  6.1 of 6: match | 4.6 of 6: '{words(4.6, 6.0)[1]}' | 0.9 of 6: '{words(0.9, 6.0)[1]}'")
+    print("  all distance wording checks passed")
+
+
 if __name__ == "__main__":
     for title, user, checkin in SCENARIOS:
         print_results(title, run(user, checkin))
@@ -638,3 +659,4 @@ if __name__ == "__main__":
     check_crossings()
     check_shape()
     check_rough_vs_great()
+    check_distance_words()

@@ -90,7 +90,9 @@ type Recommendation = {
   difficulty: string;
   surface_type?: string;
   estimated_minutes?: number;
-  run_type?: { labels: string[]; note: string; fits?: boolean | null };   // "Run type & mood" in plain words (backend)
+  run_type?: { labels: string[]; note: string; fits?: boolean | null };
+  distance_fit?: "match" | "near" | "off" | null;   // how close to the distance they wanted (backend)
+  distance_note?: string | null;                   // "1.4 mi shorter than you planned"   // "Run type & mood" in plain words (backend)
   score_breakdown?: Record<string, number>;
   effective_distance_km?: number;
   run_format?: string;
@@ -963,8 +965,17 @@ function RecommendationsPage() {
                   // "Run type & mood" goes on the side its own sentence is on: a route that's
                   // "not ideal for a workout" belongs under Worth knowing, not Working for it
                   const groups = whyGroups(rec.score_breakdown).map((g) =>
-                    g.title !== "Run type & mood" || rec.run_type?.fits == null ? g
-                      : { ...g, dots: rec.run_type.fits ? Math.max(g.dots, 3) : Math.min(g.dots, 2) });
+                    g.title === "Run type & mood" && rec.run_type?.fits != null
+                      ? { ...g, dots: rec.run_type.fits ? Math.max(g.dots, 3) : Math.min(g.dots, 2) }
+                      // Distance: a run that misses their distance belongs under Worth knowing,
+                      // with the real gap, not "Right around the distance you wanted"
+                      : g.title === "Distance" && rec.distance_fit
+                        ? { ...g, dots: rec.distance_fit === "match" ? Math.max(g.dots, 3) : Math.min(g.dots, 2),
+                            line: [rec.distance_note ?? "",
+                                   // keep any other point ("Takes laps or doubling back..."), drop the generic one
+                                   ...g.line.replace(/\.$/, "").split(". ").filter((x) => x && !/^(Right around|Off from) the distance/.test(x))]
+                              .filter(Boolean).join(". ") + "." }
+                        : g);
                   const good = groups.filter((g) => g.dots >= 3).sort((x, y) => y.dots - x.dots);
                   const watch = groups.filter((g) => g.dots <= 2).sort((x, y) => x.dots - y.dots);
                   const item = (g: { title: string; dots: number; line: string }) => (

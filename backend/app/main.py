@@ -310,7 +310,7 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
     # closest ones (any distance away) so there are always 3 picks to compare.
     if len(routes) < 3:
         routes = list(routes) + closest_routes(session, origin_lat, origin_lon,
-                                               {str(r.id) for r in routes} | excluded, 12)
+                                               {str(r.id) for r in routes} | excluded, 40)   # enough to find the distance
 
     if not routes:
         raise HTTPException(
@@ -479,6 +479,8 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             "surface_type": r.route.surface_type,
             # facts for "Why this route"
             "target_km": round(r.target_km, 2) if r.target_km else None,
+            "distance_fit": r.distance_fit,
+            "distance_note": r.distance_note,
             "shade_pct": getattr(r.route, "shade", None),
             "scenic_pct": getattr(r.route, "scenic_pct", None),
             "busy_pct": getattr(r.route, "busy_pct", None),
