@@ -9,7 +9,7 @@ routes and mix the best of them into the picks with a clear note.
 from typing import List
 
 from app.scoring.engine import (UserProfile, DailyCheckin, RecentRuns, RouteCandidate,
-                                ScoredRoute, recommend, diversify, readiness)
+                                ScoredRoute, recommend, diversify, readiness, looks_alike)
 
 LOW_READINESS = 0.45
 GENTLE_M_PER_KM = 20         # "gentle" = averages under ~20 m of climb per km (about 2%)
@@ -47,6 +47,7 @@ def add_gentler(results: List[ScoredRoute], user: UserProfile, checkin: DailyChe
     need = top_n - len(keep)
     if not keep:
         need = top_n - 1                                      # keep the best nearby option as a choice
+    gentle = [s for s in gentle if not any(looks_alike(s, k) for k in keep)] or gentle
     for s in gentle:
         s.reasons.insert(0, GENTLE_NOTE)
     extra = diversify(gentle, min(need, len(gentle)), surface_requested=bool(checkin.surface_preference))
@@ -85,6 +86,8 @@ def add_challenge(results: List[ScoredRoute], user: UserProfile, checkin: DailyC
         return results
     hard = [s for s in recommend(user, checkin, recent, steep, top_n=40)
             if s.difficulty == "hard" and s.distance_matched]
+    kept = results[:top_n - 1]
+    hard = [h for h in hard if not any(looks_alike(h, k) for k in kept)]   # not a copy of a pick it sits beside
     if not hard or hard[0].score < results[top_n - 1].score - CHALLENGE_GAP:
         return results
     pick = hard[0]

@@ -4,12 +4,12 @@ the scoring engine (engine.py) expects. Keeps the scoring
 engine itself free of any database dependency.
 """
 import json
-from datetime import date, timedelta
-from typing import List
+from datetime import date, datetime, timedelta
+from typing import List, Optional
 
 from sqlmodel import Session, select
 
-from app.models import User, Checkin, Run, Route, Injury
+from app.models import User, Checkin, Run, Route, Injury, Recommendation
 from app.scoring.engine import (
     climb_per_km,
     UserProfile, DailyCheckin, RecentRuns, RouteCandidate,
@@ -61,7 +61,43 @@ def build_daily_checkin(checkin: Checkin) -> DailyCheckin:
     )
 
 
-def build_recent_runs(session: Session, user_id) -> RecentRuns:
+def same_day_state(a, b) -> bool:
+    """Two check-ins describing the same day (e.g. an Adjust-picks copy of today's): same
+    date, energy, sleep, soreness and mood. Their picks don't count as "already shown"."""
+    keys = ("checkin_date", "energy_score", "sleep_hours", "sleep_quality", "sore_body_parts", "mood")
+    return all(getattr(a, k, None) == getattr(b, k, None) for k in keys)
+
+
+def shown_recently(session: Session, user_id, current: Optional[Checkin]) -> dict:
+    """Routes shown as picks for other check-ins in the last 7 days that weren't run:
+    route id -> days since last shown."""
+    since = datetime.utcnow() - timedelta(days=7)
+    recs = session.exec(
+        select(Recommendation).where(Recommendation.user_id == user_id,
+                                     Recommendation.shown_at >= since,
+                                     Recommendation.route_id.is_not(None),
+                                     Recommendation.run_id.is_(None))
+    ).all()
+    if not recs:
+        return {}
+    checkins = {c.id: c for c in session.exec(
+        select(Checkin).where(Checkin.id.in_({r.checkin_id for r in recs if r.checkin_id}))).all()}
+    now = datetime.utcnow()
+    out: dict = {}
+    for r in recs:
+        if current is not None:
+            if r.checkin_id == current.id:
+                continue
+            other = checkins.get(r.checkin_id)
+            if other is not None and same_day_state(other, current):
+                continue
+        days = (now - r.shown_at).total_seconds() / 86400
+        rid = str(r.route_id)
+        out[rid] = min(days, out.get(rid, days))
+    return out
+
+
+def build_recent_runs(session: Session, user_id, current_checkin: Optional[Checkin] = None) -> RecentRuns:
     seven_days_ago = date.today() - timedelta(days=7)
     fourteen_days_ago = date.today() - timedelta(days=14)
 
@@ -124,6 +160,7 @@ def build_recent_runs(session: Session, user_id) -> RecentRuns:
         last_14_days_route_ids=last_14_route_ids,
         avg_rating_by_route_id=avg_rating_by_route_id,
         days_since_last_run_by_route_id=days_since_last_run_by_route_id,
+        shown_days_ago_by_route_id=shown_recently(session, user_id, current_checkin),
     )
 
 
@@ -197,6 +234,29 @@ def route_reach(route) -> float:
         return 0.0
 
 
+CELL_DEG = 0.0015          # ~150 m grid squares for comparing paths
+
+
+def path_cells(route) -> Optional[frozenset]:
+    """The ~150 m grid squares a route's path runs through (points every ~75 m along it),
+    so two routes on mostly the same streets can be spotted (engine.path_overlap)."""
+    import math
+    from app.scoring.route_combiner import get_route_coords   # cached geometry
+    try:
+        coords = list(get_route_coords(route))
+    except Exception:
+        return None
+    if len(coords) < 2:
+        return None
+    cells = set()
+    for (ax, ay), (bx, by) in zip(coords, coords[1:]):
+        steps = max(1, int(math.hypot(bx - ax, by - ay) / (CELL_DEG / 2)))
+        for i in range(steps + 1):
+            t = i / steps
+            cells.add((int((ax + (bx - ax) * t) // CELL_DEG), int((ay + (by - ay) * t) // CELL_DEG)))
+    return frozenset(cells)
+
+
 def build_route_candidates(routes: List[Route]) -> List[RouteCandidate]:
     return [
         RouteCandidate(
@@ -220,6 +280,7 @@ def build_route_candidates(routes: List[Route]) -> List[RouteCandidate]:
             reach_km=(route_reach(r) or None) if is_loop_route(r) else None,
             steepest_grade=getattr(r, "steepest_grade", None),
             elevation_loss_m=getattr(r, "elevation_loss_m", None),
+            cells=path_cells(r),
         )
         for r in routes
     ]

@@ -488,6 +488,43 @@ def check_audit_regressions():
     print("  all audit regression checks passed")
 
 
+def check_variety():
+    """Look-alike picks and repeats across check-ins (DJ, Kyle, Aiden: 'two of the three
+    were the same route'; 'the same routes on very different days')."""
+    from app.scoring.engine import route_family
+    print("\n=== Variety checks ===")
+    user = UserProfile(fitness_level="intermediate", weekly_km_avg=30)
+    ck = DailyCheckin(energy_score=6)
+    recent = RecentRuns(last_7_days_km=24)
+    street = frozenset((x, 0) for x in range(40))           # one long street
+    other = frozenset((x, 5) for x in range(40))            # a different one
+    # 1. same streets, different names: only one of them in the picks
+    a = RouteCandidate(id="a", name="Arroyo Seco Loop", distance_km=6.0, elevation_gain_m=40, difficulty="easy",
+                       surface_type="pavement", is_loop=True, start_lat=34.1, start_lon=-118.2, cells=street)
+    b = RouteCandidate(id="b", name="Highland Park Green Loop", distance_km=6.1, elevation_gain_m=42, difficulty="easy",
+                       surface_type="pavement", is_loop=True, start_lat=34.1, start_lon=-118.2,
+                       cells=frozenset(list(street)[:36]))
+    c = RouteCandidate(id="c", name="Eagle Rock Loop", distance_km=5.6, elevation_gain_m=70, difficulty="moderate",
+                       surface_type="pavement", is_loop=True, start_lat=34.14, start_lon=-118.21, cells=other)
+    d = RouteCandidate(id="d", name="Glassell Park Loop", distance_km=6.4, elevation_gain_m=80, difficulty="moderate",
+                       surface_type="mixed", is_loop=True, start_lat=34.12, start_lon=-118.24,
+                       cells=frozenset((x, 9) for x in range(40)))
+    ids = {r.route.id for r in recommend(user, ck, recent, [a, b, c, d])}
+    assert not {"a", "b"} <= ids, ids
+    print(f"  same streets under two names: only one shown ({sorted(ids)})")
+    # 2. generated loops of different lengths share a card title, so count as one family
+    assert route_family("Occidental College road loop - 8 km south") == \
+        route_family("Occidental College road loop - 5 km south")
+    print("  'Occidental College South Loop' 5 km and 8 km count as the same route")
+    # 3. shown for another check-in this week: an equal route that wasn't gets the spot
+    base = [r.route.id for r in recommend(user, ck, recent, [a, c, d], top_n=1)]
+    seen = RecentRuns(last_7_days_km=24, shown_days_ago_by_route_id={base[0]: 1.0})
+    after = [r.route.id for r in recommend(user, ck, seen, [a, c, d], top_n=1)]
+    assert after != base, (base, after)
+    print(f"  shown yesterday for a different check-in: {base[0]} gives way to {after[0]}")
+    print("  all variety checks passed")
+
+
 if __name__ == "__main__":
     for title, user, checkin in SCENARIOS:
         print_results(title, run(user, checkin))
@@ -495,3 +532,4 @@ if __name__ == "__main__":
     check_personalization()
     check_difficulty()
     check_audit_regressions()
+    check_variety()

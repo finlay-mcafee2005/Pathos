@@ -34,7 +34,7 @@ from app.auth import hash_password, verify_password, make_token, read_token, mak
 import hashlib
 from app.emails import send_welcome_email, send_verify_email, send_reset_email, APP_URL
 
-from app.scoring.engine import recommend, diversify, heat_distance_factor, readiness, long_but_gentle
+from app.scoring.engine import recommend, diversify, heat_distance_factor, readiness, long_but_gentle, looks_alike
 LONG_ROUGH_NOTE = "This is long for how you feel today. Run it easy, and cut it short if you need to"
 from app.scoring.converters import (
     build_user_profile, build_daily_checkin,
@@ -308,7 +308,7 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
     daily_checkin = build_daily_checkin(checkin)
     daily_checkin.conditions = fetch_conditions(origin_lat, origin_lon, checkin.run_time or "now",
                                                 getattr(checkin, "run_at", None))
-    recent_runs = build_recent_runs(session, user_id)
+    recent_runs = build_recent_runs(session, user_id, checkin)
     candidates = build_route_candidates(routes)
 
     results = recommend(user_profile, daily_checkin, recent_runs, candidates)
@@ -367,7 +367,9 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             for r in more:
                 route_by_id[str(r.id)] = r
             real_route_ids |= {str(r.id) for r in more}
-            results = results + [e for e in extra if e.route.id not in shown][:3 - len(results)]
+            fill = [e for e in extra if e.route.id not in shown]
+            fill = [e for e in fill if not any(looks_alike(e, r) for r in results)] or fill
+            results = results + fill[:3 - len(results)]
 
     rough_today = readiness(user_profile, daily_checkin, recent_runs) < 0.45
 

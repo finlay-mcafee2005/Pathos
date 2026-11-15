@@ -58,6 +58,10 @@ class RecentRuns:
     avg_rating_by_route_id: dict = field(default_factory=dict)
     days_since_last_run_by_route_id: dict = field(default_factory=dict)
     history: List[RunRecord] = field(default_factory=list)   # all past runs + route features
+    # routes shown as picks for a different check-in in the last week (and not run):
+    # route id -> days since it was last shown. Keeps very different days from
+    # getting the same three routes.
+    shown_days_ago_by_route_id: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -82,6 +86,7 @@ class RouteCandidate:
     stem_km: Optional[float] = None            # lollipop: shared out-and-back stretch at the start, one way
     reach_km: Optional[float] = None           # loops: how far along it you can go while still heading away from the start (either direction)
     steepest_grade: Optional[float] = None     # steepest 200 m, as a fraction (scripts/update_steepness.py)
+    cells: Optional[frozenset] = None          # ~150 m grid squares the path runs through (path_overlap)
 
 
 def climb_per_km(distance_km: float, gain_m: float, loss_m: Optional[float] = None) -> float:
@@ -287,6 +292,8 @@ W_TASTE_SURFACE = 8           # x surface affinity (~ -2..+2), capped at +/-10
 W_TASTE_SCENIC = 2
 W_TASTE_LOOP = 1.5
 W_VARIETY = 10                # max penalty for a pick nearly identical to one above it
+W_SEEN = 6                    # shown for another check-in in the last 3 days (half that up to a week)
+LOOKALIKE_OVERLAP = 0.6       # share of the shorter path on the same streets: counts as the same run
 
 # mood and run intent: explicit, so they sit near the other check-in choices
 W_MOOD = 8
@@ -864,6 +871,10 @@ def score_route(
     # --- 8. history: novelty and past ratings -----------------------------
     novelty = W_NOVELTY if days_since is None else W_NOVELTY * clamp(days_since / 30)
     add("novelty", novelty * goal["novelty_weight"])
+    # already shown for another check-in this week (and not run): give other routes a turn
+    shown_ago = recent.shown_days_ago_by_route_id.get(route.id)
+    if shown_ago is not None:
+        add("seen", -W_SEEN * (1.0 if shown_ago <= 3 else 0.5))
 
     avg_rating = recent.avg_rating_by_route_id.get(route.id)
     if avg_rating is not None:
@@ -1044,9 +1055,25 @@ def rank_key(s: ScoredRoute):
     )
 
 
+def path_overlap(a: RouteCandidate, b: RouteCandidate) -> float:
+    """Share of the shorter route's path that runs on the same streets as the other
+    (0..1, by ~150 m grid squares). 0 when either path is unknown."""
+    if not a.cells or not b.cells:
+        return 0.0
+    return len(a.cells & b.cells) / min(len(a.cells), len(b.cells))
+
+
+def looks_alike(a: ScoredRoute, b: ScoredRoute) -> bool:
+    """Two picks a runner would see as the same run: same name family, or mostly the same streets."""
+    return route_family(a.route.name) == route_family(b.route.name) \
+        or path_overlap(a.route, b.route) >= LOOKALIKE_OVERLAP
+
+
 def similarity(a: ScoredRoute, b: ScoredRoute, count_surface: bool = True) -> float:
     """0 (nothing alike) .. 1 (basically the same run)."""
     sim = 0.0
+    # running on the same streets is what makes two picks feel the same
+    sim += 0.6 * path_overlap(a.route, b.route)
     if count_surface and a.route.surface_type == b.route.surface_type:
         sim += 0.35
     # same length (within 5%) adds to "same run"; it no longer rewards picks
@@ -1070,12 +1097,17 @@ def long_but_gentle(distance_km: float, climb_m: float) -> bool:
         and classify_difficulty(distance_km, climb_m) == "hard"
 
 
+GENERATED_LEN = re.compile(r"\s+-\s+\d+(\.\d+)?\s*km\b")
+
+
 def route_family(name: str) -> str:
-    """'Oxy Loop via Avenue 53' -> 'oxy loop'; 'Los Feliz North Loop (5.0 mi)' -> 'los feliz north loop'."""
-    n = (name or "").lower()
+    """'Oxy Loop via Avenue 53' -> 'oxy loop'; 'Los Feliz North Loop (5.0 mi)' -> 'los feliz north loop';
+    'Occidental College road loop - 8 km south' -> 'occidental college road loop south' (the card
+    shows both 5 km and 8 km versions as 'Occidental College South Loop')."""
+    n = GENERATED_LEN.sub("", (name or "").lower())
     for sep in (" via ", " (", " & back", " to "):
         n = n.split(sep)[0]
-    return n.strip()
+    return " ".join(n.split())
 
 
 # Distance is a band, not just a score: routes far from the target only show
@@ -1111,9 +1143,9 @@ def diversify(scored: List[ScoredRoute], top_n: int,
     picked: List[ScoredRoute] = []
     while pool and len(picked) < top_n:
         best = None
-        # never two versions of the same route (same name) in the picks, unless nothing else is left
-        names = {route_family(p.route.name) for p in picked}
-        fresh = [s for s in pool if route_family(s.route.name) not in names] or pool
+        # never two versions of the same run in the picks (same name, or mostly the same
+        # streets, e.g. a loop and a combined route built on it), unless nothing else is left
+        fresh = [s for s in pool if not any(looks_alike(s, p) for p in picked)] or pool
         for s in fresh:
             sim = max((similarity(s, p, not surface_requested) for p in picked), default=0.0)
             adjusted = s.base_score - W_VARIETY * sim
