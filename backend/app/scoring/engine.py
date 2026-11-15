@@ -827,7 +827,8 @@ def score_route(
             reason = ctx.rhythm.reason
         elif ctx.rhythm.recovery_day:
             reason = None
-        elif pts >= 8 and ready >= 0.7 and checkin.energy_score >= 7 and hill >= 20:
+        elif pts >= 8 and ready >= 0.7 and checkin.energy_score >= 7 and hill >= 20 \
+                and checkin.hills_pref != "avoid":
             reason = ("Longer and hillier than your usual run, since you're feeling fresh"
                       if effective_distance >= 1.1 * typical and not checkin.planned_distance_km
                       else "You're feeling fresh, so it's a good day for some climbing")

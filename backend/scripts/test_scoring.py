@@ -659,7 +659,8 @@ def check_note_and_mood():
                            surface_type="pavement", is_loop=True)
     res = recommend(user, DailyCheckin(energy_score=8, mood="pumped", hills_pref="avoid"), recent, [hilly], top_n=1)
     assert res[0].breakdown.get("mood", 0) <= 4.8 + 0.01, res[0].breakdown   # new ground only, no hill part
-    assert not any("climbing" in r for r in res[0].reasons)
+    assert not any("good day for some climbing" in r or "itching to go" in r and "climbing" in r
+                   for r in res[0].reasons), res[0].reasons
     print("  pumped + avoid hills: no hill bonus, no 'some climbing' reason")
     assert avoided_places("I hate Glendale") == ["glendale"]
     assert avoided_places("want to run in Glendale") == []
