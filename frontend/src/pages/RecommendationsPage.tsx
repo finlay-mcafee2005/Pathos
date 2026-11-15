@@ -201,8 +201,8 @@ function condStats(c: Conditions) {
   const feels = c.feels_like_f ?? c.temp_f;
   if (feels != null) out.push({ label: "Feels like", value: String(Math.round(feels)), unit: "°F", tone: tempTone(feels), icon: "temp" });
   if (c.us_aqi != null) out.push({ label: `Air · ${aqiLabel(c.us_aqi)}`, value: String(Math.round(c.us_aqi)), tone: aqiTone(c.us_aqi), icon: "air" });
-  if (c.uv_index != null && c.uv_index >= 6)
-    out.push({ label: `UV · ${c.uv_index >= 8 ? "Very high" : "High"}`, value: String(Math.round(c.uv_index)), tone: c.uv_index >= 8 ? WARM : TONE, icon: "uv" });
+  if (c.uv_index != null)
+    out.push({ label: `UV · ${uvLevel(c.uv_index)}`, value: String(Math.round(c.uv_index)), tone: c.uv_index >= 6 ? WARM : TONE, icon: "uv" });
   if (c.wind_mph != null && c.wind_mph >= 12)
     out.push({ label: "Wind", value: String(Math.round(c.wind_mph)), unit: "mph", tone: c.wind_mph >= 20 ? WARM : TONE, icon: "wind" });
   if (c.rain_last_48h_mm >= 1)
@@ -212,6 +212,23 @@ function condStats(c: Conditions) {
     out.push({ label: "Sunset", value: t.slice(0, -3), unit: t.slice(-2), tone: c.minutes_until_sunset != null && c.minutes_until_sunset < 75 ? WARM : TONE, icon: "sunset" });
   }
   return out;
+}
+
+// US EPA UV index categories
+function uvLevel(uv: number): string {
+  const u = Math.round(uv);
+  return u <= 2 ? "Low" : u <= 5 ? "Moderate" : u <= 7 ? "High" : u <= 10 ? "Very high" : "Extreme";
+}
+
+// sunscreen advice for the hour they'll run (EPA: protect your skin from UV 3 up)
+function sunscreenNote(c: Conditions): { text: string; warm: boolean } | null {
+  if (c.uv_index == null) return null;
+  const u = Math.round(c.uv_index);
+  if (u <= 2) return c.minutes_until_sunset != null && c.minutes_until_sunset > 0 && u > 0
+    ? { text: "UV is low, so you don't need sunscreen for this run.", warm: false } : null;
+  if (u <= 5) return { text: `UV ${u} (moderate): put on sunscreen, SPF 30 or higher.`, warm: false };
+  if (u <= 7) return { text: `UV ${u} (high): wear sunscreen (SPF 30+), and a hat or sunglasses. Shady routes help.`, warm: true };
+  return { text: `UV ${u} (${uvLevel(u).toLowerCase()}): sunscreen (SPF 30+), a hat and sunglasses. You can burn in under 15 minutes, so shade or an earlier run is better.`, warm: true };
 }
 
 // one short sentence about how conditions are shaping today's picks
@@ -759,8 +776,16 @@ function RecommendationsPage() {
                 </div>
               ))}
             </div>
-            {(conditions.heat_cut_pct || conditions.cooler_option) && (
+            {(conditions.heat_cut_pct || conditions.cooler_option || sunscreenNote(conditions)) && (
               <ul className="cond-notes">
+                {sunscreenNote(conditions) && (
+                  <li className={sunscreenNote(conditions)!.warm ? "warm" : ""}>
+                    <span className="cond-note-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
+                    </span>
+                    <span>{sunscreenNote(conditions)!.text}</span>
+                  </li>
+                )}
                 {conditions.heat_cut_pct ? (
                   <li className="warm">
                     <span className="cond-note-icon" aria-hidden="true">
