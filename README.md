@@ -118,6 +118,7 @@ Open `http://localhost:5173`.
 | `AUTH_SECRET` | backend | Secret used to sign login tokens |
 | `FRONTEND_ORIGINS` | backend | Comma-separated sites allowed to call the API |
 | `OSRM_URL` | backend | Routing server for directions |
+| `OSRM_CAR_URL` | backend | Car routing server for drive-time limits (default: public FOSSGIS `routed-car`) |
 | `ADMIN_EMAILS` | backend | Accounts that can see research summaries for all users |
 | `VITE_API_URL` | frontend | Address of the backend API |
 

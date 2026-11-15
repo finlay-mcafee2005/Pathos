@@ -82,6 +82,7 @@ type Recommendation = {
   approach_path?: [number, number][];   // the streets from home to the start
   home?: [number, number];
   travel_km?: number | null;
+  drive_minutes?: number | null;          // by car to the start / parking, for drive-to picks
   origin_source?: "current" | "home" | "chosen";
   origin_label?: string | null;   // planned from the phone's location, or the signup address            // home -> start, when it's farther than a run-there   // e.g. "Long, gentle" for a flat run that's Hard only by length   // e.g. a gentler route a little beyond the travel limit
   distance_km: number;
@@ -385,6 +386,9 @@ function whyFact(title: string, rec: Recommendation): string | null {
     }
     case "Location":
       if (rec.approach_km && rec.approach_km > 0) return `${kmToMiles(rec.approach_km).toFixed(1)} mi run to the start`;
+      if (rec.drive_minutes != null) {
+        return `About ${rec.drive_minutes} min drive` + (rec.travel_km != null ? ` · ${kmToMiles(rec.travel_km).toFixed(1)} mi away` : "");
+      }
       return rec.travel_km != null ? `${kmToMiles(rec.travel_km).toFixed(1)} mi away` : null;
     case "Something new":
       return rec.days_since_run == null ? "Never run" : rec.days_since_run === 0 ? "Ran it today"

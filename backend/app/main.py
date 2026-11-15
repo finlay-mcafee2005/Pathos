@@ -30,6 +30,7 @@ from app.models import User, Checkin, Route, Injury, Run, Club, ClubSchedule, Fa
 from app.scoring.group_picks import Member, group_recommend
 from app.scoring.engine import haversine_km as _hav
 from app.scoring.converters import route_start
+from app.drive_time import drive_minutes
 from app.auth import hash_password, verify_password, make_token, read_token, make_link_token, read_link_token
 import hashlib
 from app.emails import send_welcome_email, send_verify_email, send_reset_email, APP_URL
@@ -260,6 +261,10 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
         raise HTTPException(status_code=404, detail="No checkin for today")
 
     effective_radius_km = checkin.willing_to_drive_km if checkin.willing_to_drive_km else MAX_DISTANCE_KM
+    # a 15 / 30 / 45 min drive limit is checked against real drive times (below), so search a
+    # wider circle first: freeways reach farther than 20 mph in a straight line
+    drive_limit = drive_limit_minutes(checkin)
+    search_radius_km = drive_limit / 60 * DRIVE_SEARCH_KMH if drive_limit else effective_radius_km
 
     # where the run starts from: a place they picked at check-in, else their current
     # location if we have a sensible one, else home
@@ -283,13 +288,20 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
         params={
             "lon": origin_lon,
             "lat": origin_lat,
-            "max_distance_m": effective_radius_km * 1000,
+            "max_distance_m": search_radius_km * 1000,
         },
     ).all()
     nearby_ids = [row[0] for row in nearby_route_ids]
 
     routes = load_routes(session, nearby_ids)
     routes = [r for r in routes if str(r.id) not in excluded]
+
+    # the drive limit is a hard rule: keep only routes whose start (or parking spot) is
+    # within that many minutes by car
+    drive_min_by_id: dict = {}
+    if drive_limit and routes:
+        drive_min_by_id = route_drive_minutes((origin_lat, origin_lon), routes)
+        routes = [r for r in routes if drive_min_by_id[str(r.id)] <= drive_limit]
 
     # Travel limit is a hard rule. If fewer than 3 routes start inside it, add the
     # closest ones (any distance away) so there are always 3 picks to compare.
@@ -337,20 +349,9 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             results = diversify(results + combined_results, 3,
                                 surface_requested=bool(checkin.surface_preference))
 
-    # rough day and nothing nearby but Hard routes: look a little farther for gentler ones
-    if needs_gentler(results, user_profile, daily_checkin, recent_runs):
-        wider_ids = [row[0] for row in session.exec(routes_query, params={
-            "lon": origin_lon, "lat": origin_lat,
-            "max_distance_m": (effective_radius_km + GENTLE_EXTRA_KM) * 1000,
-        }).all()]
-        extra = [r for r in load_routes(session, wider_ids)
-                 if str(r.id) not in route_by_id]
-        if extra:
-            results = add_gentler(results, user_profile, daily_checkin, recent_runs,
-                                  build_route_candidates(extra))
-            for r in extra:
-                route_by_id[str(r.id)] = r
-            real_route_ids |= {str(r.id) for r in extra}
+    # (A rough day with only steep routes nearby used to look past the travel limit for
+    # gentler ones. Testers didn't want drive-to picks on "close to home" days, and the
+    # drive limit is now a hard rule, so the picks stay inside it.)
 
     # fresh day and nothing Hard in the picks: offer one Hard run as the stretch option
     if wants_challenge(results, user_profile, daily_checkin, recent_runs):
@@ -418,6 +419,19 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
                                             / max(0.1, r.effective_distance_km)))
         paths.append(line)
 
+    # drive time to each pick (drive-to picks only), and a note on any that ended up past the limit
+    pick_drive_min = [None] * len(results)
+    to_drive = [i for i, r in enumerate(results)
+                if not (getattr(r, "approach_km", 0) or 0) > 0 and r.route.start_lat is not None]
+    if to_drive and origin_lat is not None:
+        mins = drive_minutes((origin_lat, origin_lon),
+                             [drive_target(results[i], route_by_id.get(results[i].route.id)) for i in to_drive])
+        for i, m in zip(to_drive, mins):
+            pick_drive_min[i] = int(round(m))
+    notices = [drive_notice((origin_lat, origin_lon), r, effective_radius_km, match_pct(r),
+                            pick_drive_min[i], drive_limit)
+               for i, r in enumerate(results)]
+
     response = [
         {
             "recommendation_id": rec_ids[i],
@@ -433,8 +447,9 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             "repeat_count": r.repeat_count,
             "effective_distance_km": round(r.effective_distance_km, 2),
             "reasons": r.reasons,
-            "needs_drive": drive_notice((origin_lat, origin_lon), r, effective_radius_km, match_pct(r)) is not None,
-            "notice": drive_notice((origin_lat, origin_lon), r, effective_radius_km, match_pct(r)) or (
+            "needs_drive": notices[i] is not None,
+            "drive_minutes": pick_drive_min[i],
+            "notice": notices[i] or (
                 GENTLE_NOTE if GENTLE_NOTE in r.reasons else
                 CHALLENGE_NOTE if CHALLENGE_NOTE in r.reasons else
                 (f"To fit your time, {out_and_back_words(r)}"
@@ -583,21 +598,57 @@ def first_part(path: list, km) -> list:
 
 
 DRIVE_KMH = 32          # ~20 mph, same as the check-in's 15 / 30 / 45 min travel chips
+DRIVE_SEARCH_KMH = 50   # first search circle for a drive limit (freeways), then real drive times decide
+NEAR_HOME_MI = 2.5      # "close to home" is sent as 2 mi: run there, no drive
 
 
-def drive_notice(origin, r, radius_km, match: int) -> Optional[str]:
-    """A pick that starts beyond their travel limit (a gentler or fill-in pick) and isn't run
-    from home: say plainly that it needs a drive, how far, and why it's still shown."""
+def drive_limit_minutes(checkin) -> Optional[float]:
+    """The drive limit they picked (15 / 30 / 45 min), or None for "close to home".
+    It's stored as miles at ~20 mph (see the check-in page)."""
+    km = checkin.willing_to_drive_km
+    if not km or km / 1.60934 <= NEAR_HOME_MI:
+        return None
+    return round(km / 1.60934 / 20 * 60)
+
+
+def drive_target(r, route) -> tuple:
+    """Where they'd drive to: the parking spot / trailhead if the route has one, else its start."""
+    la, lo = getattr(route, "park_lat", None), getattr(route, "park_lon", None)
+    if la is not None and lo is not None:
+        return (la, lo)
+    return (r.route.start_lat, r.route.start_lon)
+
+
+def route_drive_minutes(origin, routes) -> dict:
+    """route id -> minutes by car from origin to its parking spot (or start)."""
+    targets = []
+    for route in routes:
+        la, lo = getattr(route, "park_lat", None), getattr(route, "park_lon", None)
+        if la is None or lo is None:
+            la, lo = route_start(route)
+        targets.append((la, lo) if la is not None else origin)
+    return {str(route.id): m for route, m in zip(routes, drive_minutes(origin, targets))}
+
+
+def drive_notice(origin, r, radius_km, match: int, drive_min: Optional[int] = None,
+                 drive_limit: Optional[float] = None) -> Optional[str]:
+    """A pick that ended up past their travel limit (only when fewer than 3 fit inside it)
+    and isn't run from home: say plainly that it needs a drive, how long, and why it's shown."""
     if origin[0] is None or r.route.start_lat is None or (getattr(r, "approach_km", 0) or 0) > 0:
         return None
     km = _hav(origin[0], origin[1], r.route.start_lat, r.route.start_lon)
-    if km <= radius_km + 0.3:
-        return None
-    mins = max(5, int(round(km * 1.3 / DRIVE_KMH * 60 / 5.0)) * 5)    # streets ~1.3x straight line
+    if drive_limit and drive_min is not None:
+        if drive_min <= drive_limit:
+            return None
+        mins = max(5, int(round(drive_min / 5.0)) * 5)
+    else:
+        if km <= radius_km + 0.3:
+            return None
+        mins = drive_min if drive_min is not None else max(5, int(round(km * 1.3 / DRIVE_KMH * 60 / 5.0)) * 5)
     why = ("it's flatter, which suits today, and still a good match" if GENTLE_NOTE in r.reasons
            else "it's still a good match for today" if match >= 50
            else "it's one of the closest good options")
-    return f"Needs a drive: about {mins} min ({km * 1.3 * 0.621371:.0f} mi), farther than you wanted to go, but {why}"
+    return f"Needs a drive: about {mins} min, farther than you wanted to go, but {why}"
 
 
 def approach_fields(origin, r) -> dict:
