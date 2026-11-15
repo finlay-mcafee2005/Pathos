@@ -36,7 +36,7 @@ from app.auth import hash_password, verify_password, make_token, read_token, mak
 import hashlib
 from app.emails import send_welcome_email, send_verify_email, send_reset_email, APP_URL
 
-from app.scoring.engine import recommend, diversify, heat_distance_factor, readiness, long_but_gentle, looks_alike, run_climb_rate
+from app.scoring.engine import recommend, diversify, heat_distance_factor, readiness, long_but_gentle, looks_alike, run_climb_rate, describe_distance, distance_tolerance
 LONG_ROUGH_NOTE = "This is long for how you feel today. Run it easy, and cut it short if you need to"
 from app.scoring.converters import (
     build_user_profile, build_daily_checkin,
@@ -424,6 +424,21 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
         paths.append(line)
 
     approaches = [approach_fields((origin_lat, origin_lon), r) for r in results]
+    # run from where they are: the engine estimated the streets to the start (straight line
+    # x 1.3); now the real way there is known, use it for the distance, time and wording, so
+    # the card matches the map and the elevation chart
+    for i, (r, appr) in enumerate(zip(results, approaches)):
+        est, real = getattr(r, "approach_km", 0) or 0, appr.get("travel_km")
+        if est > 0 and real:
+            new_km = max(0.1, r.effective_distance_km + 2 * (real - est))
+            fit, note = describe_distance(new_km, r.target_km, distance_tolerance(r.target_km, new_km), real,
+                                          bool(checkin.available_minutes), inferred=not r.target_explicit) \
+                if r.target_km else (r.distance_fit, r.distance_note)
+            results[i] = replace(
+                r, effective_distance_km=new_km, approach_km=real, distance_fit=fit, distance_note=note,
+                estimated_minutes=round((r.estimated_minutes or 0) * new_km / max(0.1, r.effective_distance_km))
+                if r.estimated_minutes else r.estimated_minutes)
+            appr["approach_km"] = round(real, 2)
     # elevation profile of each pick as drawn (laps repeat the loop), streets to the start included
     prof_ids = set()
     for r in results:

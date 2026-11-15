@@ -25,6 +25,15 @@ function currentPosition(): Promise<[number, number] | null> {
   });
 }
 
+// Same rule as the backend (backend/app/scoring/difficulty.py): effort = km + climb / 100 m;
+// under 5 easy, under 10 moderate, else hard; one level up when it averages 50 m+ a km.
+function classifyDifficulty(km: number, climbM: number): "easy" | "moderate" | "hard" {
+  const effort = km + climbM / 100;
+  let level = effort < 5 ? 0 : effort < 10 ? 1 : 2;
+  if (km > 0 && climbM / km >= 50) level = Math.min(level + 1, 2);
+  return (["easy", "moderate", "hard"] as const)[level];
+}
+
 // The whole thing as one line: origin -> (streets) -> route start -> route. The
 // street path is pinned to the exact origin and start so there's never a gap or jump.
 function fullLine(rec: Recommendation): [number, number][] {
@@ -574,7 +583,17 @@ function RecommendationsPage() {
       } else if (!runsThere || !hasStreets) {
         return rec;                               // drive-to run: the route is the whole run
       }
-      return { ...rec, elevation_profile: full, elevation_gain_m: climbFt(full) / 3.28084 };
+      // distance, time, climb and difficulty all for the same whole run
+      const km = full.mi[full.mi.length - 1] / 0.621371;
+      const climbM = climbFt(full) / 3.28084;
+      const level = classifyDifficulty(km, climbM);
+      const prevKm = rec.effective_distance_km ?? rec.distance_km;
+      return {
+        ...rec, elevation_profile: full, elevation_gain_m: climbM, effective_distance_km: km,
+        estimated_minutes: rec.estimated_minutes && prevKm ? Math.round(rec.estimated_minutes * km / prevKm) : rec.estimated_minutes,
+        difficulty: level,
+        difficulty_label: level === "hard" && climbM / km < 20 ? "Long, gentle" : level,
+      };
     }));
     setRecommendations((cur) => cur.map((r) => done.find((d) => d.recommendation_id === r.recommendation_id) ?? r));
   }
