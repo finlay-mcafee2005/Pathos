@@ -7,7 +7,7 @@ import L from "leaflet";
 import { useRouteActions } from "../components/RouteExportButtons";
 import { type PlanInput } from "../utils/routeExport";
 import AdjustBar, { type Adjust, type TodayPrefs } from "../components/AdjustBar";
-import ElevationProfile, { type Profile } from "../components/ElevationProfile";
+import ElevationProfile, { type Profile, climbFt, wayHeights, withWay } from "../components/ElevationProfile";
 import RouteArrows from "../components/RouteArrows";
 import { type GroupMatch, formatMeetTime, sessionTitle } from "./GroupsPage";
 import { API_URL } from "../utils/format";
@@ -555,6 +555,29 @@ function RecommendationsPage() {
   const navigate = useNavigate();
   const userId = localStorage.getItem("user_id");
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+
+  // One climb number for the whole run. When they run from home, the streets to the start
+  // and back are part of it: if the server couldn't add their heights (it's rate-limited by
+  // the elevation service), fetch them here, then the card's Climb, "Why this route" and the
+  // chart all use the same whole-run profile.
+  async function addStreetsToProfiles(recs: Recommendation[]) {
+    const done = await Promise.all(recs.map(async (rec) => {
+      const p = rec.elevation_profile;
+      if (!p) return rec;
+      const runsThere = (rec.approach_km ?? 0) > 0 && rec.home && (rec.approach_path?.length ?? 0) > 1;
+      const hasStreets = !!p.route && p.route[0] > 0.05;
+      let full = p;
+      if (runsThere && !hasStreets) {
+        const w = await wayHeights([rec.home!, ...(rec.approach_path ?? []), rec.path[0]]);
+        if (!w) return rec;                       // couldn't get them: keep the route-only numbers
+        full = withWay(p, w);
+      } else if (!runsThere || !hasStreets) {
+        return rec;                               // drive-to run: the route is the whole run
+      }
+      return { ...rec, elevation_profile: full, elevation_gain_m: climbFt(full) / 3.28084 };
+    }));
+    setRecommendations((cur) => cur.map((r) => done.find((d) => d.recommendation_id === r.recommendation_id) ?? r));
+  }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openReasoning, setOpenReasoning] = useState<Record<number, boolean>>({});
@@ -684,6 +707,7 @@ function RecommendationsPage() {
       }
       const data = await response.json();
       setRecommendations(data);
+      addStreetsToProfiles(data);
       fetch(`${API_URL}/checkins/${userId}/today`)
         .then((res) => (res.ok ? res.json() : null))
         .then(setPrefs)
@@ -969,11 +993,7 @@ function RecommendationsPage() {
                       </span>
                     </div>
                   )}
-                  {rec.elevation_profile && (
-                    <ElevationProfile profile={rec.elevation_profile}
-                      approach={(rec.approach_km ?? 0) > 0 && rec.home && (rec.approach_path?.length ?? 0) > 1
-                        ? [rec.home, ...(rec.approach_path ?? []), rec.path[0]] : null} />
-                  )}
+                  {rec.elevation_profile && <ElevationProfile profile={rec.elevation_profile} />}
                 </div>
                 )}
 
