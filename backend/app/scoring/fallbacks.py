@@ -134,7 +134,7 @@ WEAK_REASON = {
     "surface_pref": "It's not the surface you picked, but nothing nearby was",
     "heat": "It'll be hot out, so run this one easy",
     "footing": "It's on uneven trail and you didn't sleep much, so watch your footing",
-    "approach": "Few routes start near you, so most of this run is getting to the route",
+    "approach": "Most of this run is on the streets getting to the route and back",
     "energy": "This one is tough for a low-energy day",
 }
 
@@ -147,5 +147,12 @@ def weak_match_note(s: ScoredRoute) -> str:
         return f"There aren't many {target_mi:.0f} mi routes near you. This one is {mi:.1f} mi"
     known = [(k, v) for k, v in s.breakdown.items() if k in WEAK_REASON and v < 0]
     if known:
-        return WEAK_REASON[min(known, key=lambda kv: kv[1])[0]]
+        key = min(known, key=lambda kv: kv[1])[0]
+        if key == "approach" and (s.approach_km or 0) > 0:
+            # the run starts from where they are: say how it splits, not "few routes start near you"
+            streets = 2 * s.approach_km * 0.621371
+            on_route = max(0.0, mi - streets)
+            return (f"Starts from where you are: {streets:.1f} of the {mi:.1f} mi is the run there and back, "
+                    f"{on_route:.1f} mi is on the {'trail' if s.route.surface_type == 'trail' else 'route'} itself")
+        return WEAK_REASON[key]
     return "Not a perfect fit for today, but one of the closer matches near you"
