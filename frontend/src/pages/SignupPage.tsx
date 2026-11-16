@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { paceMinChange, paceSecChange, paceSecKeyDown } from "../utils/paceInput";
+import { paceMinChange, paceSecChange, paceSecFocus, paceSecKeyDown } from "../utils/paceInput";
 import { PASSWORD_RULES, passwordProblem } from "../utils/passwordRules";
 import { useNavigate, Link } from "react-router-dom";
 import BackgroundSlideshow from "../components/BackgroundSlideshow";
@@ -459,6 +459,7 @@ function SignupPage() {
                           value={paceSec}
                           onChange={(e) => paceSecChange(e.target.value, setPaceSec)}
                           onKeyDown={(e) => paceSecKeyDown(e, paceMinRef)}
+                          onFocus={() => paceSecFocus(!paceMin, paceMinRef)}
                           placeholder="30"
                           aria-label="Pace seconds"
                         />

@@ -44,3 +44,9 @@ export function paceSecKeyDown(
 function clampSec(v: string) {
   return v && parseInt(v, 10) > 59 ? "59" : v;
 }
+
+/** Clicking into the seconds first, with no minutes yet: start in the minutes instead,
+ *  so typing "930" still reads left to right as 9:30. */
+export function paceSecFocus(minEmpty: boolean, minRef: RefObject<HTMLInputElement | null>) {
+  if (minEmpty) minRef.current?.focus();
+}

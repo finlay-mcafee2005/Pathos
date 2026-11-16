@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { paceMinChange, paceSecChange, paceSecKeyDown } from "../utils/paceInput";
+import { paceMinChange, paceSecChange, paceSecFocus, paceSecKeyDown } from "../utils/paceInput";
 import { API_URL } from "../utils/format";
 
 // Settings: where you run from, and your running profile. Everything here was set at
@@ -165,6 +165,7 @@ function ProfileSettings() {
             <span className="ps-unit">:</span>
             <input ref={paceSecRef} inputMode="numeric" value={paceSec} maxLength={2}
                    onChange={(e) => paceSecChange(e.target.value, setPaceSec)} onKeyDown={(e) => paceSecKeyDown(e, paceMinRef)}
+                          onFocus={() => paceSecFocus(!paceMin, paceMinRef)}
                    className="ps-num small" aria-label="Seconds" placeholder="00" />
             <span className="ps-unit">/ mi</span>
           </span>
