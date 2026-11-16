@@ -1,6 +1,6 @@
 // Easy-pace boxes (mm : ss): typing flows from minutes into seconds, so the runner never
-// has to click the seconds box. Paces run 4:00-20:00, so a first digit of 2-9 is already
-// the whole minutes (9 -> 9:__), a 1 waits for the next digit (1 -> 10/11/...).
+// has to click the seconds box. A first digit of 4-9 is the whole minutes (9 -> 9:__);
+// 1, 2 or 3 waits for the next digit (1 -> 10, 2 -> 20...), or for ":" to move on.
 // Typing ":" "." or a space also jumps over, and pasting "9:30" fills both.
 import type { RefObject } from "react";
 
@@ -19,11 +19,11 @@ export function paceMinChange(
     return;
   }
   const digits = raw.replace(/\D/g, "");
-  const minLen = digits[0] === "1" ? 2 : 1;       // 1x is two digits, 2-9 is one
+  const minLen = /^[0-3]/.test(digits) ? 2 : 1;   // 1x/2x/3x are two digits, 4-9 is one
   const min = digits.slice(0, minLen);
   setMin(min);
   if (digits.length > minLen) setSec(clampSec(digits.slice(minLen, minLen + 2)));   // typed "930"
-  if (min.length === minLen || (min === "0")) jump();
+  if (min.length === minLen) jump();
 }
 
 export function paceSecChange(raw: string, setSec: (v: string) => void) {
