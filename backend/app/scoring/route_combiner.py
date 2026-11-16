@@ -18,6 +18,9 @@ CONNECT_THRESHOLD_KM = 0.15
 # their car / door instead of a couple of km away.
 CLOSE_LOOP_KM = 0.25
 MAX_COMBO_SEARCH_RANGE_KM = 3.0
+# Two loops are joined where they pass closest (tighten_joins). If even that spot is more
+# than this apart, the step across would be a straight line through a block: skip the pair.
+MAX_STEP_ACROSS_KM = 0.1
 MAX_CHAIN_LENGTH = 3
 
 
@@ -124,6 +127,94 @@ class CombinedRoute:
         self.steepest_grade = max(grades) if grades else None
 
 
+def _nearest_on(coords, target):
+    """(segment index, point) of the spot on the line closest to target (lon, lat)."""
+    import math
+    kx = math.cos(math.radians(target[1]))           # flatten: lon degrees are shorter here
+    tx, ty = target[0] * kx, target[1]
+    best = (float("inf"), 0, coords[0])
+    for i, (a, b) in enumerate(zip(coords, coords[1:])):
+        ax, ay, bx, by = a[0] * kx, a[1], b[0] * kx, b[1]
+        dx, dy = bx - ax, by - ay
+        L = dx * dx + dy * dy
+        t = 0.0 if L == 0 else max(0.0, min(1.0, ((tx - ax) * dx + (ty - ay) * dy) / L))
+        px, py = ax + t * dx, ay + t * dy
+        d = (px - tx) ** 2 + (py - ty) ** 2
+        if d < best[0]:
+            best = (d, i, (px / kx, py))
+    return best[1], best[2]
+
+
+def _start_loop_at(coords, i, point):
+    """The same loop, run from `point` (which lies on segment i) instead of its old start."""
+    body = list(coords[:-1])                          # last point repeats the first
+    pt = tuple(point)
+    return [pt] + body[i + 1:] + body[:i + 1] + [pt]
+
+
+def _is_loop(coords):
+    return len(coords) >= 4 and haversine_km(*coords[0], *coords[-1]) <= 0.01
+
+
+def _closest_pair(path, loop):
+    """(i, point on path segment i, j, point on loop segment j): where the two lines come
+    closest. Vertices are compared first (only those near the other line), then the spot
+    is refined onto the segments around them."""
+    import math
+    kx = math.cos(math.radians(path[0][1]))
+
+    def box(pts, pad=0.002):
+        xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
+        return min(xs) - pad, max(xs) + pad, min(ys) - pad, max(ys) + pad
+
+    def inside(p, bx):
+        return bx[0] <= p[0] <= bx[2 - 1] and bx[2] <= p[1] <= bx[3]
+
+    bl, bp = box(loop), box(path)
+    pi = [i for i, p in enumerate(path) if inside(p, bl)] or list(range(len(path)))
+    lj = [j for j, p in enumerate(loop) if inside(p, bp)] or list(range(len(loop)))
+    best = None
+    for i in pi:
+        px, py = path[i][0] * kx, path[i][1]
+        for j in lj:
+            d = (loop[j][0] * kx - px) ** 2 + (loop[j][1] - py) ** 2
+            if best is None or d < best[0]:
+                best = (d, i, j)
+    _, i, j = best
+    # refine: the spot on the loop near path[i], then the spot on the path near that
+    lo_j = max(0, j - 2)
+    jj, q = _nearest_on(loop[lo_j:j + 3], path[i])
+    jj += lo_j
+    lo_i = max(0, i - 2)
+    ii, p = _nearest_on(path[lo_i:i + 3], q)
+    return ii + lo_i, p, jj, q
+
+
+def tighten_joins(chain_coords):
+    """How the legs are joined up. Before, each leg's end was joined to the next leg's start
+    with a straight line, and two Glassell Park loops whose starts were 140 m apart drew a
+    triangle through the houses. A loop can be run from anywhere on itself, so when every leg
+    is a loop the extra loops are run from the spot where they pass closest to the route so
+    far: run the first loop, step across at that spot, run the other loop all the way round,
+    step back, and carry on. The run still starts and ends where the first loop does.
+    Chains with a one-way leg (a trail) are left as they were.
+    Returns (legs' lines, longest step across between loops in km, km those steps add)."""
+    if not all(_is_loop(c) for c in chain_coords):
+        return [list(c) for c in chain_coords], 0.0, 0.0
+    path = [tuple(p) for p in chain_coords[0]]
+    longest = extra = 0.0
+    for loop in chain_coords[1:]:
+        loop = [tuple(p) for p in loop]
+        i, p, j, q = _closest_pair(path, loop)
+        longest = max(longest, haversine_km(*p, *q))
+        extra += 2 * haversine_km(*p, *q)            # across and back
+        side = _start_loop_at(loop, j, q)
+        joint = [tuple(p)] if haversine_km(*p, *path[i]) > 0.001 else []
+        # out to the loop at p, round it, and back to p before carrying on
+        path = path[:i + 1] + joint + side + [tuple(p)] + path[i + 1:]
+    return [path], longest, extra
+
+
 MAX_COMBOS = 150          # plenty to choose 3 good ones from; keeps scoring fast
 _CELL_DEG = 0.012         # grid cell ~1.3 km, a bit bigger than CONNECT_THRESHOLD_KM
 
@@ -183,9 +274,15 @@ def generate_combined_routes(routes: List, target_km: float) -> List[CombinedRou
             key = tuple(sorted(used_route_ids))
             if back_km <= CLOSE_LOOP_KM and key not in seen_combos:
                 seen_combos.add(key)
+                legs_coords, step_km, extra_km = tighten_joins(chain_coords)
+                if step_km > MAX_STEP_ACROSS_KM:
+                    return                # loops that never come near each other
+                start, finish = legs_coords[0][0], legs_coords[-1][-1]
+                back_km = haversine_km(*finish, *start)
+                gaps = extra_km + sum(haversine_km(*a[-1], *b[0]) for a, b in zip(legs_coords, legs_coords[1:]))
                 closing = [[start]] if back_km > 0.01 else []      # step back to the start
-                combined.append(CombinedRoute(chain_legs, chain_coords + closing,
-                                              total_dist + gap_km + back_km))
+                combined.append(CombinedRoute(chain_legs, legs_coords + closing,
+                                              total_dist + gaps + back_km))
         if len(chain_legs) >= MAX_CHAIN_LENGTH:
             return
         end = oriented[chain_idx][3]

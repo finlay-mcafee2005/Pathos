@@ -678,6 +678,36 @@ def check_note_and_mood():
     print("  all note and mood checks passed")
 
 
+def check_combined_routes():
+    """Two loops whose starts are ~140 m apart but whose streets touch: joined where they
+    touch, not with a straight line between the starts."""
+    from types import SimpleNamespace
+    from app.scoring.route_combiner import generate_combined_routes, path_length_km, haversine_km
+
+    def loop(rid, pts):
+        coords = pts + [pts[0]]
+        return SimpleNamespace(id=rid, name=f"Test {rid} Loop", nickname=None, coords=coords,
+                               distance_km=path_length_km(coords), elevation_gain_m=10,
+                               surface_type="pavement", scenic=False)
+    o = (-118.2336, 34.1171)
+    d = 0.006
+    north = loop("n", [o, (o[0], o[1] + d), (o[0] - d, o[1] + d), (o[0] - d, o[1])])
+    # starts 140 m east of the north loop, but its west side runs 10 m from the north loop's start
+    e = o[0] + 0.0015
+    south = loop("s", [(e, o[1]), (o[0] + 0.0001, o[1]), (o[0] + 0.0001, o[1] - d), (e + d, o[1] - d), (e + d, o[1])])
+    combos = generate_combined_routes([north, south], target_km=north.distance_km + south.distance_km)
+    legs = [tuple(sorted(c.leg_ids)) for c in combos]
+    assert ("n", "s") in legs, legs
+    for c in combos:
+        step = max(haversine_km(*a, *b) for a, b in zip(c.coords, c.coords[1:]))
+        assert step < 0.7, (c.leg_ids, step)                 # only the loops' own sides are long
+        assert c.coords[0] == c.coords[-1], "ends where it starts"
+    ns = next(c for c in combos if set(c.leg_ids) == {"n", "s"})
+    first = [r for r in (north, south) if r.id == ns.leg_ids[0]][0]
+    assert tuple(ns.coords[0]) == tuple(first.coords[0]), "run starts where its first loop does"
+    print(f"  combined routes: loops joined where they touch ({legs})")
+
+
 if __name__ == "__main__":
     for title, user, checkin in SCENARIOS:
         print_results(title, run(user, checkin))
@@ -691,3 +721,4 @@ if __name__ == "__main__":
     check_rough_vs_great()
     check_distance_words()
     check_note_and_mood()
+    check_combined_routes()
