@@ -18,6 +18,9 @@ from app.scoring.personalization import RunRecord
 from app.scoring.route_combiner import load_routes   # route rows without their lines
 
 
+from app.scoring.run_spots import parse_spots
+
+
 def build_user_profile(session: Session, user: User) -> UserProfile:
     active_injuries = session.exec(
         select(Injury).where(
@@ -35,6 +38,7 @@ def build_user_profile(session: Session, user: User) -> UserProfile:
         home_lon=user.longitude,
         usual_pace_min_km=getattr(user, "usual_pace_min_km", None),
         priorities=[p for p in (getattr(user, "priorities", None) or "").split(",") if p],
+        usual_spots=parse_spots(getattr(user, "usual_spots", None)),
     )
 
 

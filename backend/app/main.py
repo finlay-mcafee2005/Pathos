@@ -42,6 +42,7 @@ from app.scoring.converters import (
     build_user_profile, build_daily_checkin,
     build_recent_runs, build_route_candidates,
 )
+from app.scoring.run_spots import clean_spots, spot_list, spots_out
 from app.scoring.route_combiner import generate_combined_routes, get_route_coords, load_routes
 from app.scoring.fallbacks import (needs_gentler, add_gentler, GENTLE_EXTRA_KM, GENTLE_NOTE,
                                   wants_challenge, add_challenge, CHALLENGE_NOTE,
@@ -111,6 +112,7 @@ def add_new_columns():
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS hills_pref VARCHAR"))
         conn.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS usual_pace_min_km FLOAT'))
         conn.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS priorities VARCHAR'))
+        conn.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS usual_spots VARCHAR'))
         conn.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE'))
         conn.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP'))
         conn.execute(text("ALTER TABLE route ADD COLUMN IF NOT EXISTS elevation_loss_m FLOAT"))
@@ -839,6 +841,7 @@ class SignupRequest(BaseModel):
     injuries: List[InjuryInput] = []
     club_join_code: Optional[str] = None
     priorities: Optional[List[str]] = None     # most important first (PRIORITY_KEYS)
+    usual_spots: Optional[List[dict]] = None   # [{key, often}] places they usually run
 
 
 SIGNUP_COVERAGE_RADIUS_KM = 15  # need routes within ~9 mi of home for useful picks
@@ -970,6 +973,7 @@ def signup(payload: SignupRequest, background: BackgroundTasks, session: Session
         longitude=lon,
         goal=payload.goal,
         priorities=clean_priorities(payload.priorities),
+        usual_spots=clean_spots(payload.usual_spots),
         club_id=club_id,
     )
     session.add(user)
@@ -2135,7 +2139,14 @@ def profile_out(user: User) -> dict:
         "weekly_mileage_avg": user.weekly_mileage_avg,          # miles per week, as entered at signup
         "usual_pace_min_mile": round(user.usual_pace_min_km * 1.60934, 2) if user.usual_pace_min_km else None,
         "priorities": [p for p in (user.priorities or "").split(",") if p],
+        "usual_spots": spots_out(user.usual_spots),
     }
+
+
+@app.get("/spots")
+def running_spots():
+    """LA places a runner can say they usually run (signup and Settings search box)."""
+    return spot_list()
 
 
 @app.get("/me/profile")
@@ -2156,6 +2167,7 @@ class ProfileUpdate(BaseModel):
     usual_pace_min_mile: Optional[float] = Field(default=None, ge=4, le=20)
     clear_pace: bool = False
     priorities: Optional[List[str]] = None     # most important first; [] clears
+    usual_spots: Optional[List[dict]] = None   # [{key, often}]; [] clears
 
 
 @app.patch("/me/profile")
@@ -2179,6 +2191,8 @@ def update_profile(payload: ProfileUpdate, session: Session = Depends(get_sessio
         user.weekly_mileage_avg = payload.weekly_mileage_avg
     if payload.priorities is not None:
         user.priorities = clean_priorities(payload.priorities)
+    if payload.usual_spots is not None:
+        user.usual_spots = clean_spots(payload.usual_spots)
     if payload.clear_pace:
         user.usual_pace_min_km = None
     elif payload.usual_pace_min_mile is not None:

@@ -27,6 +27,7 @@ class UserProfile:
     home_lon: Optional[float] = None
     usual_pace_min_km: Optional[float] = None   # what they told us at signup
     priorities: List[str] = field(default_factory=list)   # ranked at signup, most important first
+    usual_spots: List[dict] = field(default_factory=list)  # places they usually run (run_spots.parse_spots)
 
 @dataclass
 class DailyCheckin:
@@ -244,6 +245,9 @@ BASE_SCORE = 100.0
 # so two routes only tie if they really are equivalent on every signal.
 # ---------------------------------------------------------------------------
 W_SCENIC = 20
+W_USUAL_OFTEN = 8         # a place they said they run "all the time": room for somewhere new
+W_USUAL_SOMETIMES = 4
+W_USUAL_TASTE = 4         # like their usual places: surface, hills (+/- half), scenery
 W_SURFACE_PREF = 20
 W_ADVENTURE = 15
 W_DISTANCE_MAX = 25          # perfect match to an explicit planned distance
@@ -705,6 +709,24 @@ def score_route(
         # scenery is one of their top things: a scenic route counts a bit even on days
         # they don't ask for it
         add("scenic", W_SCENIC * 0.35, "Scenic, one of the things you care about most")
+
+    # --- places they usually run (signup / Settings) -------------------------
+    spots = getattr(user, "usual_spots", None) or []
+    if spots:
+        here = next((sp for sp in spots if in_spot(route, sp)), None)
+        if here:
+            # they run here all the time already: lean toward somewhere new
+            add("usual_spot", -(W_USUAL_OFTEN if here["often"] else W_USUAL_SOMETIMES))
+        from app.scoring.run_spots import spot_taste
+        taste = spot_taste(spots)
+        route_trail = {"trail": 1.0, "mixed": 0.5}.get(surface, 0.0)
+        route_hilly = min(1.0, hill / 40.0)              # ~40 m/km and up reads as hilly
+        pts = W_USUAL_TASTE * (1 - abs(route_trail - taste["trail"])) - W_USUAL_TASTE / 2
+        pts += W_USUAL_TASTE * (1 - abs(route_hilly - taste["hilly"])) - W_USUAL_TASTE / 2
+        if route.scenic:
+            pts += 0.75 * W_USUAL_TASTE * taste["scenic"]
+        add("taste_usual", round(pts, 1),
+            "Like the places you usually run" if pts >= W_USUAL_TASTE and not here else None)
 
     if checkin.surface_preference:
         wanted = "pavement" if checkin.surface_preference == "road" else checkin.surface_preference
@@ -1346,6 +1368,7 @@ def recommend(
     scored = limit_shape(scored, getattr(checkin, "shape_pref", None), top_n)
     scored = limit_climb(scored, getattr(checkin, "climb_range", None), top_n)
     scored = fit_time_limit(scored, checkin.available_minutes, top_n)
+    scored = limit_usual_spots(scored, getattr(user, "usual_spots", None) or [], top_n)
     # Always rank every eligible route and return the best top_n, even if
     # none is a great distance match, so the user always sees options.
     return diversify(scored, top_n, surface_requested=bool(checkin.surface_preference))
@@ -1368,6 +1391,32 @@ def limit_rough_day(scored: List[ScoredRoute], ready: float, hills_pref: Optiona
         return gentle
     rest = sorted((s for s in scored if s not in gentle), key=run_climb_rate)
     return gentle + rest[:top_n - len(gentle)]
+
+
+def in_spot(r: RouteCandidate, spot: dict) -> bool:
+    """Is this route in one of their usual places (start inside it, or named after it)?"""
+    name = re.sub(r"( beach)? (loop|path)$", "", spot["label"].lower())
+    if name and name in (r.name or "").lower():
+        return True
+    return r.start_lat is not None and \
+        haversine_km(spot["lat"], spot["lon"], r.start_lat, r.start_lon) <= spot["radius_km"]
+
+
+def limit_usual_spots(scored: List[ScoredRoute], spots: List[dict], top_n: int) -> List[ScoredRoute]:
+    """At most one pick from each place they usually run, so three picks aren't three versions
+    of their regular spot. Kept only if there are enough other routes to fill the picks."""
+    if not spots:
+        return scored
+    seen, out, held = set(), [], []
+    for s in sorted(scored, key=lambda s: -s.score):
+        sp = next((sp["key"] for sp in spots if in_spot(s.route, sp)), None)
+        if sp and sp in seen:
+            held.append(s)
+            continue
+        if sp:
+            seen.add(sp)
+        out.append(s)
+    return out if len(out) >= top_n else out + held[:top_n - len(out)]
 
 
 def in_place(r: RouteCandidate, place: str) -> bool:

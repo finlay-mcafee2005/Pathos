@@ -731,6 +731,30 @@ def check_priorities():
     print("  all priority checks passed")
 
 
+def check_usual_spots():
+    """Places they usually run: picks lean toward similar runs, not the same spot three times."""
+    from app.scoring.run_spots import parse_spots, clean_spots, spot_taste
+    print("\n=== Usual spots checks ===")
+    stored = clean_spots([{"key": "rose-bowl", "often": True}, {"key": "griffith-park"}, {"key": "nope"}])
+    assert stored == "rose-bowl:often,griffith-park:sometimes", stored
+    spots = parse_spots(stored)
+    taste = spot_taste(spots)
+    assert 0 < taste["trail"] < 0.5 and taste["scenic"] == 1.0, taste
+    # five Rose Bowl routes and two similar ones elsewhere (flat, scenic, road)
+    rb = [RouteCandidate(id=f"rb{k}", name=f"Rose Bowl Loop {k}", distance_km=5.0 + 0.1 * k, elevation_gain_m=20,
+                         difficulty="easy", surface_type="pavement", is_loop=True, scenic=True,
+                         start_lat=34.161, start_lon=-118.168) for k in range(5)]
+    other = [RouteCandidate(id=f"x{k}", name=f"Lacy Park Loop {k}", distance_km=5.0, elevation_gain_m=20,
+                            difficulty="easy", surface_type="pavement", is_loop=True, scenic=True,
+                            start_lat=34.1265 + 0.01 * k, start_lon=-118.1185 - 0.03 * k) for k in range(3)]
+    user = UserProfile(fitness_level="intermediate", weekly_km_avg=30, usual_spots=spots)
+    ids = [r.route.id for r in recommend(user, DailyCheckin(energy_score=6, planned_distance_km=5.0),
+                                         RecentRuns(last_7_days_km=20), rb + other)]
+    assert sum(i.startswith("rb") for i in ids) <= 1, ids
+    print(f"  Rose Bowl (often) + Griffith: at most one Rose Bowl pick ({ids})")
+    print("  all usual spots checks passed")
+
+
 if __name__ == "__main__":
     for title, user, checkin in SCENARIOS:
         print_results(title, run(user, checkin))
@@ -746,3 +770,4 @@ if __name__ == "__main__":
     check_note_and_mood()
     check_combined_routes()
     check_priorities()
+    check_usual_spots()

@@ -45,6 +45,8 @@ class User(SQLModel, table=True):
     goal: str = Field(default="general_fitness")
     # what matters most to them, most important first: "safety,scenery,distance,..."
     priorities: Optional[str] = None
+    # places they usually run: "rose-bowl:often,eagle-rock:sometimes" (scoring/run_spots.py)
+    usual_spots: Optional[str] = None
     club_id: Optional[UUID] = Field(default=None, foreign_key="club.id")
 
     created_at: datetime = Field(default_factory=datetime.utcnow)

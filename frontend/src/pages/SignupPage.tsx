@@ -7,6 +7,7 @@ import ThemeToggle from "../components/ThemeToggle";
 import { API_URL } from "../utils/format";
 import { saveSession } from "../utils/session";
 import PriorityRanker from "../components/PriorityRanker";
+import UsualSpots, { type Spot } from "../components/UsualSpots";
 import { DEFAULT_ORDER } from "../utils/priorities";
 
 type Injury = {
@@ -20,6 +21,7 @@ const STEPS = [
   { short: "Home base", title: "Where do you run from?", sub: "We find routes that start near here." },
   { short: "Your running", title: "Tell us how you run.", sub: "So the first recommendations already fit." },
   { short: "What matters", title: "What matters most on a run?", sub: "Drag to put what you care about most at the top. You can change this later in Settings." },
+  { short: "Usual spots", title: "Where do you usually run?", sub: "Add the places you run most. Pathos finds runs like them, and mixes in new spots so you're not sent to the same ones every day. Optional." },
   { short: "Body check", title: "Anything hurting lately?", sub: "Pathos steers you away from surfaces that aggravate it." },
 ];
 
@@ -75,7 +77,8 @@ function SignupPage() {
   const [fitnessLevel, setFitnessLevel] = useState("beginner");
   const [goal, setGoal] = useState("general_fitness");
   const [priorities, setPriorities] = useState<string[]>(DEFAULT_ORDER);
-  const [ranked, setRanked] = useState(false);   // untouched = no ranking (everything counts the same)
+  const [ranked, setRanked] = useState(false);
+  const [usualSpots, setUsualSpots] = useState<Spot[]>([]);   // untouched = no ranking (everything counts the same)
   const [weeklyMileage, setWeeklyMileage] = useState("");
   const [mileageOther, setMileageOther] = useState(false);
   const [paceMin, setPaceMin] = useState("");
@@ -191,6 +194,7 @@ function SignupPage() {
             : [],
           club_join_code: clubCode || null,
           priorities: ranked ? priorities : null,
+          usual_spots: usualSpots.map(({ key, often }) => ({ key, often })),
         }),
       });
 
@@ -206,7 +210,7 @@ function SignupPage() {
         // send them back to the step that needs fixing
         if (/route|address|location/i.test(detail)) setStep(1);
         else if (/club/i.test(detail)) setStep(2);
-        else if (/injur/i.test(detail)) setStep(4);
+        else if (/injur/i.test(detail)) setStep(5);
         else if (/email/i.test(detail)) setStep(0);
         throw new Error(detail);
       }
@@ -491,6 +495,12 @@ function SignupPage() {
               )}
 
               {step === 4 && (
+                <section className="su-priority-section">
+                  <UsualSpots value={usualSpots} onChange={setUsualSpots} />
+                </section>
+              )}
+
+              {step === 5 && (
                 <section className="form-section su-choices">
                   <div className="su-yesno">
                     <button
