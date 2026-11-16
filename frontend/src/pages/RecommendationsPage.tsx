@@ -217,13 +217,14 @@ function condStats(c: Conditions) {
   const out: { label: string; value: string; unit?: string; tone: string; icon: string }[] = [];
   const feels = c.feels_like_f ?? c.temp_f;
   if (feels != null) out.push({ label: "Feels like", value: String(Math.round(feels)), unit: "°F", tone: tempTone(feels), icon: "temp" });
-  if (c.us_aqi != null) out.push({ label: `Air · ${aqiLabel(c.us_aqi)}`, value: String(Math.round(c.us_aqi)), tone: aqiTone(c.us_aqi), icon: "air" });
-  if (c.uv_index != null)
-    out.push({ label: `UV · ${uvLevel(c.uv_index)}`, value: String(Math.round(c.uv_index)), tone: c.uv_index >= 6 ? WARM : TONE, icon: "uv" });
+  if (c.us_aqi != null) out.push({ label: `Air · ${aqiLabel(c.us_aqi).toLowerCase()}`, value: String(Math.round(c.us_aqi)), tone: aqiTone(c.us_aqi), icon: "air" });
+  // UV only while the sun is up (a 0 after dark tells them nothing)
+  if (c.uv_index != null && Math.round(c.uv_index) >= 1)
+    out.push({ label: `UV · ${uvLevel(c.uv_index).toLowerCase()}`, value: String(Math.round(c.uv_index)), tone: c.uv_index >= 6 ? WARM : TONE, icon: "uv" });
   if (c.wind_mph != null && c.wind_mph >= 12)
     out.push({ label: "Wind", value: String(Math.round(c.wind_mph)), unit: "mph", tone: c.wind_mph >= 20 ? WARM : TONE, icon: "wind" });
   if (c.rain_last_48h_mm >= 1)
-    out.push({ label: "Rain, last 48h", value: String(c.rain_last_48h_mm), unit: "mm", tone: c.rain_last_48h_mm >= 5 ? WARM : TONE, icon: "rain" });
+    out.push({ label: "Rain, 2 days", value: String(c.rain_last_48h_mm), unit: "mm", tone: c.rain_last_48h_mm >= 5 ? WARM : TONE, icon: "rain" });
   if (c.sunset) {
     const t = formatClockTime(c.sunset);
     out.push({ label: "Sunset", value: t.slice(0, -3), unit: t.slice(-2), tone: c.minutes_until_sunset != null && c.minutes_until_sunset < 75 ? WARM : TONE, icon: "sunset" });
@@ -832,7 +833,9 @@ function RecommendationsPage() {
             <div className="conditions-head">
               <span className="conditions-when">
                 {when} {recommendations[0]?.origin_source === "chosen" ? "near your start" : "near home"}
-                {conditions.run_time !== "now" && nowFeels != null && (
+                {/* "right now" only when it's noticeably different from the run's time */}
+                {conditions.run_time !== "now" && nowFeels != null
+                  && Math.abs(nowFeels - (conditions.feels_like_f ?? conditions.temp_f ?? nowFeels)) >= 3 && (
                   <span className="conditions-now"> · {Math.round(nowFeels)}°F right now</span>
                 )}
               </span>
