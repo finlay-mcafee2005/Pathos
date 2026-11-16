@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 import { PRIORITIES } from "../utils/priorities";
 
-// Drag any row up or down (mouse or touch) to rank it; the row follows the pointer and the
-// others slide out of the way. Most important on top. Keyboard: focus a row, arrow keys move it.
+// Drag any row up or down (mouse or touch), or tap its arrows, to rank it; a dragged row
+// follows the pointer and the others slide out of the way. Most important on top. Keyboard: focus a row, arrow keys move it.
 type Props = { order: string[]; onChange: (order: string[]) => void };
 
 type Drag = { key: string; pointerId: number; lastY: number; offset: number };
@@ -73,7 +73,7 @@ function PriorityRanker({ order, onChange }: Props) {
         return (
           <li
             key={key}
-            className={`pr-item ${isDragged ? "dragging" : ""}`}
+            className={`pr-item ${isDragged ? "dragging" : ""} ${i < 3 ? "top" : ""}`}
             style={isDragged ? { transform: `translateY(${drag.offset}px)` } : undefined}
             tabIndex={0}
             aria-label={`${i + 1}. ${p.title}. Drag, or use the up and down arrow keys, to move it.`}
@@ -89,7 +89,16 @@ function PriorityRanker({ order, onChange }: Props) {
               <strong>{p.title}</strong>
               <small>{p.sub}</small>
             </span>
-            <span className="pr-handle" aria-hidden="true">⠿</span>
+            <span className="pr-arrows" onPointerDown={(e) => e.stopPropagation()}>
+              <button type="button" tabIndex={-1} aria-label={`Move ${p.title} up`} disabled={i === 0}
+                      onClick={() => onChange(moved(i, i - 1))}>
+                <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 10l4-4 4 4" /></svg>
+              </button>
+              <button type="button" tabIndex={-1} aria-label={`Move ${p.title} down`} disabled={i === order.length - 1}
+                      onClick={() => onChange(moved(i, i + 1))}>
+                <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>
+              </button>
+            </span>
           </li>
         );
       })}
