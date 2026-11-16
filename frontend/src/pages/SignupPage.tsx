@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { paceMinChange, paceSecChange, paceSecKeyDown } from "../utils/paceInput";
 import { PASSWORD_RULES, passwordProblem } from "../utils/passwordRules";
 import { useNavigate, Link } from "react-router-dom";
 import BackgroundSlideshow from "../components/BackgroundSlideshow";
@@ -79,6 +80,8 @@ function SignupPage() {
   const [mileageOther, setMileageOther] = useState(false);
   const [paceMin, setPaceMin] = useState("");
   const [paceSec, setPaceSec] = useState("");
+  const paceMinRef = useRef<HTMLInputElement>(null);
+  const paceSecRef = useRef<HTMLInputElement>(null);
   // easy pace in minutes per mile, or null if blank / out of range (4:00-20:00)
   const paceValue = (() => {
     if (!paceMin) return null;
@@ -441,22 +444,21 @@ function SignupPage() {
                     <div className="su-pace-row">
                       <span className="su-pace-input">
                         <input
+                          ref={paceMinRef}
                           inputMode="numeric"
-                          maxLength={2}
                           value={paceMin}
-                          onChange={(e) => setPaceMin(e.target.value.replace(/\D/g, ""))}
+                          onChange={(e) => paceMinChange(e.target.value, setPaceMin, setPaceSec, paceSecRef)}
                           placeholder="9"
                           aria-label="Pace minutes"
                         />
                         <span className="su-pace-colon">:</span>
                         <input
+                          ref={paceSecRef}
                           inputMode="numeric"
                           maxLength={2}
                           value={paceSec}
-                          onChange={(e) => {
-                            const v = e.target.value.replace(/\D/g, "");
-                            setPaceSec(v && parseInt(v, 10) > 59 ? "59" : v);
-                          }}
+                          onChange={(e) => paceSecChange(e.target.value, setPaceSec)}
+                          onKeyDown={(e) => paceSecKeyDown(e, paceMinRef)}
                           placeholder="30"
                           aria-label="Pace seconds"
                         />

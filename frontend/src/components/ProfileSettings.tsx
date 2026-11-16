@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { paceMinChange, paceSecChange, paceSecKeyDown } from "../utils/paceInput";
 import { API_URL } from "../utils/format";
 
 // Settings: where you run from, and your running profile. Everything here was set at
@@ -39,6 +40,8 @@ function ProfileSettings() {
   const [miles, setMiles] = useState("");
   const [paceMin, setPaceMin] = useState("");
   const [paceSec, setPaceSec] = useState("");
+  const paceMinRef = useRef<HTMLInputElement>(null);
+  const paceSecRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -156,10 +159,12 @@ function ProfileSettings() {
         <div className="ps-field">
           <span className="ps-label">Easy-run pace <span className="ps-optional">optional</span></span>
           <span className="ps-inline">
-            <input inputMode="numeric" value={paceMin} onChange={(e) => setPaceMin(e.target.value.replace(/\D/g, "").slice(0, 2))}
+            <input ref={paceMinRef} inputMode="numeric" value={paceMin}
+                   onChange={(e) => paceMinChange(e.target.value, setPaceMin, setPaceSec, paceSecRef)}
                    className="ps-num small" aria-label="Minutes" placeholder="10" />
             <span className="ps-unit">:</span>
-            <input inputMode="numeric" value={paceSec} onChange={(e) => setPaceSec(e.target.value.replace(/\D/g, "").slice(0, 2))}
+            <input ref={paceSecRef} inputMode="numeric" value={paceSec} maxLength={2}
+                   onChange={(e) => paceSecChange(e.target.value, setPaceSec)} onKeyDown={(e) => paceSecKeyDown(e, paceMinRef)}
                    className="ps-num small" aria-label="Seconds" placeholder="00" />
             <span className="ps-unit">/ mi</span>
           </span>
