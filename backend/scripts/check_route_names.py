@@ -31,7 +31,13 @@ from collections import Counter
 HERE = os.path.dirname(__file__)
 PLACES = os.path.join(HERE, ".shade_cache", "places_local.json")
 BBOX = (-118.60, 33.90, -117.95, 34.40)
-NEAR_KM = {"neighbourhood": 1.0, "quarter": 1.0, "suburb": 1.6, "town": 4.0, "city": 4.0}
+# a place in the title is only "wrong" when the route stays this far from it ...
+NEAR_KM = {"neighbourhood": 2.0, "quarter": 2.0, "suburb": 2.5, "town": 5.0, "city": 5.0}
+MIN_NEW_SHARE = 0.4      # ... and the replacement is where at least this much of the route is
+# place names that are part of a landmark, not a neighborhood: Lake Hollywood, Mount Hollywood,
+# Burbank Peak, Big Tujunga Wash, Los Angeles County, San Gabriel Peak
+LANDMARK_BEFORE = re.compile(r"\b(lake|mount|mt\.?|big|little|upper|lower|old)\s+$", re.I)
+LANDMARK_AFTER = re.compile(r"^\s+(peak|wash|county|reservoir|dam|hills|canyon|ridge|summit)\b", re.I)
 LOCAL_KINDS = {"neighbourhood", "quarter", "suburb"}     # what "where this stretch is" uses
 STEP_KM = 0.2
 MIN_SHARE = 0.15
@@ -93,16 +99,26 @@ def check(title, coords, places, local):
     total = sum(where.values())
     low = title.lower()
     for name, kind, lat, lon in sorted(places, key=lambda p: -len(p[0])):   # longest names first
-        if not re.search(r"\b" + re.escape(name.lower()) + r"\b", low):
+        m = re.search(r"\b" + re.escape(name.lower()) + r"\b", low)
+        if not m:
             continue
+        before, after = title[:m.start()], title[m.end():]
+        if LANDMARK_BEFORE.search(before) or LANDMARK_AFTER.search(after):
+            continue                          # "Lake Hollywood", "Burbank Peak": a landmark, keep it
+        if before.rstrip().endswith("("):
+            return None                       # "Old Zoo (Los Feliz)": a trail's area tag, keep it
         near = min(km(pt, (lat, lon)) for pt in pts) <= NEAR_KM[kind]
         share = where.get(name, 0) / total
         if near or share >= MIN_SHARE:
             return None                       # the place it's named after is really on the route
-        best = next((n for n, _ in where.most_common() if n.lower() not in low), None)
-        if not best:
-            return None
-        new = re.sub(re.escape(name), best, title, count=1, flags=re.IGNORECASE)
+        best, n = where.most_common(1)[0]
+        if n / total < MIN_NEW_SHARE or best.lower() in low or name.lower() in best.lower() \
+                or best.lower() in name.lower():
+            return None                       # no clear better name: leave it
+        new = title[:m.start()] + best + title[m.end():]
+        words = new.lower().split()
+        if any(a == b for a, b in zip(words, words[1:])):
+            return None                       # "Canyon Canyon": don't
         return new, name, best
     return None
 
