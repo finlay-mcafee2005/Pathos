@@ -4,6 +4,7 @@ import { API_URL } from "../utils/format";
 import { clearSession } from "../utils/session";
 import ProfileSettings from "../components/ProfileSettings";
 import AvoidedRoutes from "../components/AvoidedRoutes";
+import PrioritySettings from "../components/PrioritySettings";
 
 type Me = { email: string; first_name: string; email_verified: boolean };
 
@@ -56,6 +57,7 @@ function AccountPage() {
       </header>
 
       <ProfileSettings />
+      <PrioritySettings />
       <AvoidedRoutes />
 
       <section className="ac-card">

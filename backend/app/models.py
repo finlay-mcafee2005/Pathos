@@ -43,6 +43,8 @@ class User(SQLModel, table=True):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     goal: str = Field(default="general_fitness")
+    # what matters most to them, most important first: "safety,scenery,distance,..."
+    priorities: Optional[str] = None
     club_id: Optional[UUID] = Field(default=None, foreign_key="club.id")
 
     created_at: datetime = Field(default_factory=datetime.utcnow)

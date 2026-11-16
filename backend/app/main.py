@@ -110,6 +110,7 @@ def add_new_columns():
         conn.execute(text("ALTER TABLE route ADD COLUMN IF NOT EXISTS hidden BOOLEAN DEFAULT FALSE"))
         conn.execute(text("ALTER TABLE checkin ADD COLUMN IF NOT EXISTS hills_pref VARCHAR"))
         conn.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS usual_pace_min_km FLOAT'))
+        conn.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS priorities VARCHAR'))
         conn.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE'))
         conn.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP'))
         conn.execute(text("ALTER TABLE route ADD COLUMN IF NOT EXISTS elevation_loss_m FLOAT"))
@@ -837,9 +838,20 @@ class SignupRequest(BaseModel):
     usual_pace_min_mile: Optional[float] = Field(default=None, ge=4, le=20)  # easy pace, minutes per mile
     injuries: List[InjuryInput] = []
     club_join_code: Optional[str] = None
+    priorities: Optional[List[str]] = None     # most important first (PRIORITY_KEYS)
 
 
 SIGNUP_COVERAGE_RADIUS_KM = 15  # need routes within ~9 mi of home for useful picks
+
+
+def clean_priorities(items) -> Optional[str]:
+    """Their ranking as stored: known keys only, no repeats, most important first."""
+    from app.scoring.engine import PRIORITY_KEYS
+    out = []
+    for k in items or []:
+        if k in PRIORITY_KEYS and k not in out:
+            out.append(k)
+    return ",".join(out) or None
 
 
 class AreaCheck(BaseModel):
@@ -957,6 +969,7 @@ def signup(payload: SignupRequest, background: BackgroundTasks, session: Session
         latitude=lat,
         longitude=lon,
         goal=payload.goal,
+        priorities=clean_priorities(payload.priorities),
         club_id=club_id,
     )
     session.add(user)
@@ -2121,6 +2134,7 @@ def profile_out(user: User) -> dict:
         "goal": user.goal,
         "weekly_mileage_avg": user.weekly_mileage_avg,          # miles per week, as entered at signup
         "usual_pace_min_mile": round(user.usual_pace_min_km * 1.60934, 2) if user.usual_pace_min_km else None,
+        "priorities": [p for p in (user.priorities or "").split(",") if p],
     }
 
 
@@ -2141,6 +2155,7 @@ class ProfileUpdate(BaseModel):
     weekly_mileage_avg: Optional[float] = Field(default=None, ge=0, le=200)
     usual_pace_min_mile: Optional[float] = Field(default=None, ge=4, le=20)
     clear_pace: bool = False
+    priorities: Optional[List[str]] = None     # most important first; [] clears
 
 
 @app.patch("/me/profile")
@@ -2162,6 +2177,8 @@ def update_profile(payload: ProfileUpdate, session: Session = Depends(get_sessio
         user.goal = payload.goal
     if payload.weekly_mileage_avg is not None:
         user.weekly_mileage_avg = payload.weekly_mileage_avg
+    if payload.priorities is not None:
+        user.priorities = clean_priorities(payload.priorities)
     if payload.clear_pace:
         user.usual_pace_min_km = None
     elif payload.usual_pace_min_mile is not None:

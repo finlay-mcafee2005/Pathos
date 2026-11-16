@@ -34,6 +34,7 @@ def build_user_profile(session: Session, user: User) -> UserProfile:
         home_lat=user.latitude,
         home_lon=user.longitude,
         usual_pace_min_km=getattr(user, "usual_pace_min_km", None),
+        priorities=[p for p in (getattr(user, "priorities", None) or "").split(",") if p],
     )
 
 

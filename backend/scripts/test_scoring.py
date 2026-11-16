@@ -708,6 +708,29 @@ def check_combined_routes():
     print(f"  combined routes: loops joined where they touch ({legs})")
 
 
+def check_priorities():
+    """What they ranked at signup: the top ones count more, the bottom ones less."""
+    from app.scoring.engine import priority_weights, score_route
+    print("\n=== Priority checks ===")
+    assert priority_weights([]) == {}
+    w = priority_weights(["scenery", "safety", "distance", "surface", "hills", "shape", "location"])
+    assert w["scenic"] == 1.5 and w["crossing"] == 1.3 and w["approach"] == 0.7, w
+    assert "soreness" not in w and "heat" not in w          # today's state isn't a taste
+    scenic = RouteCandidate(id="sc", name="Scenic Loop", distance_km=6.0, elevation_gain_m=40, difficulty="easy",
+                            surface_type="pavement", is_loop=True, scenic=True, start_lat=34.13, start_lon=-118.21)
+    plain = RouteCandidate(id="pl", name="Plain Loop", distance_km=6.0, elevation_gain_m=40, difficulty="easy",
+                           surface_type="pavement", is_loop=True, scenic=False, start_lat=34.13, start_lon=-118.21)
+    recent = RecentRuns(last_7_days_km=20)
+    day = DailyCheckin(energy_score=6, planned_distance_km=6.0)
+    fan = UserProfile(fitness_level="intermediate", weekly_km_avg=30, priorities=["scenery", "distance"])
+    meh = UserProfile(fitness_level="intermediate", weekly_km_avg=30, priorities=["distance", "safety", "scenery"])
+    none = UserProfile(fitness_level="intermediate", weekly_km_avg=30)
+    gap = lambda u: score_route(scenic, u, day, recent).score - score_route(plain, u, day, recent).score
+    assert gap(fan) > gap(meh) > gap(none) == 0, (gap(fan), gap(meh), gap(none))
+    print(f"  scenic over plain: scenery 1st +{gap(fan):.1f}, 3rd +{gap(meh):.1f}, not ranked +{gap(none):.1f}")
+    print("  all priority checks passed")
+
+
 if __name__ == "__main__":
     for title, user, checkin in SCENARIOS:
         print_results(title, run(user, checkin))
@@ -722,3 +745,4 @@ if __name__ == "__main__":
     check_distance_words()
     check_note_and_mood()
     check_combined_routes()
+    check_priorities()

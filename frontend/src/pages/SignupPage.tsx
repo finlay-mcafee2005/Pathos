@@ -5,6 +5,8 @@ import BackgroundSlideshow from "../components/BackgroundSlideshow";
 import ThemeToggle from "../components/ThemeToggle";
 import { API_URL } from "../utils/format";
 import { saveSession } from "../utils/session";
+import PriorityRanker from "../components/PriorityRanker";
+import { DEFAULT_ORDER } from "../utils/priorities";
 
 type Injury = {
   body_part: string;
@@ -16,6 +18,7 @@ const STEPS = [
   { short: "You", title: "Let's get you set up.", sub: "Your login for Pathos." },
   { short: "Home base", title: "Where do you run from?", sub: "We find routes that start near here." },
   { short: "Your running", title: "Tell us how you run.", sub: "So the first recommendations already fit." },
+  { short: "What matters", title: "What matters most on a run?", sub: "Drag to put what you care about most at the top. You can change this later in Settings." },
   { short: "Body check", title: "Anything hurting lately?", sub: "Pathos steers you away from surfaces that aggravate it." },
 ];
 
@@ -70,6 +73,8 @@ function SignupPage() {
   const [address, setAddress] = useState("");
   const [fitnessLevel, setFitnessLevel] = useState("beginner");
   const [goal, setGoal] = useState("general_fitness");
+  const [priorities, setPriorities] = useState<string[]>(DEFAULT_ORDER);
+  const [ranked, setRanked] = useState(false);   // untouched = no ranking (everything counts the same)
   const [weeklyMileage, setWeeklyMileage] = useState("");
   const [mileageOther, setMileageOther] = useState(false);
   const [paceMin, setPaceMin] = useState("");
@@ -182,6 +187,7 @@ function SignupPage() {
               }))
             : [],
           club_join_code: clubCode || null,
+          priorities: ranked ? priorities : null,
         }),
       });
 
@@ -197,7 +203,7 @@ function SignupPage() {
         // send them back to the step that needs fixing
         if (/route|address|location/i.test(detail)) setStep(1);
         else if (/club/i.test(detail)) setStep(2);
-        else if (/injur/i.test(detail)) setStep(3);
+        else if (/injur/i.test(detail)) setStep(4);
         else if (/email/i.test(detail)) setStep(0);
         throw new Error(detail);
       }
@@ -472,6 +478,16 @@ function SignupPage() {
               )}
 
               {step === 3 && (
+                <section className="form-section">
+                  <PriorityRanker order={priorities} onChange={(o) => { setPriorities(o); setRanked(true); }} />
+                  <p className="hint su-priority-hint">
+                    {ranked ? "Got it. Your top picks count more when Pathos chooses routes."
+                      : "Not sure? Leave it as is and everything counts the same."}
+                  </p>
+                </section>
+              )}
+
+              {step === 4 && (
                 <section className="form-section su-choices">
                   <div className="su-yesno">
                     <button

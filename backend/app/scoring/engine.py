@@ -26,6 +26,7 @@ class UserProfile:
     home_lat: Optional[float] = None
     home_lon: Optional[float] = None
     usual_pace_min_km: Optional[float] = None   # what they told us at signup
+    priorities: List[str] = field(default_factory=list)   # ranked at signup, most important first
 
 @dataclass
 class DailyCheckin:
@@ -598,6 +599,32 @@ def distance_points(err: float, tol: float) -> float:
     return max(W_DISTANCE_FLOOR, 10 - 10 * (err - tol) / tol)
 
 
+# What a runner can rank at signup, and the score parts each one covers. A part not listed
+# here (soreness, weather, energy, variety...) is about today, not taste, and isn't touched.
+PRIORITY_PARTS = {
+    "distance": ("distance",),
+    "scenery": ("scenic", "taste_scenic", "appeal"),
+    "surface": ("surface_pref", "taste_surface", "footing"),
+    "safety": ("crossing", "stops", "traffic", "freeway", "downtown", "quiet"),
+    "shape": ("shape", "turns", "layout", "format", "rhythm", "taste_loop"),
+    "hills": ("hills", "terrain", "steep"),
+    "location": ("proximity", "approach"),
+}
+PRIORITY_KEYS = tuple(PRIORITY_PARTS)
+# 1st counts half again as much as now, last about two thirds; unranked = as before
+RANK_WEIGHTS = (1.5, 1.3, 1.15, 1.0, 0.9, 0.8, 0.7)
+_PART_PRIORITY = {part: key for key, parts in PRIORITY_PARTS.items() for part in parts}
+
+
+def priority_weights(priorities) -> dict:
+    """score part -> multiplier, from their ranking. Empty when they haven't ranked."""
+    ranked = [p for p in (priorities or []) if p in PRIORITY_PARTS]
+    if not ranked:
+        return {}
+    by_key = {k: RANK_WEIGHTS[min(i, len(RANK_WEIGHTS) - 1)] for i, k in enumerate(ranked)}
+    return {part: by_key[key] for part, key in _PART_PRIORITY.items() if key in by_key}
+
+
 def score_route(
     route: RouteCandidate,
     user: UserProfile,
@@ -611,9 +638,11 @@ def score_route(
     parts: dict = {}          # component -> points, returned for transparency
     reasons: List[str] = []
 
+    weights = priority_weights(getattr(user, "priorities", None))
+
     def add(name: str, pts: float, reason: Optional[str] = None):
         if pts:
-            parts[name] = parts.get(name, 0.0) + pts
+            parts[name] = parts.get(name, 0.0) + pts * weights.get(name, 1.0)
         if reason:
             reasons.append(reason)
 
@@ -672,6 +701,10 @@ def score_route(
     # --- 2. explicit check-in choices --------------------------------------
     if checkin.wants_scenic and route.scenic:
         add("scenic", W_SCENIC, "Scenic, like you asked")
+    elif route.scenic and "scenery" in (getattr(user, "priorities", None) or [])[:3]:
+        # scenery is one of their top things: a scenic route counts a bit even on days
+        # they don't ask for it
+        add("scenic", W_SCENIC * 0.35, "Scenic, one of the things you care about most")
 
     if checkin.surface_preference:
         wanted = "pavement" if checkin.surface_preference == "road" else checkin.surface_preference
