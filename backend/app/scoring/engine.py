@@ -335,8 +335,9 @@ W_INTENT = 10
 HEAT_START_F = 78             # "feels like" temperature where heat starts to count
 HEAT_SEVERE_F = 95
 W_HEAT_MAX = 20               # long, hilly run in severe heat
-W_UV = 4                      # long exposed run at very high UV
+W_UV = 4                      # long exposed run at very high UV (less under trees)
 UV_HIGH = 8
+W_UV_SHADE = 5                # very high UV: up to this for a shady route
 WIND_STRONG_MPH = 20
 W_WIND = 6                    # hilly / exposed route in strong wind
 AQI_START = 100               # "unhealthy for sensitive groups"
@@ -1017,8 +1018,15 @@ def score_route(
             add("heat", pts, reason)
 
         uv = getattr(cond, "uv_index", None)
-        if uv is not None and uv >= UV_HIGH and run_minutes > 45:
-            add("heat", -W_UV * clamp((run_minutes - 45) / 45))
+        shade = getattr(route, "shade", None) or 0.0
+        if uv is not None and uv >= UV_HIGH:
+            # trees block the sun: shade cuts the long-run penalty and earns a small boost
+            if run_minutes > 45:
+                add("heat", -W_UV * clamp((run_minutes - 45) / 45) * (1 - shade))
+            if shade >= 0.35 and not (cond.minutes_until_sunset is not None and cond.minutes_until_sunset <= 0):
+                level = clamp((uv - UV_HIGH + 1) / 3)          # UV 8 -> 1/3, 10+ -> full
+                add("shade", W_UV_SHADE * level * shade,
+                    f"Shady route, and UV is very high today ({uv:.0f})" if shade >= 0.5 else None)
 
         wind = getattr(cond, "wind_mph", None)
         if wind is not None and wind >= WIND_STRONG_MPH and (hill >= 20 or surface == "trail"):
