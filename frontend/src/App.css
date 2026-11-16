@@ -9644,3 +9644,24 @@ body::before {
 .pr-item.dragging { transition: none; box-shadow: 0 12px 28px rgba(30, 64, 175, .22); z-index: 2; }
 .pr-handle { margin-left: auto; padding: 4px; font-size: 18px; opacity: .35; touch-action: none; }
 .su-priority-hint { margin: 14px 0 6px; }
+
+/* ---- Priority ranking: clearer drag states ---- */
+.pr-wrap { display: flex; flex-direction: column; gap: 8px; }
+.pr-end { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--accent); opacity: .75; padding-left: 4px; }
+.pr-end.bottom { color: var(--ink); opacity: .4; }
+.pr-item { border-width: 1.5px; }
+.pr-item:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 4%, var(--card-bg)); }
+.pr-item:hover .pr-handle { opacity: .7; color: var(--accent); }
+.pr-list.is-dragging .pr-item:not(.dragging) { opacity: .6; }
+.pr-item.dragging {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--card-bg));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent), 0 16px 32px rgba(30, 64, 175, .25);
+  opacity: 1;
+}
+.pr-item.dragging .pr-rank { background: var(--accent); color: #fff; transform: scale(1.1); }
+.pr-item.dragging .pr-handle { opacity: 1; color: var(--accent); }
+.pr-item.dragging .pr-text strong { color: var(--accent); }
+.pr-rank { transition: transform .15s, background .15s; }

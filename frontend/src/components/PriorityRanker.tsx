@@ -41,6 +41,10 @@ function PriorityRanker({ order, onChange }: Props) {
       offset -= items[from + 1].offsetHeight + gap;
       next = moved(from, from + 1);
     }
+    // don't let the row float off past the top or bottom of the list
+    const at = next.indexOf(drag.key);
+    if (at === 0) offset = Math.max(offset, -10);
+    if (at === next.length - 1) offset = Math.min(offset, 10);
     setDrag({ ...drag, lastY: e.clientY, offset });
     if (next !== order) onChange(next);
   }
@@ -59,6 +63,8 @@ function PriorityRanker({ order, onChange }: Props) {
   }
 
   return (
+    <div className="pr-wrap">
+    <span className="pr-end top">Most important</span>
     <ol className={`pr-list ${drag ? "is-dragging" : ""}`} ref={listRef}>
       {order.map((key, i) => {
         const p = info[key];
@@ -88,6 +94,8 @@ function PriorityRanker({ order, onChange }: Props) {
         );
       })}
     </ol>
+    <span className="pr-end bottom">Least important</span>
+    </div>
   );
 }
 
