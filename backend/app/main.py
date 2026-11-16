@@ -505,7 +505,11 @@ def get_recommendations(user_id: UUID, session: Session = Depends(get_session),
             # run from home: the streets from home to the start, drawn on the card
             **approaches[i],
             "origin_source": origin_source,
-            "origin_label": checkin.start_label if origin_source == "chosen" else None,
+            "origin_label": checkin.start_label if origin_source == "chosen"
+                else (user.address or None) if origin_source == "home" else None,
+            # home saved as just a neighborhood ("Eagle Rock"): the start is that area's middle,
+            # not their door (Eduardo: picks started at Eagle Rock Blvd & Colorado)
+            "origin_vague": origin_source == "home" and not any(ch.isdigit() for ch in (user.address or "")),
             "difficulty": r.difficulty,
             # a long, flat run is "Hard" by length only: say so instead of just "Hard"
             "difficulty_label": "Long, gentle" if r.difficulty == "hard"

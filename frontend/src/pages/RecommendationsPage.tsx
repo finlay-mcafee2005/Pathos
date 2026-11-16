@@ -13,14 +13,16 @@ import { type GroupMatch, formatMeetTime, sessionTitle } from "./GroupsPage";
 import { API_URL } from "../utils/format";
 
 // The phone/browser location, or null if it's not allowed or takes too long (then home is used).
-function currentPosition(): Promise<[number, number] | null> {
+function currentPosition(precise = false): Promise<[number, number] | null> {
+  // precise: they tapped "Use my location", so wait longer and ask for a GPS-quality fix
+  const wait = precise ? 15000 : 6000;
   return new Promise((resolve) => {
     if (!navigator.geolocation) return resolve(null);
-    const timer = setTimeout(() => resolve(null), 6000);
+    const timer = setTimeout(() => resolve(null), wait);
     navigator.geolocation.getCurrentPosition(
       (p) => { clearTimeout(timer); resolve([p.coords.latitude, p.coords.longitude]); },
       () => { clearTimeout(timer); resolve(null); },
-      { enableHighAccuracy: false, maximumAge: 5 * 60 * 1000, timeout: 6000 }
+      { enableHighAccuracy: precise, maximumAge: precise ? 0 : 5 * 60 * 1000, timeout: wait }
     );
   });
 }
@@ -95,6 +97,7 @@ type Recommendation = {
   travel_km?: number | null;
   drive_minutes?: number | null;          // by car to the start / parking, for drive-to picks
   origin_source?: "current" | "home" | "chosen";
+  origin_vague?: boolean;     // planned from home, and home is only a neighborhood (its middle)
   origin_label?: string | null;   // planned from the phone's location, or the signup address            // home -> start, when it's farther than a run-there   // e.g. "Long, gentle" for a flat run that's Hard only by length   // e.g. a gentler route a little beyond the travel limit
   distance_km: number;
   elevation_gain_m: number;
@@ -707,7 +710,7 @@ function RecommendationsPage() {
     return c && !c.unavailable ? c : null;
   }
 
-  async function fetchRecommendations(exclude: string[] = []) {
+  async function fetchRecommendations(exclude: string[] = [], precise = false) {
     if (!userId) {
       setError("No user found. Please log in again.");
       return;
@@ -716,7 +719,7 @@ function RecommendationsPage() {
     setError(null);
     try {
       // plan from where they are right now; if location isn't allowed, the server uses home
-      const here = await currentPosition();
+      const here = await currentPosition(precise);
       const params = new URLSearchParams();
       if (here) { params.set("lat", here[0].toFixed(5)); params.set("lon", here[1].toFixed(5)); }
       if (exclude.length) params.set("exclude", exclude.join(","));
@@ -770,6 +773,18 @@ function RecommendationsPage() {
               ? <>Planning from <b>{recommendations[0].origin_label ?? "your chosen start"}</b> · <Link to="/checkin">Change</Link></>
               : "Best match first. Tap “Why this route” on any card to see the reasoning."}
           </p>
+          {/* say where the picks start from when it isn't where they are */}
+          {count > 0 && recommendations[0]?.origin_source === "home" && (
+            <p className={`recs-origin ${recommendations[0].origin_vague ? "vague" : ""}`}>
+              {recommendations[0].origin_vague
+                ? <>Starting from the middle of <b>{recommendations[0].origin_label ?? "your neighborhood"}</b>, since your browser didn't share your location. </>
+                : <>Starting from <b>home</b>, since your browser didn't share your location. </>}
+              <button type="button" className="recs-origin-btn" disabled={loading}
+                      onClick={() => { setSeen([]); fetchRecommendations([], true); }}>Use my location</button>
+              <span aria-hidden="true"> · </span>
+              <Link to="/checkin">Pick a start point</Link>
+            </p>
+          )}
         </div>
         <button className="recs-refresh" onClick={() => { setSeen([]); setAdjustMsg(null); fetchRecommendations(); }} disabled={loading}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={loading ? "spin" : ""}>

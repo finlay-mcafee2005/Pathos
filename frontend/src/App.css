@@ -9587,3 +9587,11 @@ body::before {
 .rpe-key { display: inline-block; width: 16px; height: 0; border-top: 2px solid var(--accent); margin-left: 6px; }
 .rpe-key:first-child { margin-left: 0; }
 .rpe-key.way { border-top-style: dashed; opacity: .6; }
+
+/* where the picks start from, when it isn't where they are */
+.recs-origin { margin: 8px 0 0; padding: 8px 12px; border-radius: 12px; font-size: 0.85rem; line-height: 1.45;
+  color: var(--ink); background: color-mix(in srgb, var(--accent) 7%, var(--card-bg)); border: 1px solid var(--border); }
+.recs-origin.vague { background: color-mix(in srgb, #EA580C 7%, var(--card-bg)); }
+.recs-origin a, .recs-origin-btn { color: var(--accent); font-weight: 700; }
+.recs-origin-btn { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; cursor: pointer; }
+.recs-origin-btn:disabled { opacity: .5; cursor: default; }
