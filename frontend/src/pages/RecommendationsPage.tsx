@@ -239,14 +239,16 @@ function uvLevel(uv: number): string {
 }
 
 // sunscreen advice for the hour they'll run (EPA: protect your skin from UV 3 up)
-function sunscreenNote(c: Conditions): { text: string; warm: boolean } | null {
+function sunscreenNote(c: Conditions): { title: string; detail: string; tone: "good" | "info" | "warm" } | null {
   if (c.uv_index == null) return null;
   const u = Math.round(c.uv_index);
   if (u <= 2) return c.minutes_until_sunset != null && c.minutes_until_sunset > 0 && u > 0
-    ? { text: "UV is low, so you don't need sunscreen for this run.", warm: false } : null;
-  if (u <= 5) return { text: `UV ${u} (moderate): put on sunscreen, SPF 30 or higher.`, warm: false };
-  if (u <= 7) return { text: `UV ${u} (high): wear sunscreen (SPF 30+), and a hat or sunglasses. Shady routes help.`, warm: true };
-  return { text: `UV ${u} (${uvLevel(u).toLowerCase()}): sunscreen (SPF 30+), a hat and sunglasses. You can burn in under 15 minutes, so shade or an earlier run is better.`, warm: true };
+    ? { title: "No sunscreen needed", detail: "UV is low for this run.", tone: "good" } : null;
+  if (u <= 5) return { title: "Wear sunscreen", detail: `UV ${u} is moderate. SPF 30 or higher.`, tone: "info" };
+  if (u <= 7) return { title: "Sunscreen and a hat", detail: `UV ${u} is high. Shady routes help.`, tone: "warm" };
+  return { title: "Sunscreen, hat and sunglasses",
+           detail: `UV ${u} is ${uvLevel(u).toLowerCase()}: you can burn in under 15 minutes. Shade or an earlier run is better.`,
+           tone: "warm" };
 }
 
 // one short sentence about how conditions are shaping today's picks
@@ -860,14 +862,24 @@ function RecommendationsPage() {
             </div>
             {(conditions.heat_cut_pct || conditions.cooler_option || sunscreenNote(conditions)) && (
               <ul className="cond-notes">
-                {sunscreenNote(conditions) && (
-                  <li className={sunscreenNote(conditions)!.warm ? "warm" : ""}>
-                    <span className="cond-note-icon" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
-                    </span>
-                    <span>{sunscreenNote(conditions)!.text}</span>
-                  </li>
-                )}
+                {(() => {
+                  const sun = sunscreenNote(conditions);
+                  return sun && (
+                    <li className={sun.tone}>
+                      <span className="cond-note-icon" aria-hidden="true">
+                        {sun.tone === "good" ? (
+                          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+                        ) : (
+                          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
+                        )}
+                      </span>
+                      <span className="cond-note-text">
+                        <b>{sun.title}</b>
+                        <small>{sun.detail}</small>
+                      </span>
+                    </li>
+                  );
+                })()}
                 {conditions.heat_cut_pct ? (
                   <li className="warm">
                     <span className="cond-note-icon" aria-hidden="true">

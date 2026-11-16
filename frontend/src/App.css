@@ -9750,3 +9750,22 @@ body::before {
   .us-chosen strong { flex-basis: calc(100% - 100px); }
   .us-freq { order: 3; margin-left: 48px; }
 }
+
+/* condition notes: same shape as the stat tiles above, a solid tone icon, title + one line */
+.recs-page .recs-today .cond-notes { gap: 0.5rem; margin-top: 0.1rem; }
+.recs-page .recs-today .cond-notes li {
+  gap: 0.75rem; padding: 0.6rem 0.8rem; border-radius: 14px;
+  background: color-mix(in srgb, var(--tone) 6%, var(--card-bg));
+  border: 1px solid color-mix(in srgb, var(--tone) 22%, var(--border));
+}
+.recs-page .recs-today .cond-notes li.good { --tone: #16A34A; }
+.recs-page .recs-today .cond-notes li.info { --tone: var(--accent); }
+.recs-page .recs-today .cond-notes li.warm { --tone: #EA580C; }
+.recs-page .recs-today .cond-note-icon {
+  width: 32px; height: 32px; border-radius: 50%; color: #fff;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--tone) 85%, #fff), var(--tone));
+  box-shadow: 0 3px 8px color-mix(in srgb, var(--tone) 30%, transparent);
+}
+.cond-note-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.cond-note-text b { font-size: 0.9rem; font-weight: 700; color: var(--ink); }
+.cond-note-text small { font-size: 0.82rem; line-height: 1.35; color: var(--ink); opacity: 0.62; }
