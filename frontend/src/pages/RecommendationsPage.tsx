@@ -457,10 +457,23 @@ function whyGroups(breakdown: Record<string, number> | undefined) {
     const dots = sum <= -8 ? 1 : sum < 0 ? 2 : ratio < 0.25 ? 3 : ratio < 0.6 ? 4 : 5;
     // what mattered most, bad news first when the group came out negative
     const ordered = [...items].sort((x, y) => Math.abs(y[1]) - Math.abs(x[1]));
-    let line = ordered.slice(0, 2)
-      .filter(([, v], n) => n === 0 || Math.abs(v) >= 3)      // a second reason only if it mattered
-      .map(([k, v]) => (WHY_PHRASES[k] ?? [k, k])[v >= 0 ? 0 : 1])
-      .join(". ");
+    const shown = ordered.slice(0, 2)
+      .filter(([, v], n) => n === 0 || Math.abs(v) >= 3);     // a second reason only if it mattered
+    const phrase = ([k, v]: [string, number]) => (WHY_PHRASES[k] ?? [k, k])[v >= 0 ? 0 : 1];
+    let line = shown.map(phrase).join(". ");
+    // one helps and one hurts: one sentence with "though", not two that read as a contradiction
+    if (shown.length === 2 && (shown[0][1] >= 0) !== (shown[1][1] >= 0)) {
+      const keys = new Set(shown.map(([k]) => k));
+      const hillsUp = (b.hills ?? 0) >= 0;
+      if (g.title === "Climbing" && keys.has("hills")) {
+        line = hillsUp
+          ? "The amount of climbing you asked for, though it's a lot for how you feel today"
+          : "Suits how you feel today, though it's not the amount of climbing you asked for";
+      } else {
+        const second = phrase(shown[1]);
+        line = `${phrase(shown[0])}, though ${second.charAt(0).toLowerCase()}${second.slice(1)}`;
+      }
+    }
     // never run, but already shown this week: one sentence, not two that read as a contradiction
     if (g.title === "Something new" && (b.seen ?? 0) < 0 && ((b.novelty ?? 0) > 0 || (b.adventure ?? 0) > 0))
       line = "You haven't run it, but it was already suggested to you this week";
