@@ -9595,3 +9595,12 @@ body::before {
 .recs-origin a, .recs-origin-btn { color: var(--accent); font-weight: 700; }
 .recs-origin-btn { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; cursor: pointer; }
 .recs-origin-btn:disabled { opacity: .5; cursor: default; }
+
+/* weather snapshot: an even grid, so a 5th tile (sunset) sits in the row like the others
+   instead of stretching across the whole card */
+.recs-page .recs-today .cond-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 0.5rem; }
+.recs-page .recs-today .cond-stat { min-width: 0; }
+@media (max-width: 560px) {
+  .recs-page .recs-today .cond-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .recs-page .recs-today .cond-stat { min-width: 0; }
+}
