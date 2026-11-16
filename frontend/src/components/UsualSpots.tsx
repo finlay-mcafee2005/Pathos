@@ -1,29 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { API_URL } from "../utils/format";
+import { RUN_SPOTS, type CatalogSpot } from "../utils/runSpots";
 
 // Places they usually run: search LA spots, add them as rows, and say how often they go.
 export type Spot = { key: string; label: string; often: boolean };
-type CatalogSpot = { key: string; label: string; kind: string; popular: boolean };
 
 const KIND_ICON: Record<string, string> = { park: "🌳", trail: "⛰️", path: "🛤️", beach: "🌊", streets: "🏘️" };
-let catalogCache: CatalogSpot[] | null = null;
 
 type Props = { value: Spot[]; onChange: (spots: Spot[]) => void };
 
 function UsualSpots({ value, onChange }: Props) {
-  const [catalog, setCatalog] = useState<CatalogSpot[]>(catalogCache ?? []);
+  const catalog: CatalogSpot[] = RUN_SPOTS;
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const boxRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (catalogCache) return;
-    fetch(`${API_URL}/spots`).then((r) => (r.ok ? r.json() : [])).then((list: CatalogSpot[]) => {
-      catalogCache = list;
-      setCatalog(list);
-    }).catch(() => {});
-  }, []);
 
   // close the dropdown when clicking elsewhere
   useEffect(() => {
@@ -41,7 +31,7 @@ function UsualSpots({ value, onChange }: Props) {
       .filter((c) => !chosen.has(c.key) && c.label.toLowerCase().includes(q))
       .sort((a, b) => Number(!a.label.toLowerCase().startsWith(q)) - Number(!b.label.toLowerCase().startsWith(q)))
       .slice(0, 6);
-  }, [query, catalog, value]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [query, value]);   // eslint-disable-line react-hooks/exhaustive-deps
   const popular = catalog.filter((c) => c.popular && !chosen.has(c.key));
 
   function add(c: CatalogSpot) {

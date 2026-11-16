@@ -752,6 +752,14 @@ def check_usual_spots():
                                          RecentRuns(last_7_days_km=20), rb + other)]
     assert sum(i.startswith("rb") for i in ids) <= 1, ids
     print(f"  Rose Bowl (often) + Griffith: at most one Rose Bowl pick ({ids})")
+    # the app's built-in copy of the list has to match
+    import os, re as _re
+    ts = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "src", "utils", "runSpots.ts")
+    if os.path.exists(ts):
+        from app.scoring.run_spots import SPOTS
+        app_keys = _re.findall(r'key: "([^"]+)"', open(ts).read())
+        assert app_keys == list(SPOTS), "frontend/src/utils/runSpots.ts is out of date with run_spots.py"
+        print("  app's spot list matches the backend's")
     print("  all usual spots checks passed")
 
 
