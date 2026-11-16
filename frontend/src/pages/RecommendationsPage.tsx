@@ -362,7 +362,7 @@ const WHY_PHRASES: Record<string, [string, string]> = {
   variety: ["Different from the other picks", "Similar to another pick"],
   seen: ["New to your picks this week", "Already suggested to you this week"],
   heat: ["Comfortable temperature", "It'll be hot"],
-  shade: ["Shady for the heat", "Little shade"],
+  shade: ["Shady: out of the heat and sun", "Little shade"],
   air: ["Clean air", "Poor air quality"],
   wind: ["Calm", "Windy on exposed stretches"],
   mud: ["Dry trails", "Trails may be muddy"],
