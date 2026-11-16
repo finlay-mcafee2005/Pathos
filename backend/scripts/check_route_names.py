@@ -19,6 +19,8 @@ The original route.name is left alone (the generator scripts rely on it); the ca
 Run from backend/:
     DATABASE_URL=... python3 scripts/check_route_names.py --dry-run
     DATABASE_URL=... python3 scripts/check_route_names.py
+Or rename just the ones you've checked:
+    python3 scripts/check_route_names.py --rename "Old Title=New Title" --rename "..."
 """
 import glob
 import json
@@ -123,10 +125,29 @@ def check(title, coords, places, local):
     return None
 
 
+def manual_renames():
+    """--rename "Old Title=New Title" (repeatable): rename just these, checked by hand."""
+    out = []
+    for i, arg in enumerate(sys.argv):
+        if arg == "--rename" and i + 1 < len(sys.argv) and "=" in sys.argv[i + 1]:
+            old, new = (x.strip() for x in sys.argv[i + 1].split("=", 1))
+            out.append((old, new))
+    return out
+
+
 def main():
     if "DATABASE_URL" not in os.environ:
         sys.exit('DATABASE_URL isn\'t set. Run: export DATABASE_URL="<your Supabase link>"')
     from sqlalchemy import create_engine, text
+    picked = manual_renames()
+    if picked:
+        engine = create_engine(os.environ["DATABASE_URL"])
+        with engine.begin() as conn:
+            for old, new in picked:
+                n = conn.execute(text("UPDATE route SET nickname = :new WHERE COALESCE(nickname, name) = :old"),
+                                 {"new": new, "old": old}).rowcount
+                print(f"  {old}  ->  {new}   ({n} route{'s' if n != 1 else ''})")
+        return
     places = load_places()
     local = [p for p in places if p[1] in LOCAL_KINDS]
     engine = create_engine(os.environ["DATABASE_URL"])
