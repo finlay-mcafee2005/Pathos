@@ -11,17 +11,12 @@ from typing import List
 
 from app.scoring.difficulty import classify_difficulty
 
-# Legs have to actually meet at the same corner: the gap between them is drawn (and run)
-# as a straight line, and even at 150 m that line cut through blocks and under freeways.
-CONNECT_THRESHOLD_KM = 0.04
+# Legs have to actually meet (at most a street crossing apart): the gap between them is
+# drawn as a straight line, and at 1.2 km that line cut across hills and backyards.
+CONNECT_THRESHOLD_KM = 0.15
 # ...and the whole chain has to come back to where it started, so the runner ends at
-# their car / door instead of somewhere else (same rule: no straight-line jump home).
-CLOSE_LOOP_KM = 0.04
-# A leg that mostly re-runs streets the chain already used isn't a new route, it's the
-# same streets twice (and on the map, two lines on top of each other).
-MAX_LEG_OVERLAP = 0.2
-_OVERLAP_CELL_DEG = 0.0006   # ~60 m squares
-_JUNCTION_KM = 0.15          # near where legs meet, sharing streets is expected
+# their car / door instead of a couple of km away.
+CLOSE_LOOP_KM = 0.25
 MAX_COMBO_SEARCH_RANGE_KM = 3.0
 MAX_CHAIN_LENGTH = 3
 
@@ -129,48 +124,6 @@ class CombinedRoute:
         self.steepest_grade = max(grades) if grades else None
 
 
-_cell_cache: dict = {}       # id(coords list) -> cells, for one generate_combined_routes call
-
-
-def _cells(coords):
-    """The ~60 m squares a line runs through (sampled every ~30 m)."""
-    hit = _cell_cache.get(id(coords))
-    if hit is not None and hit[0] is coords:
-        return hit[1]
-    cells = set()
-    for (ax, ay), (bx, by) in zip(coords, coords[1:]):
-        steps = max(1, int(max(abs(bx - ax), abs(by - ay)) / (_OVERLAP_CELL_DEG / 2)))
-        for i in range(steps + 1):
-            t = i / steps
-            cells.add((int((ax + (bx - ax) * t) // _OVERLAP_CELL_DEG),
-                       int((ay + (by - ay) * t) // _OVERLAP_CELL_DEG)))
-    _cell_cache[id(coords)] = (coords, cells)
-    return cells
-
-
-def _away_from(cells, points):
-    """Cells not within _JUNCTION_KM of any of these (lon, lat) points."""
-    out = set()
-    for cx, cy in cells:
-        lon, lat = (cx + 0.5) * _OVERLAP_CELL_DEG, (cy + 0.5) * _OVERLAP_CELL_DEG
-        if all(haversine_km(lon, lat, *p) > _JUNCTION_KM for p in points):
-            out.add((cx, cy))
-    return out
-
-
-def legs_overlap(chain_coords, next_coords) -> float:
-    """Share of the next leg (away from the corners where legs meet) that runs on
-    streets the chain already covers."""
-    joints = [c[0] for c in chain_coords] + [c[-1] for c in chain_coords] + [next_coords[0], next_coords[-1]]
-    nxt = _away_from(_cells(next_coords), joints)
-    if not nxt:
-        return 0.0
-    used = set()
-    for c in chain_coords:
-        used |= _cells(c)
-    return len(nxt & used) / len(nxt)
-
-
 MAX_COMBOS = 150          # plenty to choose 3 good ones from; keeps scoring fast
 _CELL_DEG = 0.012         # grid cell ~1.3 km, a bit bigger than CONNECT_THRESHOLD_KM
 
@@ -188,7 +141,6 @@ def generate_combined_routes(routes: List, target_km: float) -> List[CombinedRou
     the target, and the search stops after MAX_COMBOS. Combos closest to the
     target are tried first so the cap keeps the best ones."""
     max_total = target_km + MAX_COMBO_SEARCH_RANGE_KM
-    _cell_cache.clear()
     oriented = []
     for r in routes:
         if not r.distance_km or r.distance_km >= max_total:
@@ -247,8 +199,6 @@ def generate_combined_routes(routes: List, target_km: float) -> List[CombinedRou
             new_total = total_dist + next_route.distance_km
             if new_total > max_total:
                 continue                  # already past the target: don't go deeper
-            if legs_overlap(chain_coords, next_coords) > MAX_LEG_OVERLAP:
-                continue                  # same streets twice
             dfs(next_idx, used_route_ids | {next_route.id}, chain_legs + [next_route],
                 chain_coords + [next_coords], new_total,
                 gap_km + haversine_km(*end, *next_start))

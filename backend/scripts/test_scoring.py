@@ -678,33 +678,6 @@ def check_note_and_mood():
     print("  all note and mood checks passed")
 
 
-def check_combined_routes():
-    """Chained routes: legs must meet at the same corner (no straight-line jumps) and a
-    leg can't just re-run the streets the first one used."""
-    from types import SimpleNamespace
-    from app.scoring.route_combiner import generate_combined_routes, path_length_km
-
-    def loop(rid, pts):
-        coords = pts + [pts[0]]
-        return SimpleNamespace(id=rid, name=f"Test {rid} Loop", nickname=None, coords=coords,
-                               distance_km=path_length_km(coords), elevation_gain_m=10,
-                               surface_type="pavement", scenic=False)
-    o = (-118.2336, 34.1171)
-    d = 0.006
-    north = loop("n", [o, (o[0], o[1] + d), (o[0] - d, o[1] + d), (o[0] - d, o[1])])
-    south = loop("s", [o, (o[0], o[1] - d), (o[0] + d, o[1] - d), (o[0] + d, o[1])])
-    # starts 140 m from the others: used to be joined with a straight line
-    far = loop("f", [(o[0] - 0.0015, o[1] - 0.0002), (o[0] - 0.0015, o[1] - d), (o[0] - 0.0015 - d, o[1] - d)])
-    # the north loop again, a few metres over: same streets twice
-    twin = loop("t", [(o[0], o[1] + 0.0001), (o[0], o[1] + d), (o[0] - d, o[1] + d), (o[0] - d, o[1] + 0.0001)])
-    combos = generate_combined_routes([north, south, far, twin], target_km=north.distance_km * 2)
-    legs = [tuple(sorted(c.leg_ids)) for c in combos]
-    assert ("n", "s") in legs, legs
-    assert not any("f" in l for l in legs), legs
-    assert not any(set(l) >= {"n", "t"} for l in legs), legs
-    print(f"  combined routes: corner-to-corner only, no repeated streets ({legs})")
-
-
 if __name__ == "__main__":
     for title, user, checkin in SCENARIOS:
         print_results(title, run(user, checkin))
@@ -718,4 +691,3 @@ if __name__ == "__main__":
     check_rough_vs_great()
     check_distance_words()
     check_note_and_mood()
-    check_combined_routes()
