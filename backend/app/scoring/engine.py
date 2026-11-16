@@ -573,7 +573,7 @@ def describe_distance(effective: float, target: float, tol: float, approach: flo
     diff_mi = (effective - target) * 0.621371
     err = abs(effective - target)
     way = "shorter" if diff_mi < 0 else "longer"
-    there = " (counting the run to the start and back)" if approach > 0.05 else ""
+    there = ""        # the run to the start and back is just part of the run: no need to say so
     if err <= tol:
         if inferred:
             return "match", "A good length for how you're feeling today" + there
@@ -740,8 +740,7 @@ def score_route(
                 reasons.append(f"Fits your {checkin.available_minutes:.0f} minutes")
             elif run_format == "single":
                 # running there from home counts: say so, or a 2.9 mi route reads as a "match" for 5 mi
-                reasons.append(f"Close match to your planned distance, counting the run to the start and back"
-                               if approach > 0.05 else "Close match to your planned distance")
+                reasons.append("Close match to your planned distance")
             elif run_format == "out_and_back":
                 reasons.append(f"Out-and-Back: {mi:.1f} mi")
             else:

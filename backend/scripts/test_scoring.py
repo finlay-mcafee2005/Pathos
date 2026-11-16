@@ -643,7 +643,7 @@ def check_distance_words():
     fit, note = words(0.9, 6.0)
     assert fit == "off" and "5.1 mi shorter" in note and "closest" in note, note
     fit, note = words(5.0, 5.0, approach=1.7)
-    assert fit == "match" and "run to the start and back" in note, note
+    assert fit == "match" and "start and back" not in note, note
     print(f"  6.1 of 6: match | 4.6 of 6: '{words(4.6, 6.0)[1]}' | 0.9 of 6: '{words(0.9, 6.0)[1]}'")
     print("  all distance wording checks passed")
 
