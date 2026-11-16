@@ -9635,3 +9635,12 @@ body::before {
 .pr-arrows button:hover:not(:disabled) { opacity: 1; background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .pr-arrows button:disabled { opacity: .15; cursor: default; }
 .su-priority-hint { margin-top: 10px; }
+
+/* rows are dragged whole (no arrows); the grip sits on the right as a hint */
+.pr-item { cursor: grab; touch-action: none; transition: box-shadow .15s, background .15s; }
+.pr-item:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 2px; }
+.pr-list.is-dragging .pr-item { cursor: grabbing; }
+.pr-list.is-dragging .pr-item:not(.dragging) { transition: transform .15s; }
+.pr-item.dragging { transition: none; box-shadow: 0 12px 28px rgba(30, 64, 175, .22); z-index: 2; }
+.pr-handle { margin-left: auto; padding: 4px; font-size: 18px; opacity: .35; touch-action: none; }
+.su-priority-hint { margin: 14px 0 6px; }
