@@ -480,7 +480,7 @@ function SignupPage() {
               )}
 
               {step === 3 && (
-                <section className="form-section">
+                <section className="su-priority-section">
                   <PriorityRanker order={priorities} onChange={(o) => { setPriorities(o); setRanked(true); }} />
                   <p className="hint su-priority-hint">
                     {ranked ? "Got it. Your top picks count more when Pathos chooses routes."

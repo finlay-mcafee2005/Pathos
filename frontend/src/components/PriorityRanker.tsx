@@ -74,7 +74,7 @@ function PriorityRanker({ order, onChange }: Props) {
           <li
             key={key}
             className={`pr-item ${isDragged ? "dragging" : ""}`}
-            style={isDragged ? { transform: `translateY(${drag.offset}px) scale(1.02)` } : undefined}
+            style={isDragged ? { transform: `translateY(${drag.offset}px)` } : undefined}
             tabIndex={0}
             aria-label={`${i + 1}. ${p.title}. Drag, or use the up and down arrow keys, to move it.`}
             onPointerDown={(e) => onPointerDown(e, key)}

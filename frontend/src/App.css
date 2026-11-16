@@ -9665,3 +9665,12 @@ body::before {
 .pr-item.dragging .pr-handle { opacity: 1; color: var(--accent); }
 .pr-item.dragging .pr-text strong { color: var(--accent); }
 .pr-rank { transition: transform .15s, background .15s; }
+
+/* the highlighted row stays its own size (no scale-up), with a soft glow; the signup
+   step isn't a .form-section, which clips its content (overflow: hidden) */
+.su-priority-section { position: relative; }
+.pr-item.dragging { transform: none; }
+.pr-item.dragging .pr-rank { transform: none; }
+.pr-item.dragging {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent), 0 6px 14px rgba(30, 64, 175, .16);
+}
