@@ -19,7 +19,11 @@ from typing import List, Optional, Tuple
 # Local dev: self-hosted OSRM on port 5001.
 # Production: set OSRM_URL to the public FOSSGIS foot server,
 #   https://routing.openstreetmap.de/routed-foot
-OSRM_URL = os.environ.get("OSRM_URL", "http://localhost:5001").rstrip("/")
+# On Render (which sets RENDER) without OSRM_URL, use the public server rather than a local
+# one that isn't there: that's what turned every way-to-the-start into a straight line.
+PUBLIC_FOOT_URL = "https://routing.openstreetmap.de/routed-foot"
+OSRM_URL = (os.environ.get("OSRM_URL")
+            or (PUBLIC_FOOT_URL if os.environ.get("RENDER") else "http://localhost:5001")).rstrip("/")
 # public OSM servers ask clients to identify themselves
 USER_AGENT = "Pathos/1.0 (student running-route project)"
 TIMEOUT_S = 8

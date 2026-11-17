@@ -10,6 +10,7 @@ import AdjustBar, { type Adjust, type TodayPrefs } from "../components/AdjustBar
 import ElevationProfile, { type Profile, climbFt, wayHeights, withWay } from "../components/ElevationProfile";
 import RouteArrows from "../components/RouteArrows";
 import { type GroupMatch, formatMeetTime, sessionTitle } from "./GroupsPage";
+import { footRoute, isStraight } from "../utils/footRoute";
 import { API_URL } from "../utils/format";
 
 // The phone/browser location, or null if it's not allowed or takes too long (then home is used).
@@ -589,13 +590,29 @@ function RecommendationsPage() {
   // the elevation service), fetch them here, then the card's Climb, "Why this route" and the
   // chart all use the same whole-run profile.
   async function addStreetsToProfiles(recs: Recommendation[]) {
-    const done = await Promise.all(recs.map(async (rec) => {
-      const p = rec.elevation_profile;
+    const done = await Promise.all(recs.map(async (rec0) => {
+      let rec = rec0;
+      const runsThere = (rec.approach_km ?? 0) > 0 && !!rec.home && rec.path.length > 1;
+      // the server couldn't route the way there (straight line): get the real streets
+      let streetsFixed = false;
+      if (runsThere && isStraight(rec.approach_path)) {
+        const streets = await footRoute(rec.home!, rec.path[0]);
+        if (streets) {
+          rec = { ...rec, approach_path: streets };
+          streetsFixed = true;
+        }
+      }
+      let p = rec.elevation_profile;
       if (!p) return rec;
-      const runsThere = (rec.approach_km ?? 0) > 0 && rec.home && (rec.approach_path?.length ?? 0) > 1;
+      if (streetsFixed && p.route && p.route[0] > 0.05) {
+        // the chart already had the straight line in it: keep just the route part
+        const [r0, r1] = p.route;
+        const keep = p.mi.map((m, i) => [m, p!.ft[i]] as const).filter(([m]) => m >= r0 - 1e-6 && m <= r1 + 1e-6);
+        p = { mi: keep.map(([m]) => m - r0), ft: keep.map(([, f]) => f), route: [0, r1 - r0] };
+      }
       const hasStreets = !!p.route && p.route[0] > 0.05;
       let full = p;
-      if (runsThere && !hasStreets) {
+      if (runsThere && (rec.approach_path?.length ?? 0) > 1 && !hasStreets) {
         const w = await wayHeights([rec.home!, ...(rec.approach_path ?? []), rec.path[0]]);
         if (!w) return rec;                       // couldn't get them: keep the route-only numbers
         full = withWay(p, w);
